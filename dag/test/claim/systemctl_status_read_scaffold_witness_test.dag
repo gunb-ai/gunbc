@@ -9,7 +9,7 @@ test fn witness_status_operation_argv_matches_authority() -> Bool {
 }
 
 test fn witness_status_read_local_returns_text() -> Bool {
-  match systemctl_status_read_local(unit: "demo.service" as std.types.NonEmptyStr) {
+  match gunbc.systemctl_status_read(transport: gunbc.host_effect.LocalShell, unit: "demo.service" as std.types.NonEmptyStr) {
     UnitStatusCaptured { text: t } => t != ""
     UnitStatusCaptureRefused { reason: _ } => false
   }

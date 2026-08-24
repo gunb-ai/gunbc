@@ -128,7 +128,7 @@ fn host_converge_slice1_probed_at() -> std.types.NonEmptyStr? {
 }
 
 fn host_converge_slice1_read_memory_max_raw(unit: std.types.NonEmptyStr) -> String? {
-  match systemctl_show_property_read_local(unit: unit, property: MemoryMax) {
+  match gunbc.systemctl_show_read.systemctl_show_property_read(transport: gunbc.host_effect.LocalShell, unit: unit, property: extdeps.systemd.MemoryMax) {
     SystemdPropertyCaptured { value: raw } => Present { value: raw }
     SystemdPropertyCaptureRefused { reason: _ } => none
   }
@@ -272,14 +272,14 @@ fn host_converge_slice1_tasks_knob(host: product.placement_supply.HostIdentity) 
 }
 
 fn host_converge_slice1_read_tasks_max_raw(unit: std.types.NonEmptyStr) -> String? {
-  match systemctl_show_property_read_local(unit: unit, property: TasksMax) {
+  match gunbc.systemctl_show_read.systemctl_show_property_read(transport: gunbc.host_effect.LocalShell, unit: unit, property: extdeps.systemd.TasksMax) {
     SystemdPropertyCaptured { value: raw } => Present { value: raw }
     SystemdPropertyCaptureRefused { reason: _ } => none
   }
 }
 
 fn host_converge_slice1_read_tasks_current_raw(unit: std.types.NonEmptyStr) -> String? {
-  match systemctl_show_property_read_local(unit: unit, property: TasksCurrent) {
+  match gunbc.systemctl_show_read.systemctl_show_property_read(transport: gunbc.host_effect.LocalShell, unit: unit, property: extdeps.systemd.TasksCurrent) {
     SystemdPropertyCaptured { value: raw } => Present { value: raw }
     SystemdPropertyCaptureRefused { reason: _ } => none
   }

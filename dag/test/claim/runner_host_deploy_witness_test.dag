@@ -71,29 +71,31 @@ test fn srv4_runner_app_from_secret_manager() -> Bool {
 // discriminating, and a command that listed the units without the verb still fails here.
 test fn srv4_enables_its_declared_runner_instances() -> Bool {
   let names = runner_instance_names(deploy: srv4_runner_host_deploy)
-  let enable = match runner_activate_command(admission: admit_runner_activation(host_admission: admit_runner_host(deploy: srv4_runner_host_deploy), cache_ready: witness_ready_receipt(), pool_ready: witness_ready_pool())) {
-    RunnerCommandReady { command: cmd } => shell_command_render(command: cmd)
-    RunnerCommandRefused { host_label: _, reason: _ } => ""
+  match runner_activate_command(admission: admit_runner_activation(host_admission: admit_runner_host(deploy: srv4_runner_host_deploy), cache_ready: witness_ready_receipt(), pool_ready: witness_ready_pool())) {
+    RunnerCommandRefused { host_label: _, reason: _ } => false
+    RunnerCommandReady { command: cmd } => {
+      let enable = shell_command_render(command: cmd)
+      list_length(items: names) == srv4_runner_host_deploy.runner_count
+        && string_contains(s: enable, pattern: "'actions-runner@srv4-01.service'")
+        && string_contains(s: enable, pattern: "'actions-runner@srv4-05.service'")
+        && all(names, n => string_contains(s: enable, pattern: n))
+        && !string_contains(
+             s: enable,
+             pattern: concat("srv4-", runner_slot_index_suffix(index: srv4_runner_host_deploy.runner_count + 1)),
+           )
+        && string_contains(
+             s: enable,
+             pattern: concat(
+               concat("'", sudo_binary_path as String),
+               concat("' '", concat(sudo_non_interactive_flag as String, "'")),
+             ),
+           )
+        && string_contains(
+             s: enable,
+             pattern: concat(concat("'", systemctl_program as String), "' 'enable' '--now'"),
+           )
+    }
   }
-  list_length(items: names) == srv4_runner_host_deploy.runner_count
-    && string_contains(s: enable, pattern: "'actions-runner@srv4-01.service'")
-    && string_contains(s: enable, pattern: "'actions-runner@srv4-05.service'")
-    && all(names, n => string_contains(s: enable, pattern: n))
-    && !string_contains(
-         s: enable,
-         pattern: concat("srv4-", runner_slot_index_suffix(index: srv4_runner_host_deploy.runner_count + 1)),
-       )
-    && string_contains(
-         s: enable,
-         pattern: concat(
-           concat("'", sudo_binary_path as String),
-           concat("' '", concat(sudo_non_interactive_flag as String, "'")),
-         ),
-       )
-    && string_contains(
-         s: enable,
-         pattern: concat(concat("'", systemctl_program as String), "' 'enable' '--now'"),
-       )
 }
 
 data unenrolled_host_fixture: RunnerHostDeploy = RunnerHostDeploy {

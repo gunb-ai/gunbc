@@ -595,9 +595,9 @@ fn integer_interval_spec_contains_decoded_node(container: IntegerIntervalSpec, c
 
 fn integer_interval_spec_node_contains(container: v2.std.node.Node, contained: v2.std.node.Node) -> Bool {
   match integer_standard_integer_type_from_node(node: container) {
-    Accepted { value: decoded_container, diagnostics: None } =>
+    Accepted { value: decoded_container, diagnostics: _ } =>
       match integer_standard_integer_type_from_node(node: contained) {
-        Accepted { value: decoded_contained, diagnostics: None } =>
+        Accepted { value: decoded_contained, diagnostics: _ } =>
           integer_interval_spec_contains_decoded_node(
             container: integer_standard_integer_type_interval_spec(standard_integer_type: decoded_container),
             contained: decoded_contained

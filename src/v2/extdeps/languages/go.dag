@@ -535,11 +535,7 @@ fn go_string_facts_node(facts: GoStringPrimitiveFacts) -> Node {
 }
 
 fn go_empty_primitive_spec_facts() -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      v2.std.optional.Absent
-    }
-  }
+  empty_map()
 }
 
 fn go_primitive_fact_map_2(

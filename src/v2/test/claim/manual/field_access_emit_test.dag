@@ -88,7 +88,7 @@ fn field_access_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<
 
 data field_access_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: field_access_emitted_root,
-  facts: std.types.Map { lookup: field_access_facts_lookup }
+  facts: std.algebra.PartialFunction { lookup: field_access_facts_lookup }
 }
 
 test fn field_access_emit_holds() -> v2.std.logic.Bool {

@@ -41,8 +41,6 @@ service gcp.STS {
     endpoint: "https://sts.googleapis.com"
 
     rate_limit: { requests: 1000, per: minute, scope: sts }
-
-    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 503] }
   }
 
   operation Exchange {

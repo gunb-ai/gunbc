@@ -14,7 +14,7 @@ fn require_dns_label(raw: String) -> extdeps.dns.domain_name.DnsLabel {
 }
 
 test fn witness_hostname_read_argv_is_typed_not_concat() -> Bool {
-  match hostname_short_read_operation_argv() {
+  match host_operation_materialize_argv(operation: HostnameReadShort) {
     ArgvMaterialized { argv: argv } =>
       hostname_short_read_operation_argv_matches_authority() && join(argv, " ") == "hostname -s"
     ArgvMaterializationRefused { at: _, cause: _ } => false

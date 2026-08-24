@@ -27,7 +27,7 @@ fn rung34_descent_witness() -> Witness<v2.std.cardinality.TerminationProof> {
 fn rung34_inferred_tree(root: Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.types.Map {
+    facts: std.algebra.PartialFunction {
       lookup: fn(n) {
         Present {
           value: claim_inferred_facts_from_nodes(

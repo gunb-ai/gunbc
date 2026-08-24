@@ -41,7 +41,7 @@ fn w_basic_auth_emits_basic_auth_call() -> Bool {
 
 fn w_dual_auth_refuses_at_emit() -> Bool {
   compile_dag_rust_emit_check(
-    "module rax_dual\n\nservice test.Bmc {\n  config {\n    endpoint: \"https://bmc.example.com\"\n    auth: Bearer\n    auth_input: token\n  }\n  operation GetSystem {\n    input { token: String, username: String, password: String }\n    output { name: String }\n    transport rest { method: GET, path: \"/redfish/v1/Systems/system\", auth_basic: { username: username, password: password } }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"name\"\n    }\n  }\n}\n",
+    "module rax_dual\n\nimport std.types { AuthScheme }\n\nservice test.Bmc {\n  config {\n    endpoint: \"https://bmc.example.com\"\n    auth: Bearer\n    auth_input: token\n  }\n  operation GetSystem {\n    input { token: String, username: String, password: String }\n    output { name: String }\n    transport rest { method: GET, path: \"/redfish/v1/Systems/system\", auth_basic: { username: username, password: password } }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"name\"\n    }\n  }\n}\n",
     "src/rax_dual.rs",
     ["compile_error!"],
     [".basic_auth("]

@@ -7,6 +7,9 @@
 pub mod helpers;
 
 #[cfg(test)]
+mod anonymous_record_struct_resolution_test;
+#[cfg(test)]
+#[cfg(test)]
 mod decl_facts_dimensionless_projection_test;
 #[cfg(test)]
 mod field_of_fractions_construction_test;

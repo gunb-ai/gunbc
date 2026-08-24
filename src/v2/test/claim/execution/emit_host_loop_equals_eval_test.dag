@@ -27,8 +27,8 @@ fn emit_loop_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer
     Accepted { value: root, diagnostics: _ } =>
       v2.std.diagnostic.outcome_accepted(
         value: v2.compiler.inferred_tree.InferredTree {
-          root: test.claim.extdeps_llm_claude_trust_witness.root,
-          facts: std.types.Map { lookup: emit_loop_eval_composed_facts }
+          test.claim.extdeps_llm_claude_trust_witness.root: test.claim.extdeps_llm_claude_trust_witness.root,
+          facts: std.algebra.PartialFunction { lookup: emit_loop_eval_composed_facts }
         }
       )
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -40,8 +40,8 @@ fn emit_loop_eval_wrong_value_producer_tree() -> v2.std.diagnostic.Outcome<v2.co
     Accepted { value: root, diagnostics: _ } =>
       v2.std.diagnostic.outcome_accepted(
         value: v2.compiler.inferred_tree.InferredTree {
-          root: test.claim.extdeps_llm_claude_trust_witness.root,
-          facts: std.types.Map { lookup: emit_loop_eval_composed_facts }
+          test.claim.extdeps_llm_claude_trust_witness.root: test.claim.extdeps_llm_claude_trust_witness.root,
+          facts: std.algebra.PartialFunction { lookup: emit_loop_eval_composed_facts }
         }
       )
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }

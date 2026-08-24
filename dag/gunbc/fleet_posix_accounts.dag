@@ -157,19 +157,83 @@ data fleet_apt_get_binary_path: std.types.NonEmptyStr = "/usr/bin/apt-get"
 
 data fleet_visudo_binary_path: std.types.NonEmptyStr = "/usr/sbin/visudo"
 
+data fleet_install_binary_path: std.types.NonEmptyStr = "/usr/bin/install"
+
+data fleet_systemctl_binary_path: std.types.NonEmptyStr = "/usr/bin/systemctl"
+
+data fleet_tailscale_binary_path: std.types.NonEmptyStr = "/usr/bin/tailscale"
+
+data fleet_rm_binary_path: std.types.NonEmptyStr = "/usr/bin/rm"
+
+// A CLOSED VOCABULARY OF WHAT THIS PRINCIPAL MAY SUDO, so that emitting an ungranted sudo command
+// has no spelling rather than being a mistake something downstream has to notice.
+//
+// THE CLASS THIS CLOSES, with a receipt. The runner principal's grants were declared here and the
+// privileged commands were spelled, as free strings, in the shell emitters -- extdeps.github
+// actions_runner named tar and chown, gunbc.fleet_converge_plan named mkdir and flock, and none of
+// those four are roster members. Nothing joined the two authorities, so the only mechanism that
+// could ever report the mismatch was executing the emitted script on a real host as the real
+// principal. That is what happened: an operator-authorized add-only materialization on srv3
+// refused at its first privileged command with zero slots mutated, and the roster had said so all
+// along. This is DESIGN section 3 in its ordinary form -- one fact (what may run as root) with two
+// authorings -- and section 5's construction-over-validation rule says the repair is to make the
+// second authoring impossible, not to add a check that compares them.
+//
+// WHY A COPRODUCT AND NOT A PREDICATE. A predicate over the grant list would be validation: the
+// emitter could still build "sudo -n tar", and something would have to remember to ask. Requiring
+// a CiRunnerSudoBinary to obtain the path means the ungranted command cannot be constructed, and
+// adding a member without a grant row fails to compile at the match below. The rung is structural
+// impossibility for emitters that route through ci_runner_sudo_binary_path, and mitigatable for
+// any that still concatenate a literal -- NEXT-RUNG TRIGGER: no remaining sudo word in an emitted
+// fleet script built from a String rather than from this accessor.
+type CiRunnerSudoBinary
+  = SudoAptGet
+  | SudoInstall
+  | SudoVisudo
+  | SudoSystemctl
+  | SudoTailscale
+  | SudoRm
+
+fn ci_runner_sudo_binary_path(b: CiRunnerSudoBinary) -> std.types.NonEmptyStr {
+  match b {
+    SudoAptGet => fleet_apt_get_binary_path
+    SudoInstall => fleet_install_binary_path
+    SudoVisudo => fleet_visudo_binary_path
+    SudoSystemctl => fleet_systemctl_binary_path
+    SudoTailscale => fleet_tailscale_binary_path
+    SudoRm => fleet_rm_binary_path
+  }
+}
+
+fn ci_runner_sudo_binary_probe(b: CiRunnerSudoBinary) -> extdeps.sudo.nopasswd_execute_probe.SudoNopasswdProbeKind {
+  match b {
+    SudoAptGet => extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--help" }
+    SudoInstall => extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--version" }
+    SudoVisudo => extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "-V" }
+    SudoSystemctl => extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--version" }
+    SudoTailscale => extdeps.sudo.nopasswd_execute_probe.NopasswdGrantListCheck
+    SudoRm => extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--version" }
+  }
+}
+
+data ci_runner_sudo_binaries: List<CiRunnerSudoBinary> = [SudoAptGet, SudoInstall, SudoVisudo, SudoSystemctl, SudoTailscale, SudoRm]
+
 data gunbc_deploy_privileged_helper_path: std.types.NonEmptyStr = "/opt/gunbc/bin/gunbc-deploy-privileged"
 
 data gunbc_deploy_privileged_helper_check_argv: std.types.NonEmptyStr = "probe"
 
+// DERIVED FROM THE CLOSED VOCABULARY, not authored beside it. The prior form listed six literal
+// paths, two of which duplicated data rows that already existed in this module and four of which
+// were spelled inline -- so the roster and the binary paths were themselves two authorings of one
+// fact, one layer below the emitter/roster split this vocabulary closes.
 fn fleet_posix_ci_runner_sudo_grants() -> List<PosixSudoGrant> {
-  [
-    PosixSudoGrant { command_path: fleet_apt_get_binary_path, probe: extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--help" } },
-    PosixSudoGrant { command_path: "/usr/bin/install", probe: extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--version" } },
-    PosixSudoGrant { command_path: fleet_visudo_binary_path, probe: extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "-V" } },
-    PosixSudoGrant { command_path: "/usr/bin/systemctl", probe: extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--version" } },
-    PosixSudoGrant { command_path: "/usr/bin/tailscale", probe: NopasswdGrantListCheck },
-    PosixSudoGrant { command_path: "/usr/bin/rm", probe: extdeps.sudo.nopasswd_execute_probe.NopasswdExecuteCheck { check_argv: "--version" } },
-  ]
+  map(
+    xs: ci_runner_sudo_binaries,
+    f: b => PosixSudoGrant {
+      command_path: ci_runner_sudo_binary_path(b: b),
+      test.claim.install_transport_qualification_witness_test.probe: ci_runner_sudo_binary_probe(b: b),
+    },
+  )
 }
 
 fn fleet_posix_srv3_host_sudo_grants() -> List<PosixSudoGrant> {

@@ -70,7 +70,7 @@ test fn witness_verdict_uses_converge_target_not_string_flatten() -> Bool {
 }
 
 fn witness_slice1_show_property_local_read_holds() -> Bool {
-  match systemctl_show_property_read_local(unit: host_converge_slice1_probe_unit, property: MemoryMax) {
+  match systemctl_show_property_read(transport: LocalShell, unit: host_converge_slice1_probe_unit, property: MemoryMax) {
     SystemdPropertyCaptured { value: v } => v == "8589934592"
     SystemdPropertyCaptureRefused { reason: _ } => false
   }

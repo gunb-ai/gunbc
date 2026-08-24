@@ -895,6 +895,25 @@ fn fleet_converge_generation_admission(observation: GenerationStoreObservation) 
   }
 }
 
+// THE LEASE IS HELD BY THE PRINCIPAL THAT RUNS THE APPLY, so it is grounded on that principal
+// rather than spelled here. Doing it the other way would put a second authoring of "who converges"
+// beside gunbc.fleet_posix_accounts, and the two would drift the moment either moved.
+//
+// WHY THIS ROW EXISTS AT ALL: the lease directory used to be created with `sudo -n mkdir -p`, and
+// the lock then taken with `sudo -n flock`. Neither mkdir nor flock is in this principal's NOPASSWD
+// roster, so the very first privileged command of every apply refused -- measured on srv3, where an
+// authorized add-only materialization died at `sudo -n mkdir` with zero slots touched. install IS
+// granted, and it can create the directory already owned by the converging principal, which then
+// makes the flock and the generation-store write ordinary unprivileged file operations. Privilege
+// is spent once, on the one thing that genuinely needs it.
+//
+// The generation store's own note already assumed this ownership ("bounded to a principal who can
+// already write /var/lib/gunbc -- the same principal the apply runs as"). That assumption was true
+// of the design and false of the emitted shell; this makes the shell agree with it.
+fn fleet_converge_lease_owner() -> NonEmptyStr {
+  grounded_posix_principal_name(p: fleet_posix_ci_runner_principal())
+}
+
 data fleet_converge_generation_lock_path: String = "/var/lib/gunbc/fleet-converge/plan_generation.lock"
 
 data fleet_converge_locked_apply_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_locked_apply_script — flock-guarded generation compare, apply.sh, and store commit in one shell transport; DISSOLVES WHEN bash-emit or host_effect_apply provides typed lease acquisition without medium-as-string concat")
@@ -1052,13 +1071,17 @@ fn fleet_converge_locked_apply_script(
     bash_build_command_with_words(words: [
       bash_build_word_lit(text: "sudo"),
       bash_build_word_lit(text: "-n"),
-      bash_build_word_lit(text: "mkdir"),
-      bash_build_word_lit(text: "-p"),
+      bash_build_word_lit(text: ci_runner_sudo_binary_path(b: SudoInstall) as String),
+      bash_build_word_lit(text: "-d"),
+      bash_build_word_lit(text: "-m"),
+      bash_build_word_lit(text: "755"),
+      bash_build_word_lit(text: "-o"),
+      bash_build_word_lit(text: fleet_converge_lease_owner() as String),
+      bash_build_word_lit(text: "-g"),
+      bash_build_word_lit(text: fleet_converge_lease_owner() as String),
       bash_build_word_lit(text: "/var/lib/gunbc/fleet-converge"),
     ]),
     bash_build_command_with_words(words: [
-      bash_build_word_lit(text: "sudo"),
-      bash_build_word_lit(text: "-n"),
       bash_build_word_lit(text: "flock"),
       bash_build_word_lit(text: "-x"),
       bash_build_word_lit(text: fleet_converge_generation_lock_path),
@@ -1088,7 +1111,7 @@ fn fleet_converge_apply_shell(
       ],
       ["# generated at plan time — apply MUST NOT recompute membership_reconcile"],
       timer_apply_lines(plan: timer_plan),
-      ["sudo -n systemctl daemon-reload"],
+      [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
       ["# runner-slot membership (gunbc.runner_slot_provision) — ADD only; see slot_apply_lines"],
       slot_apply_lines(host: host, observed_slots: observed_slots),
     ),

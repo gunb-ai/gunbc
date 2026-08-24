@@ -65,7 +65,7 @@ fn translate_mixed_tree_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.O
 
 data translate_mixed_derived_root_underived_child_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: translate_mixed_tree_root(),
-  facts: std.types.Map { lookup: translate_mixed_tree_facts_lookup }
+  facts: std.algebra.PartialFunction { lookup: translate_mixed_tree_facts_lookup }
 }
 
 fn translate_absent_parent_underived_child_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
@@ -78,7 +78,7 @@ fn translate_absent_parent_underived_child_facts_lookup(key: v2.std.node.Node) -
 
 data translate_absent_parent_underived_child_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: translate_mixed_tree_root(),
-  facts: std.types.Map { lookup: translate_absent_parent_underived_child_facts_lookup }
+  facts: std.algebra.PartialFunction { lookup: translate_absent_parent_underived_child_facts_lookup }
 }
 
 fn translate_bodyless_emission_root_with_poison_child_root() -> v2.std.node.Node {
@@ -110,7 +110,7 @@ fn translate_bodyless_emission_root_with_poison_child_facts_lookup(key: v2.std.n
 
 data translate_bodyless_emission_root_with_poison_child_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: translate_bodyless_emission_root_with_poison_child_root(),
-  facts: std.types.Map { lookup: translate_bodyless_emission_root_with_poison_child_facts_lookup }
+  facts: std.algebra.PartialFunction { lookup: translate_bodyless_emission_root_with_poison_child_facts_lookup }
 }
 
 fn translate_bodied_arrow_shortcut_root() -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
@@ -148,7 +148,7 @@ fn translate_bodied_arrow_shortcut_underived_descendant_tree() -> v2.std.diagnos
       outcome_accepted(
         value: v2.compiler.inferred_tree.InferredTree {
           root: root,
-          facts: std.types.Map { lookup: translate_bodied_arrow_shortcut_facts_lookup }
+          facts: std.algebra.PartialFunction { lookup: translate_bodied_arrow_shortcut_facts_lookup }
         }
       )
     }
@@ -179,7 +179,7 @@ fn translate_projection_absent_fold_bodied_arrow_underived_descendant_tree() -> 
       outcome_accepted(
         value: v2.compiler.inferred_tree.InferredTree {
           root: root,
-          facts: std.types.Map { lookup: translate_bodied_arrow_shortcut_facts_lookup }
+          facts: std.algebra.PartialFunction { lookup: translate_bodied_arrow_shortcut_facts_lookup }
         }
       )
     }

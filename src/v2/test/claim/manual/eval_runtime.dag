@@ -211,7 +211,7 @@ fn eval_fact_lookup(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compi
 fn eval_inferred_tree() -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: eval_add_subgraph(),
-    facts: std.types.Map {
+    facts: std.algebra.PartialFunction {
       lookup: eval_fact_lookup
     }
   }

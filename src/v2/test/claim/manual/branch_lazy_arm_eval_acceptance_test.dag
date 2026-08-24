@@ -409,7 +409,7 @@ fn lazy_arm_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.c
 fn lazy_arm_admitted_tree(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.types.Map { lookup: lazy_arm_facts_lookup }
+    facts: std.algebra.PartialFunction { lookup: lazy_arm_facts_lookup }
   }
 }
 

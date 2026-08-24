@@ -122,15 +122,16 @@ fn model_core_bool_fact_lookup(facts: v2.std.logic.BoolPrimitiveFacts, axis: v2.
   }
 }
 
-fn model_core_bool_spec_facts(facts: v2.std.logic.BoolPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
-  std.types.Map {
-    lookup: fn(axis) {
-      match model_core_bool_fact_lookup(facts: facts, axis: axis) {
-        Holds { value: v } => v2.std.optional.Present { value: v }
-        Violates { diagnostic: _ } => v2.std.optional.Absent
-      }
-    }
-  }
+fn model_core_bool_spec_facts(facts: v2.std.logic.BoolPrimitiveFacts) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Node> {
+  v2.std.collection.map_insert(
+    v2.std.collection.map_insert(
+      v2.std.collection.empty_map(),
+      discriminant(v: ModelCoreFactAxisWidth {}),
+      v2.std.logic.bool_width_fact_node(width: facts.width)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    v2.std.logic.bool_encoding_fact_node(encoding: facts.encoding)
+  )
 }
 
 fn model_core_bool_primitive_bundle() -> PrimitiveFactBundle {

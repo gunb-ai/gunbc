@@ -113,11 +113,11 @@ fn runner_memory_cap_live_read(host: product.placement_supply.HostIdentity) -> g
   let unit = runner_memory_cap_probe_unit(host: host)
   match gunbc.clock_read.clock_now_probed_at() {
     Present { value: probed_at } =>
-      match gunbc.systemctl_show_read.systemctl_show_property_read_local(unit: unit, property: extdeps.systemd.MemoryMax) {
-        SystemdPropertyCaptured { value: memory_max_raw } =>
-          match gunbc.systemctl_show_read.systemctl_show_property_read_local(unit: unit, property: extdeps.systemd.MemorySwapMax) {
-            SystemdPropertyCaptured { value: memory_swap_max_raw } =>
-              match gunbc.systemctl_show_read.systemctl_show_property_read_local(unit: unit, property: extdeps.systemd.MemoryHigh) {
+      match gunbc.systemctl_show_read.systemctl_show_property_read(transport: gunbc.host_effect.LocalShell, unit: unit, property: extdeps.systemd.MemoryMax) {
+        gunbc.systemctl_show_read.SystemdPropertyCaptured { value: memory_max_raw } =>
+          match gunbc.systemctl_show_read.systemctl_show_property_read(transport: gunbc.host_effect.LocalShell, unit: unit, property: extdeps.systemd.MemorySwapMax) {
+            gunbc.systemctl_show_read.SystemdPropertyCaptured { value: memory_swap_max_raw } =>
+              match gunbc.systemctl_show_read.systemctl_show_property_read(transport: gunbc.host_effect.LocalShell, unit: unit, property: extdeps.systemd.MemoryHigh) {
                 SystemdPropertyCaptured { value: memory_high_raw } =>
                   Present {
                     value: gunbc.runner_unit_live_read.runner_unit_live_read_typed(

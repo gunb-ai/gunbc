@@ -760,8 +760,8 @@ fn runtime_binding_lookup_miss(key: v2.std.runtime.EnvironmentBindingKey) -> v2.
   v2.std.optional.optional_absent()
 }
 
-fn empty_runtime_bindings() -> Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
-  std.types.Map {
+fn empty_runtime_bindings() -> std.algebra.PartialFunction<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
+  std.algebra.PartialFunction {
     lookup: runtime_binding_lookup_miss
   }
 }
@@ -1287,10 +1287,10 @@ fn eval_yield_effect_request(
     result: result
   )
   match result {
-    Accepted { value: v, diagnostics: None } =>
+    v2.std.diagnostic.Accepted { value: v, diagnostics: ds } =>
       v2.std.diagnostic.Accepted {
         value: EffectIoYieldOutcome { bundle: logged_bundle, value: v },
-        diagnostics: v2.std.diagnostic.None
+        diagnostics: ds
       }
     Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
   }

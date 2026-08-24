@@ -121,3 +121,493 @@ fn demand_reservation_price<P>(d: Demand<P>) -> std.measure.MoneyAmountMicro {
 fn demand_maximum_buy_order<P>(d: Demand<P>) -> std.measure.MoneyAmountMicro {
   d.admission.buy.maximum_buy_order
 }
+
+// The core effect of a command, half one: what it does to the demand
+// POPULATION. This half is a pure demand fact and therefore lives here. The
+// half that joins it to a running execution lives in product.fabric.arbitration,
+// because a running attempt and its reservations are execution carriers and
+// execution already imports this module - the join cannot live here without
+// inverting that edge. Splitting on the import direction is not two
+// authorities for one decision: this module answers who is registered and
+// whether the transition is authorized, and nothing else answers that.
+
+// Refusal causes are separate arms because they have different owners and
+// different repairs, and the pair that matters most is the first two.
+// UnknownDemand means no demand with that key is registered at all - the
+// binding is out of date, or replaying. DemandPrincipalMismatch means the key
+// IS registered, under a different principal: that is not a stale binding, it
+// is one requester presenting another requester's demand identity, and
+// collapsing it into UnknownDemand would report a cross-tenant authorization
+// failure as a bookkeeping miss. The identity pair exists precisely so that
+// dropping the principal is not an ordinary field access; a refusal vocabulary
+// that cannot say which half failed drops it again at the diagnostic layer.
+//
+// There is deliberately no MissingEvidence arm. ObservationReceiptRef is
+// branded over NonEmptyStr, so a command carrying no evidence has no spelling,
+// and an arm for it would be permanently green by construction - cited as
+// coverage while carrying no information.
+// The core cannot authenticate. Evidence is an opaque provenance reference that
+// this module states it never interprets, and inventing a verification of it
+// here would fabricate exactly the external fact a boundary is supposed to
+// refuse on. What the core CAN decide, and did not, is that a caller may only
+// act as the principal it attested to being.
+//
+// That gap was real and it was cross-tenant. The principal-mismatch arm below
+// catches a FALSELY presented principal - a key registered to someone else -
+// and stops there. It says nothing about a CORRECTLY presented one, so a
+// binding holding another requester's full FabricIdentity could withdraw that
+// requester's demand and every check passed, because the pair genuinely
+// matched. Possession of an identity was authorization to mutate it.
+//
+// THE COMPARISON ALONE DOES NOT CLOSE THAT, and saying so is the point of this
+// note. A first repair added the attestation record and compared its principal
+// against the principal the command acts as. As a plain record with public
+// fields, anyone holding the victim's FabricIdentity could equally write
+// CommandAttestation { principal: victim, evidence: anything } and the
+// comparison passed - it tested the attestation against itself. A richer type
+// name is not safety until construction enforces the distinction.
+//
+// So the carrier is sole_constructor: the record has no cross-module literal,
+// and the only route to one is attest_command_principal below. That is
+// CONFINEMENT, not authentication, and the two are different guarantees.
+//
+// THE CEILING, DECLARED RATHER THAN LEFT TO BE ASSUMED. sole_constructor
+// confines WHO MAY CONSTRUCT and establishes nothing about WHAT a sanctioned
+// caller's predicate proves. So the class splits, and only one half moved:
+//
+//   forgery by an arbitrary caller - any module writing the record literal
+//   directly - is structurally guaranteed against, because the construction
+//   has no spelling outside this module;
+//
+//   a binding that mints an attestation it did not actually verify is NOT
+//   closed and cannot be closed here. Whether a provider observation really
+//   authenticated a principal is external reality, observed and admitted at
+//   the binding's own boundary. It remains a boundary obligation on the
+//   binding, and the core is honest about receiving it rather than deriving
+//   it.
+//
+// NEXT-RUNG TRIGGER: the mint carries no admit_callers today because no
+// provider binding module exists yet to name, and a wall whose only admitted
+// caller does not exist refuses everything including its own evidence. When the
+// first binding lands, admit_callers narrows the mint to that binding's entry
+// points, and the residual above shrinks from "any caller may vouch" to "a
+// named binding may vouch".
+// verification_authority names WHO CLAIMS this attestation is valid. The core
+// does not validate it and cannot; what the field buys is that the core can
+// answer who vouched without pretending to answer whether the vouching was
+// true. Without it the residual declared above becomes unattributable at
+// exactly the moment someone needs to attribute it - a future reader finding a
+// bad release cannot tell which binding minted the attestation behind it, and
+// the boundary obligation has no owner. Naming the authority is also why this
+// is a DeclarationRef rather than a string: the authority is a symbol the
+// namespace already carries, and a name is checkable where a label is not.
+type CommandAttestation<P> sole_constructor {
+  principal: P
+  evidence: ObservationReceiptRef
+  verification_authority: DeclarationRef
+}
+
+// The evidence receipt is a required argument rather than an optional field, so
+// an attestation that names no observation has no spelling either. The core
+// still never interprets it; what the requirement buys is that the binding
+// cannot vouch anonymously.
+fn attest_command_principal<P>(
+  principal: P,
+  evidence: ObservationReceiptRef,
+  verification_authority: DeclarationRef,
+) -> CommandAttestation<P> {
+  CommandAttestation {
+    principal: principal,
+    evidence: evidence,
+    verification_authority: verification_authority,
+  }
+}
+
+// AN UNATTESTED COMMAND IS UNREPRESENTABLE, which is a different and stronger
+// claim than the confinement above, and it is the one the core can actually
+// prove. Confinement makes the attestation hard to forge; it does not stop a
+// command from reaching a decision with no attestation beside it, because a
+// separately-passed parameter is mandatory only by the signature that happens
+// to ask for it. Pairing them in one sealed carrier makes "decide this command,
+// I have no attestation" have no spelling at all.
+//
+// The distinction the type name must not blur: the guaranteed invariant is
+// EVERY CORE COMMAND CARRIES AN ATTESTATION WITNESS PRODUCED BY THE DECLARED
+// AUTHORITY. It is emphatically not "every core command is authenticated". The
+// first is a theorem about this module; the second is a claim about the world,
+// and no carrier here can hold it.
+type CoreCommand<P> sole_constructor {
+  attestation: CommandAttestation<P>
+  command: DemandCommand<P>
+}
+
+type CommandAdmission<P>
+  = CommandAdmitted { core: CoreCommand<P> }
+  | CommandAdmissionRefused { refusal: DemandRefusal<P> }
+
+// THE BOUNDARY, DECLARED HERE BECAUSE IT IS WHERE IT IS CROSSED. The core owns
+// shape, identity consistency, grant accounting, resource release and effect
+// admission. It does not own identity truth, credential truth or human
+// authorization truth; those sit with the verifier, above this mint. A
+// component may only issue a conclusion about facts inside its own observation
+// boundary, and the core has no external observation channel at all - so any
+// "authentication" written inside it would necessarily be one of three
+// failures: reimplementing an external authority, trusting an input field, or
+// inventing a model of reality.
+//
+// What IS inside the boundary is internal consistency: whether the attestation
+// presented covers the principal the command acts as. That is decidable from
+// the two values in hand and needs no observation, so it is enforced HERE, at
+// construction, rather than checked later in the fold. An inconsistent
+// CoreCommand therefore does not exist to be checked - which is why
+// apply_demand_command below carries no attestation arm.
+fn admit_command<P>(
+  attestation: CommandAttestation<P>,
+  command: DemandCommand<P>,
+) -> CommandAdmission<P> {
+  let acting = acting_principal(command: command)
+  if attestation.principal != acting {
+    CommandAdmissionRefused {
+      refusal: AttestationDoesNotCoverPrincipal {
+        attested: attestation.principal,
+        acting: acting,
+      }
+    }
+  } else {
+    CommandAdmitted {
+      core: CoreCommand { attestation: attestation, command: command },
+    }
+  }
+}
+
+type DemandRefusal<P>
+  = UnknownDemand { demand: FabricIdentity<P, DemandKey> }
+  | AttestationDoesNotCoverPrincipal {
+      attested: P,
+      acting: P,
+    }
+  | DemandPrincipalMismatch { demand: FabricIdentity<P, DemandKey> }
+  | DuplicateDemand { demand: FabricIdentity<P, DemandKey> }
+  | ReplacementAlreadyRegistered { demand: FabricIdentity<P, DemandKey> }
+  | SupersedeCrossesPrincipal {
+      superseded: FabricIdentity<P, DemandKey>,
+      replacement: FabricIdentity<P, DemandKey>,
+    }
+  | ReplacementWorkMismatch {
+      superseded_work: FabricIdentity<P, WorkKey>,
+      replacement_work: FabricIdentity<P, WorkKey>,
+    }
+
+// THE POPULATION IS SEALED, for the same reason the command is. The whole claim
+// of this module is that only the core knows the complete demand population -
+// and a core handed an ordinary caller-supplied List does not know it, it is
+// TOLD it. A GitHub binding could pass a list omitting the GitLab demand and the
+// fold would correctly conclude that nothing requires the Work and release it:
+// the exact two-provider failure the model exists to prevent, arriving through
+// the shape of an argument rather than through a decision.
+//
+// Unlike authentication, this one is inside the core's observation boundary.
+// Population completeness is the core's OWN state, not a fact about the world,
+// so it is not a boundary obligation to declare - it is a construction to make.
+// The only routes to a DemandPopulation are the empty registry and the output of
+// an admitted transition, so a population that omits a demand cannot be
+// authored; it can only have been produced by the transitions that built it.
+//
+// WHAT THIS DOES NOT CLOSE, named rather than left to be found: a caller may
+// still present a STALE population - an earlier value this module really did
+// produce - and the core cannot tell it from the current one, because nothing
+// here carries a generation. That is the same fencing problem execution.dag
+// solves for leases with LeaseIdentity, and the next-rung trigger is a
+// registry identity plus generation on this carrier, fenced the same way.
+//
+// The grant roster passed alongside is NOT sealed and has the sibling weakness:
+// a caller omitting a grant causes under-release. Sealing it belongs with grant
+// issuance, which lives above this module and has no authority carrier yet, so
+// it is recorded here as a known residual rather than silently left.
+type DemandPopulation<P> sole_constructor {
+  demands: List<Demand<P>>
+}
+
+fn empty_demand_population<P>() -> DemandPopulation<P> {
+  DemandPopulation { demands: [] }
+}
+
+fn population_demands<P>(p: DemandPopulation<P>) -> List<Demand<P>> {
+  p.demands
+}
+
+// Every admitted command names exactly one subject Work, and carrying it out of
+// the transition is what lets the execution half be decided without a second
+// lookup that could disagree. For a withdrawal the subject is the work of the
+// demand that was removed, which is no longer in the advanced population - a
+// consumer that had to re-derive it would have to search a population the
+// answer has already left.
+type DemandRegistration<P>
+  = RegistrationAdvanced {
+      population: DemandPopulation<P>,
+      subject_work: FabricIdentity<P, WorkKey>,
+    }
+  | RegistrationRefused { refusal: DemandRefusal<P> }
+
+fn demands_for_work<P>(
+  population: List<Demand<P>>,
+  work: FabricIdentity<P, WorkKey>,
+) -> List<Demand<P>> {
+  population |> filter(d => fabric_identity_eq(left: d.work, right: work))
+}
+
+fn demand_matching_identity<P>(
+  population: List<Demand<P>>,
+  id: FabricIdentity<P, DemandKey>,
+) -> List<Demand<P>> {
+  population |> filter(d => fabric_identity_eq(left: d.id, right: id))
+}
+
+fn demand_matching_key<P>(population: List<Demand<P>>, key: DemandKey) -> List<Demand<P>> {
+  population |> filter(d => d.id.key == key)
+}
+
+fn population_without<P>(
+  population: List<Demand<P>>,
+  id: FabricIdentity<P, DemandKey>,
+) -> List<Demand<P>> {
+  population |> filter(d => !fabric_identity_eq(left: d.id, right: id))
+}
+
+// Lookup refuses on the pair and distinguishes the two ways it can fail. The
+// key-only search runs only after the pair search has already missed, so a
+// match there is exactly the cross-principal case and nothing else.
+type DemandLookup<P>
+  = DemandFound { demand: Demand<P> }
+  | DemandLookupRefused { refusal: DemandRefusal<P> }
+
+fn lookup_demand<P>(
+  population: List<Demand<P>>,
+  id: FabricIdentity<P, DemandKey>,
+) -> DemandLookup<P> {
+  match demand_matching_identity(population: population, id: id) {
+    Cons { head: d, tail: _ } => DemandFound { demand: d }
+    Empty {} =>
+      match demand_matching_key(population: population, key: id.key) {
+        Cons { head: _, tail: _ } =>
+          DemandLookupRefused { refusal: DemandPrincipalMismatch { demand: id } }
+        Empty {} => DemandLookupRefused { refusal: UnknownDemand { demand: id } }
+      }
+  }
+}
+
+// A submission whose identity is already registered refuses rather than
+// replacing silently. Replacing would mean a binding could change the
+// satisfaction requirement or the buy terms of a live demand by re-submitting
+// under the same identity, which is a supersede without the supersede's
+// authorization checks.
+fn submit_demand_into<P>(population: List<Demand<P>>, d: Demand<P>) -> DemandRegistration<P> {
+  match demand_matching_identity(population: population, id: d.id) {
+    Cons { head: _, tail: _ } =>
+      RegistrationRefused { refusal: DuplicateDemand { demand: d.id } }
+    Empty {} =>
+      RegistrationAdvanced {
+        population: DemandPopulation { demands: concat(population, [d]) },
+        subject_work: d.work,
+      }
+  }
+}
+
+// Supersede is one requester replacing its own demand on the same Work. Both
+// of those are checked rather than assumed. A replacement naming a different
+// Work is a withdrawal plus a submission, and admitting it here would move a
+// demand across Works under a command whose whole contract is that it does
+// not; a replacement under a different principal is one requester writing into
+// another's population.
+fn supersede_demand_in<P>(
+  population: List<Demand<P>>,
+  superseded: FabricIdentity<P, DemandKey>,
+  replacement: Demand<P>,
+) -> DemandRegistration<P> {
+  match lookup_demand(population: population, id: superseded) {
+    DemandLookupRefused { refusal: r } => RegistrationRefused { refusal: r }
+    DemandFound { demand: prior } =>
+      if prior.id.principal != replacement.id.principal {
+        RegistrationRefused {
+          refusal: SupersedeCrossesPrincipal {
+            superseded: superseded,
+            replacement: replacement.id,
+          }
+        }
+      } else if !fabric_identity_eq(left: prior.work, right: replacement.work) {
+        RegistrationRefused {
+          refusal: ReplacementWorkMismatch {
+            superseded_work: prior.work,
+            replacement_work: replacement.work,
+          }
+        }
+      } else {
+        match demand_matching_identity(population: population, id: replacement.id) {
+          Cons { head: _, tail: _ } =>
+            if fabric_identity_eq(left: replacement.id, right: superseded) {
+              RegistrationAdvanced {
+                population: DemandPopulation {
+                  demands: concat(
+                    population_without(population: population, id: superseded),
+                    [replacement],
+                  ),
+                },
+                subject_work: prior.work,
+              }
+            } else {
+              RegistrationRefused {
+                refusal: ReplacementAlreadyRegistered { demand: replacement.id }
+              }
+            }
+          Empty {} =>
+            RegistrationAdvanced {
+              population: DemandPopulation {
+                demands: concat(
+                  population_without(population: population, id: superseded),
+                  [replacement],
+                ),
+              },
+              subject_work: prior.work,
+            }
+        }
+      }
+  }
+}
+
+// The principal a command ACTS AS. For a submission it is the principal the new
+// demand is registered under; for a withdrawal or a supersede it is the
+// principal of the demand being removed. A supersede's replacement is checked
+// separately against the superseded demand, so a command cannot act as one
+// principal and land as another.
+fn acting_principal<P>(command: DemandCommand<P>) -> P {
+  match command {
+    SubmitDemand { demand: d } => d.id.principal
+    WithdrawDemand { demand: id, evidence: _ } => id.principal
+    SupersedeDemand { superseded: s, replacement: _, evidence: _ } => s.principal
+  }
+}
+
+// This takes a CoreCommand and not a command plus an attestation, and it
+// carries no attestation arm. That is the climb, not an omission: admit_command
+// already made an inconsistent pairing unconstructable, so a check here would
+// be a second representation of a constraint the carrier holds - and its RED
+// would be unauthorable, permanently green, cited as coverage while carrying no
+// information.
+//
+// The ordering argument that used to live on that check survives in the new
+// home. admit_command runs before any lookup, so an unattested caller cannot
+// learn whether a key exists under another principal from the difference
+// between two refusals.
+fn apply_demand_command<P>(
+  registry: DemandPopulation<P>,
+  core: CoreCommand<P>,
+) -> DemandRegistration<P> {
+  let population = population_demands(p: registry)
+  match core.command {
+    SubmitDemand { demand: d } => submit_demand_into(population: population, d: d)
+    WithdrawDemand { demand: id, evidence: _ } =>
+      match lookup_demand(population: population, id: id) {
+        DemandLookupRefused { refusal: r } => RegistrationRefused { refusal: r }
+        DemandFound { demand: d } =>
+          RegistrationAdvanced {
+            population: DemandPopulation {
+              demands: population_without(population: population, id: id),
+            },
+            subject_work: d.work,
+          }
+      }
+    SupersedeDemand { superseded: s, replacement: r, evidence: _ } =>
+      supersede_demand_in(population: population, superseded: s, replacement: r)
+  }
+}
+
+// Whether any demand still requires a Work is the question a binding cannot
+// answer, and it is the whole reason cancellation routes through the core. The
+// remaining population is carried rather than a count, because the consumer
+// that keeps the attempt running needs to know WHICH demands it is still
+// running for in order to report to them.
+type WorkRequirement<P>
+  = WorkStillRequired { remaining: List<Demand<P>> }
+  | WorkNoLongerRequired { work: FabricIdentity<P, WorkKey> }
+
+fn work_requirement<P>(
+  population: List<Demand<P>>,
+  work: FabricIdentity<P, WorkKey>,
+) -> WorkRequirement<P> {
+  let remaining = demands_for_work(population: population, work: work)
+  if remaining.length() == 0 {
+    WorkNoLongerRequired { work: work }
+  } else {
+    WorkStillRequired { remaining: remaining }
+  }
+}
+
+// The three satisfaction answers, consumed independently. Each field decides a
+// different arm, and none of them is reachable from the other two: flipping
+// terminal_receipt_may_satisfy moves between satisfaction and execution,
+// flipping new_attempt_required moves between attaching and a fresh attempt,
+// and flipping step_reuse_permitted changes what that fresh attempt may reuse
+// without changing whether it exists. That is the property the three-field
+// decomposition claims, and a directive in which any one field could not move
+// the output would be the collapse the fields exist to prevent.
+type StepReusePolicy =
+  | ReuseAcceptedStepReceipts
+  | RefuseStepReuseAtDeclaredFrame
+
+// Availability is supplied as a named observation rather than a Bool, so that
+// the absent case reads as an observed absence at the call site instead of a
+// polarity the reader has to reconstruct from the parameter name.
+type TerminalReceiptAvailability =
+  | TerminalReceiptPresent
+  | NoTerminalReceipt
+
+type ExecutionPresence =
+  | ExecutionInFlight
+  | NoExecutionInFlight
+
+// AwaitAdmission is a real answer, not a fallthrough: the demand is registered,
+// nothing is running, and nothing about this demand requires that something
+// start immediately - admission and selection decide that. Folding it into
+// RequireNewAttempt would let a demand that did not ask for one manufacture an
+// attempt, and folding it into AttachToExistingExecution would name an
+// execution that does not exist.
+type SatisfactionDirective
+  = SatisfiedByTerminalReceipt
+  | AttachToExistingExecution
+  | RequireNewAttempt { reuse: StepReusePolicy }
+  | AwaitAdmission
+
+fn satisfaction_directive(
+  s: SatisfactionRequirement,
+  terminal: TerminalReceiptAvailability,
+  execution: ExecutionPresence,
+) -> SatisfactionDirective {
+  match terminal {
+    TerminalReceiptPresent =>
+      if s.terminal_receipt_may_satisfy {
+        SatisfiedByTerminalReceipt
+      } else {
+        attempt_directive(s: s, execution: execution)
+      }
+    NoTerminalReceipt => attempt_directive(s: s, execution: execution)
+  }
+}
+
+fn attempt_directive(s: SatisfactionRequirement, execution: ExecutionPresence) -> SatisfactionDirective {
+  if s.new_attempt_required {
+    RequireNewAttempt { reuse: step_reuse_policy(s: s) }
+  } else {
+    match execution {
+      ExecutionInFlight => AttachToExistingExecution
+      NoExecutionInFlight => AwaitAdmission
+    }
+  }
+}
+
+fn step_reuse_policy(s: SatisfactionRequirement) -> StepReusePolicy {
+  if s.step_reuse_permitted {
+    ReuseAcceptedStepReceipts
+  } else {
+    RefuseStepReuseAtDeclaredFrame
+  }
+}

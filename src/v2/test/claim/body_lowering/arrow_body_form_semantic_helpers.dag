@@ -137,7 +137,7 @@ fn arrow_body_form_eval_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.O
 fn arrow_body_form_eval_admitted_tree(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.types.Map { lookup: arrow_body_form_eval_facts_lookup }
+    facts: std.algebra.PartialFunction { lookup: arrow_body_form_eval_facts_lookup }
   }
 }
 

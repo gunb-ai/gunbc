@@ -164,11 +164,7 @@ fn infer_receipt_context() -> v2.compiler.eval.EvalContext {
 fn infer_receipt_empty_tree(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.types.Map {
-      lookup: fn(_) {
-        Absent
-      }
-    }
+    facts: v2.std.collection.empty_map()
   }
 }
 

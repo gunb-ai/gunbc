@@ -43,8 +43,6 @@ service tcgplayer.Pricing {
     endpoint: extdeps.tcgplayer.tcgplayer.production_api_base
     auth: Bearer
     auth_input: bearer_token
-
-    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
   }
 
   operation GetProductPrices {

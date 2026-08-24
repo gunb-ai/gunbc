@@ -8,81 +8,35 @@ type SystemctlStopOutcome =
     SystemctlStopped { stdout: String }
   | SystemctlStopRefused { reason: String }
 
-fn systemctl_stop_operation_argv(unit: std.types.NonEmptyStr) -> v2.std.operation_argv.ArgvMaterialization {
-  shell_materialize_operation_argv(
-    systemctl_stop_path,
-    systemctl_stop_service,
-    systemctl_stop_operation,
-    [v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: unit as String)]
-  )
-}
-
-fn systemctl_stop_outcome_from_result(success: Bool, stdout: String, stderr: String) -> SystemctlStopOutcome {
-  if success {
-    SystemctlStopped { stdout: stdout }
-  } else {
-    SystemctlStopRefused { reason: stderr }
-  }
-}
-
-fn systemctl_stop_local(unit: std.types.NonEmptyStr) -> SystemctlStopOutcome {
-  let result = systemd.Systemctl.Stop(unit: unit)
-  systemctl_stop_outcome_from_result(success: result.success, stdout: result.stdout, stderr: result.stderr)
-}
-
-fn systemctl_stop_outcome_from_exec(outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome) -> SystemctlStopOutcome {
-  match outcome {
-    TypedArgvExecConverged { result: r } =>
-      systemctl_stop_outcome_from_result(success: r.success, stdout: r.stdout, stderr: r.stderr)
-    TypedArgvExecRefused { reason: why } => SystemctlStopRefused { reason: why }
-  }
-}
-
-fn systemctl_stop_ssh_argv(host: std.types.NonEmptyStr, argv: List<String>) -> SystemctlStopOutcome {
-  match gunbc.typed_argv_exec.typed_argv_shell_safe_refusal_argv(argv: argv) {
-    Present { value: why } => SystemctlStopRefused { reason: why }
-    Absent => systemctl_stop_outcome_from_exec(outcome: gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: host, argv: argv))
-  }
-}
-
-fn systemctl_stop_ssh(host: std.types.NonEmptyStr, unit: std.types.NonEmptyStr) -> SystemctlStopOutcome {
-  match systemctl_stop_operation_argv(unit: unit) {
-    ArgvMaterialized { argv: argv } => systemctl_stop_ssh_argv(host: host, argv: argv)
-    ArgvMaterializationRefused { at: _, cause: c } =>
-      SystemctlStopRefused { reason: v2.std.operation_argv.operation_argv_cause_label(cause: c) }
-  }
-}
-
-fn systemctl_stop_fleet_ssh(
-  target: gunbc.fleet_known_hosts_anchor.SshTarget,
-  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
-  unit: std.types.NonEmptyStr,
-) -> SystemctlStopOutcome {
-  match systemctl_stop_operation_argv(unit: unit) {
-    ArgvMaterialized { argv: argv } =>
-      systemctl_stop_outcome_from_exec(
-        outcome: gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv),
-      )
-    ArgvMaterializationRefused { at: _, cause: c } =>
-      SystemctlStopRefused { reason: v2.std.operation_argv.operation_argv_cause_label(cause: c) }
-  }
-}
-
+// One dispatch, in the realization layer. See gunbc.systemctl_is_active_read for the same shape
+// commented in full.
+//
+// STOP IS THE ONE SEAM THAT READS STDERR, and it is why HostOperationObserved carries stderr as an
+// OPTIONAL rather than a String. systemd.Systemctl.Stop declares a stderr output; the readonly reads
+// beside it do not. An absent stderr therefore means THIS OPERATION DOES NOT MODEL ONE -- not that
+// the process wrote nothing -- so the arm below refuses with that distinction stated instead of
+// rendering `none` as an empty reason.
 fn systemctl_stop_run(transport: gunbc.host_effect.HostEffectTransport, unit: std.types.NonEmptyStr) -> SystemctlStopOutcome {
-  match transport {
-    LocalShell => systemctl_stop_local(unit: unit)
-    SshShell { ssh_host: h } => systemctl_stop_ssh(host: h, unit: unit)
-    FleetSsh { target: t, context: c } => systemctl_stop_fleet_ssh(target: t, context: c, unit: unit)
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      SystemctlStopRefused {
-        reason: "systemctl stop refused EmitArtifactThenThinRun transport",
+  match gunbc.host_operation_exec.host_operation_exec(transport: transport, operation: gunbc.host_operation_exec.SystemctlStop { unit: unit }) {
+    gunbc.host_operation_exec.HostOperationObserved { stdout: out, success: ok, stderr: err } =>
+      if ok {
+        SystemctlStopped { stdout: out }
+      } else {
+        match err {
+          Present { value: e } => SystemctlStopRefused { reason: e }
+          Absent => SystemctlStopRefused {
+            reason: "systemd.Systemctl.Stop exited unsuccessfully and the leg modelled no stderr",
+          }
+        }
       }
+    HostOperationRefused { operation: _, reason: why } =>
+      SystemctlStopRefused { reason: why }
   }
 }
 
 fn systemctl_stop_operation_argv_matches_authority(unit: std.types.NonEmptyStr) -> Bool {
   let authority = ["systemctl", "stop", unit as String]
-  match systemctl_stop_operation_argv(unit: unit) {
+  match host_operation_materialize_argv(operation: SystemctlStop { unit: unit }) {
     ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
     ArgvMaterializationRefused { at: _, cause: _ } => false
   }

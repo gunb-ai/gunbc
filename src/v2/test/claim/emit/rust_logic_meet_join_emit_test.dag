@@ -10,7 +10,7 @@ fn meet_join_emit_facts_miss(key: v2.std.node.Node) -> v2.std.optional.Optional<
 fn meet_join_emit_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.types.Map { lookup: meet_join_emit_facts_miss }
+    facts: std.algebra.PartialFunction { lookup: meet_join_emit_facts_miss }
   }
 }
 

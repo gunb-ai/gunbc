@@ -16,7 +16,7 @@ fn rust_binop_facts_miss(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.c
 fn rust_binop_inferred_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.types.Map { lookup: rust_binop_facts_miss }
+    facts: std.algebra.PartialFunction { lookup: rust_binop_facts_miss }
   }
 }
 

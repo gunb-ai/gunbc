@@ -152,6 +152,17 @@ fn parse_expectation(wire: String) -> ClaimExpectation? {
 // and `HostToolUnresolved { name: "shell" }` render alike, and the reader would have to guess --
 // which is the state-space conflation the disposition projection was built to avoid, arriving one
 // layer down at the wire.
+// THE TAG DESCENDS INTO THE SAFETY OUTCOME, and the `BudgetRefused` arm below is where that was
+// missing. Wildcarding `safety` gave ONE tag to an interruption (no verdict, elapsed is a LOWER
+// BOUND) and to a claim that reached its verdict and was reclassified on an EXACT cost -- two
+// facts with opposite remedies, told apart by the model that arm already carries and then thrown
+// away on the way to the wire. This is the erasure that outlasts the others: the tag is what a
+// reader of the PUBLISHED LEDGER FILE joins on, so it was durable in the artifact rather than
+// transient in a log line.
+//
+// A BUDGET TERMINAL CARRYING "WITHIN LIMITS" IS A CONTRADICTORY PAIRING, not a third reading of
+// the cost. It gets its own tag rather than being folded into either real arm: folding it would
+// publish a refusal or a completion that no measurement supports.
 fn render_terminal_tag(terminal: ClaimAttemptTerminal) -> String {
   match terminal {
     Returned { observation: o } =>
@@ -160,7 +171,14 @@ fn render_terminal_tag(terminal: ClaimAttemptTerminal) -> String {
         ObservationUnrepresentable { reason: _ } => "returned-unreadable"
       }
     RuntimeErrored { message: _ } => "runtime-errored"
-    BudgetRefused { safety: _ } => "budget-refused"
+    BudgetRefused { safety: s } =>
+      match s {
+        SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } =>
+          "budget-refused"
+        CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } =>
+          "passed-over-budget"
+        CompletedWithinSafetyLimits => "budget-terminal-without-safety-cause"
+      }
     HostToolUnresolved { name: _, probed: _ } => "host-tool-unresolved"
     RouteGap { route: _ } => "route-gap"
   }
@@ -624,6 +642,15 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
   if row.terminal_tag == "budget-refused" {
     Present { value: BudgetRefusedBeforeVerdict }
   } else {
+  if row.terminal_tag == "passed-over-budget" {
+    match row.expectation {
+      ExpectedToHold => Present { value: PassedOverBudget }
+      ExpectedRed => Present { value: KnownRedNowPassing }
+    }
+  } else {
+  if row.terminal_tag == "budget-terminal-without-safety-cause" {
+    Present { value: BudgetTerminalWithoutSafetyCause }
+  } else {
   if row.terminal_tag == "host-tool-unresolved" {
     Present { value: HostToolUnresolvedBeforeVerdict }
   } else {
@@ -646,7 +673,7 @@ fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
     }
   } else {
     none
-  }}}}}}}
+  }}}}}}}}}
 }
 
 // ── THE SEED-FACING SURFACE, AND THE MIRROR COMPARATOR THAT COMES WITH IT ──────────────────
@@ -687,6 +714,8 @@ fn render_disposition(disposition: ClaimDisposition) -> String {
     KnownRedHeld => "known-red-held"
     KnownRedNowPassing => "known-red-now-passing"
     BudgetRefusedBeforeVerdict => "budget-refused-before-verdict"
+    PassedOverBudget => "passed-over-budget"
+    BudgetTerminalWithoutSafetyCause => "budget-terminal-without-safety-cause"
     HostToolUnresolvedBeforeVerdict => "host-tool-unresolved-before-verdict"
     RouteGapBeforeVerdict => "route-gap-before-verdict"
     RuntimeErroredBeforeVerdict => "runtime-errored-before-verdict"

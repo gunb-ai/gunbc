@@ -1,56 +1,64 @@
 module v2.lens.determinism
 
-type DeterminismRoot {
-  signature: v2.std.node.Symbol,
-  source: std.decl_ref.DeclarationRef,
-  citation: String
+import v2.lens.common.construction_justification { v2.lens.common.construction_justification.ConstructionJustification, v2.lens.common.construction_justification.WallAfterGrounding }
+import std.disposition { std.disposition.SingleAuthority }
+import std.decl_ref { std.decl_ref.DeclarationRef, std.decl_ref }
+import std.primitive_identity {
+  std.primitive_identity.CanonicalOrder,
+  std.primitive_identity.HostUnspecifiedOrder,
+  std.primitive_identity.OrderFreeResult,
+  std.primitive_identity.PrimitiveDefinition,
+  std.primitive_identity.SourcePreservingOrder,
+  std.primitive_identity.TraversalOrder,
+  std.primitive_identity.TraversalOrderUnclassified,
+  std.primitive_identity.primitive_definitions_missing_traversal_fact,
+  std.primitive_identity.primitive_identity_for_canonical_name,
+  std.primitive_identity.primitive_traversal_order_for_identity,
+}
+import v2.std.determinism { std.determinism.Determinism, std.determinism.Deterministic, std.determinism.NonDeterministic, std.determinism.determinism_compose }
+import std.algebra { std.algebra.Cons, Empty }
+import v2.std.determinism { v2.std.determinism.DeterminismFact }
+import v2.std.collection {
+  List,
+  v2.std.collection.list_at_optional
+}
+import v2.std.optional {
+  Absent,
+  v2.std.optional.Optional,
+  Present,
+  v2.std.optional.optional_absent,
+  v2.std.optional.optional_present
+}
+import v2.std.diagnostic { v2.std.diagnostic.Diagnostic, v2.std.diagnostic.ExternalContractUnknown, v2.std.diagnostic.NonEmptyDiagnostics, v2.std.diagnostic.Outcome, v2.std.diagnostic.Rejected, v2.std.diagnostic.Unavailable, v2.std.diagnostic.node_locus, v2.std.diagnostic.port_locus, v2.std.diagnostic.outcome_accepted }
+import v2.std.logic { Bool }
+import v2.std.node { v2.std.node.Atom, v2.std.node.Edge, v2.std.node.Node, v2.std.node.NodeFold, v2.std.node.Symbol, v2.std.node.TypeNode, v2.std.node.fold_node }
+import v2.std.node_query { v2.std.node_query.node_is_call, v2.std.node_query.node_positional_child_targets }
+import v2.std.compilers.lexing { v2.std.compilers.lexing.symbol_intern_lexeme, v2.std.compilers.lexing.symbol_lexeme }
+import v2.std.witness { v2.std.witness.Holds, v2.std.witness.Violates, v2.std.witness.Witness }
+
+data determinism_root_derivation_note: String = "The determinism roots are DERIVED from std.primitive_identity traversal facts, not enumerated here. The deleted form was a two-row DeterminismRoot registry keyed on a raw authored Symbol, and its own compile_gate_law recorded the defect this replaces: nothing related that roster to the declared primitive population, so absence from it was not evidence of determinism and a newly registered order-exposing primitive was silently Deterministic until somebody remembered to add a row. Registry and gate are now one authority read in one direction -- a call joins a PrimitiveIdentity by canonical name, the identity carries exactly one PrimitiveTraversalOrderFact, and the ORDER decides. The keys/values false-positive the old law called undetectable is gone by construction rather than by care: those symbols are not declared canonical names of any primitive, so they never join an identity and can never classify."
+
+data determinism_leak_source_note: String = "One source ref for every root, and it names the CLASSIFYING authority rather than a leaking realization. The deleted registry pointed each root at v1.runtime_rust map_keys -- one target's Rust text, which is neither where the claim is decided nor true of the interpreter or of any future target. What makes a call a leak is its PrimitiveTraversalOrderFact, so that is what the refusal cites; WHICH root was reached is already carried by the diagnostic locus, which names the call node itself."
+
+fn determinism_leak_source() -> std.decl_ref.DeclarationRef {
+  std.decl_ref(test.claim.observation_seed_scoped_run_witness.module_path: "std.primitive_identity", decl_name: "primitive_declared_traversal_facts")
 }
 
-fn map_keys_leak_source() -> std.decl_ref.DeclarationRef {
-  std.decl_ref.DeclarationRef {
-    module_path: "v1.runtime_rust",
-    decl_name: "map_keys",
-    field: std.decl_ref.WholeDeclaration
+data determinism_traversal_order_classification_note: String = "Two orders leak and three do not, and the two that leak leak for DIFFERENT reasons that share one remedy. HostUnspecifiedOrder is the real hazard, and the hazard is stated at the grain that is actually established: the host iterates a hash map on a per-process seed, so the ORDER THE PRIMITIVE RETURNS is not a function of its input alone. That is a confirmed property of the realization (v1_rt map_keys over im::HashMap on std RandomState). WHAT IS NOT CLAIMED, because it was searched for and not found: that any such call currently reaches emitted bytes. A corpus-wide sweep found exactly one fold building a LIST from unsorted map iteration and its consumer refuses on ambiguity; the rest initialise maps or feed debug dumps, interning and lens output. The gate does not rest on that join and does not need it -- an unsorted iteration is a defect only where its result reaches output as an ORDERED LIST, which is a per-site question, while the reason to refuse the CALL is that the primitive's contract does not promise an order at all and nothing at the call site says the caller does not need one. TraversalOrderUnclassified is ignorance, and it refuses for the fail-closed reason DESIGN gives -- an unanswered question is not a negative answer, and treating it as one is exactly the absorbing fallback in the direction that reads as safe. CanonicalOrder and SourcePreservingOrder are answered and stable. OrderFreeResult is answered and vacuous: the result exposes no traversal, so the order question belongs to whatever later traverses it."
+
+fn traversal_order_leaks(order: std.primitive_identity.TraversalOrder) -> Bool {
+  match order {
+    std.primitive_identity.HostUnspecifiedOrder => true
+    std.primitive_identity.TraversalOrderUnclassified => true
+    std.primitive_identity.CanonicalOrder => false
+    std.primitive_identity.SourcePreservingOrder => false
+    std.primitive_identity.OrderFreeResult => false
   }
-}
-
-fn map_values_leak_source() -> std.decl_ref.DeclarationRef {
-  std.decl_ref.DeclarationRef {
-    module_path: "v1.runtime_rust",
-    decl_name: "map_values",
-    field: std.decl_ref.WholeDeclaration
-  }
-}
-
-data determinism_root_map_keys: DeterminismRoot = DeterminismRoot {
-  signature: ^map_keys,
-  source: map_keys_leak_source(),
-  citation: "map_keys exposes host-unspecified Map key iteration."
-}
-
-data determinism_root_map_values: DeterminismRoot = DeterminismRoot {
-  signature: ^map_values,
-  source: map_values_leak_source(),
-  citation: "map_values exposes host-unspecified Map value iteration."
-}
-
-data determinism_root_registry: List<DeterminismRoot> = [
-  determinism_root_map_keys,
-  determinism_root_map_values
-]
-
-fn determinism_root_for_symbol(registry: List<DeterminismRoot>, s: v2.std.node.Symbol) -> v2.std.optional.Optional<DeterminismRoot> {
-  fold(registry, init: v2.std.optional.optional_absent(), f: fn(acc, row) {
-    match acc {
-      Present { value: _ } => acc
-      Absent => if row.signature == s { v2.std.optional.optional_present(value: row) } else { v2.std.optional.optional_absent() }
-    }
-  })
 }
 
 fn node_callee_symbol(n: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Symbol> {
-  if v2.std.node_query.node_is_call(node: n) {
-    match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: n), index: 0) {
+  if v2.std.node_query.node_is_call(v2.std.node: n) {
+    match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(v2.std.node: n), index: 0) {
       Present { value: callee } => match callee.kind {
         TypeNode { connective: v2.std.node.Atom { identity: sym } } => v2.std.optional.optional_present(value: sym)
         _ => v2.std.optional.optional_absent()
@@ -64,8 +72,16 @@ fn node_callee_symbol(n: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.no
 
 fn local_determinism_axis(n: v2.std.node.Node) -> std.determinism.Determinism {
   match node_callee_symbol(n: n) {
-    Present { value: sym } => match determinism_root_for_symbol(registry: determinism_root_registry, s: sym) {
-      Present { value: root } => std.determinism.NonDeterministic { source: root.source }
+    Present { value: sym } => match primitive_identity_for_canonical_name(authored_symbol: symbol_lexeme(sym: sym)) {
+      Present { value: identity } => match primitive_traversal_order_for_identity(identity: identity) {
+        Present { value: order } =>
+          if traversal_order_leaks(order: order) {
+            std.determinism.NonDeterministic { source: determinism_leak_source() }
+          } else {
+            std.determinism.Deterministic
+          }
+        Absent => std.determinism.NonDeterministic { source: determinism_leak_source() }
+      }
       Absent => std.determinism.Deterministic
     }
     Absent => std.determinism.Deterministic
@@ -109,7 +125,22 @@ fn determinism_contract_witness(signature: v2.std.node.Symbol, n: v2.std.node.No
   }
 }
 
-data compile_gate_law: String = "INTERIM CONTAINMENT, mechanically preventive for uniquely named registered roots — not repository-complete structural determinism. The former one-row registry asserted map_keys was the one readable nondeterministic atom and therefore could not miss a root. That premise was false: v1.runtime_rust map_values exposes the same host-unspecified Map iteration and was silently classified deterministic. The uniquely named map_keys and map_values hazards are directly registered, so a reach from either fails compilation over the floor compile scope. The aliases keys and values remain undetectable: determinism_root_for_symbol sees only an unqualified Symbol, v2 Node carries neither receiver domain nor resolved declaration identity, and method/free-call lowering erases their distinction; registering those generic symbols would fabricate failures for unrelated same-named functions. The broader denominator is also open because operations reach compiled trees through at least algebra templates, v1.compiler.infer_method builtin_function_registry, native v1_interpreter dispatch arms, PrimitiveContract rows, and target emit handlers. One PrimitiveDefinition identity join must close the denominator, disambiguate aliases, and give every root a resolvable identity. Until that lands, an unregistered future helper is not claimed safe, absence from this registry is not evidence of determinism, and absence of a diagnostic does not establish that no order-exposing operation was reached. Prefer retaining meaningful first-seen order beside a membership map, as PR 7515 does, over reconstructing a value order from the map; there is no universal sorted_map_values operation. Grain: root — one rooted whole-tree findings walk collects one located diagnostic per uniquely named registered call node. Every registered leak is typed, located, batched, and never absorbed."
+data compile_gate_law: String = "MECHANICALLY PREVENTIVE over a CLOSED declared-primitive denominator, and the word closed is bounded by what it ranges over: every PrimitiveDefinition std.primitive_identity DECLARES carries exactly one PrimitiveTraversalOrderFact, and the gate refuses on any tree while that is false. It is NOT the claim that every operation reaching a compiled tree is a declared primitive, and the shape of that gap is worth stating because it is a DOOR BESIDE THIS WALL: the declared population is a hand-authored roster in std.primitive_identity, not the runtime's registration, so a symbol that is registered and callable but declared nowhere joins no identity, carries no traversal fact, and is classified Deterministic BY NON-MEMBERSHIP -- silently, with no diagnostic, exactly the shape whose frequency is zero by construction. The count is deliberately not transcribed here (it would rot); primitive_undisposed_surface_symbol_count is the standing symbol-grain measure and this gate inherits it, and closing it is the parent primitive-identity-join node. What IS claimed is the narrower thing: within the declared roster, no member can lack a classification. What changed against the interim two-row form is the direction of the reasoning. THEN: a hand roster of authored symbols, where a root existed because somebody wrote a row, absence was not evidence of determinism, and adding a new order-exposing primitive silently classified Deterministic. NOW: a call joins a PrimitiveIdentity by canonical name, the identity carries a traversal order, and the ORDER decides -- so declaring a primitive without classifying it does not produce a silent hole, it reds the gate on the next compile of any tree, before any caller exists. The keys/values false positive the interim law recorded as undetectable is closed by construction rather than by care: neither is a declared canonical name, so neither joins an identity and neither can classify an unrelated same-named function. TWO ORDERS REFUSE AND THEY ARE DIFFERENT ANSWERS SHARING A REMEDY: HostUnspecifiedOrder is a confirmed property of the REALIZATION (per-process hash seed, so the returned order is not a function of the input); it is NOT a claim that any present call site reaches emitted bytes, and no such path is established -- see determinism_traversal_order_classification_note. TraversalOrderUnclassified is ignorance and refuses fail-closed because an unanswered question is not a negative answer. WHAT IS STILL OPEN, so absence of a diagnostic is still not proof: method-call lowering erases the receiver domain, so a MethodCall invocation surface whose authored symbol is not the primitive canonical name does not join; and the gate reads the tree the v2 compile door is given, so a corpus never pushed through validate_then_compile is never asked. Grain: root -- one rooted whole-tree findings walk, one located diagnostic per leaking call node, batched, never absorbed."
+
+data determinism_denominator_gate_note: String = "The enrollment half of the wall, and the reason it is checked HERE rather than by a census somewhere: a gate that classifies by looking a fact up must refuse when the fact could be missing, or its Absent arm is a fail-open wearing the shape of a lookup. So the door asks the closure question before it asks anything about the tree, and a factless declared primitive stops the line with a typed diagnostic located at THAT PRIMITIVE'S canonical name rather than at any call site -- there is no call site to name, and one diagnostic per hole keeps the deficit counted instead of collapsed to a single anonymous refusal. This is a pure fold over static declarations in the imported closure, not a live-tree read: it never touches the filesystem or a module registry, so it does not re-open the lying-SubstrateInputsOnly class that de-enrolled lens_module_gate from this same roster."
+
+fn determinism_denominator_diagnostic(d: PrimitiveDefinition) -> Diagnostic {
+  Diagnostic {
+    reason: ^determinism_primitive_missing_traversal_fact,
+    at: port_locus(port: symbol_intern_lexeme(lexeme: d.semantic_contract.canonical_name as String)),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn determinism_denominator_findings() -> List<Diagnostic> {
+  primitive_definitions_missing_traversal_fact()
+    |> map(fn(d) { determinism_denominator_diagnostic(d: d) })
+}
 
 fn local_determinism_findings(n: v2.std.node.Node) -> List<v2.std.diagnostic.Diagnostic> {
   match local_determinism_axis(n: n) {
@@ -128,8 +159,8 @@ fn determinism_findings(root: v2.std.node.Node) -> List<v2.std.diagnostic.Diagno
   )
 }
 
-fn determinism_compile_gate(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<v2.std.node.Node>> {
-  match determinism_findings(root: node) {
+fn determinism_compile_gate(v2.std.node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<v2.std.node.Node>> {
+  match concat(determinism_denominator_findings(), determinism_findings(test.claim.extdeps_llm_claude_trust_witness.root: v2.std.node)) {
     Cons { head: first, tail: rest } =>
       v2.std.diagnostic.Rejected {
         diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: rest }

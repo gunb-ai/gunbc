@@ -10,15 +10,6 @@ type UnitStatusCapture =
     UnitStatusCaptured { text: String }
   | UnitStatusCaptureRefused { reason: String }
 
-fn systemctl_status_operation_argv(unit: std.types.NonEmptyStr) -> v2.std.operation_argv.ArgvMaterialization {
-  shell_materialize_operation_argv(
-    systemctl_status_path,
-    systemctl_status_service,
-    systemctl_status_operation,
-    [v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: unit as String)]
-  )
-}
-
 fn unit_status_capture_from_stdout(stdout: String, refusal: String) -> UnitStatusCapture {
   if refusal != "" {
     UnitStatusCaptureRefused { reason: refusal }
@@ -32,61 +23,14 @@ fn unit_status_capture_from_stdout(stdout: String, refusal: String) -> UnitStatu
   }
 }
 
-fn systemctl_status_read_local(unit: std.types.NonEmptyStr) -> UnitStatusCapture {
-  let result = systemd.Systemctl.Status(unit: unit)
-  unit_status_capture_from_stdout(stdout: result.stdout, refusal: "")
-}
-
-fn systemctl_status_read_ssh_argv(host: std.types.NonEmptyStr, argv: List<String>) -> UnitStatusCapture {
-  match typed_argv_shell_safe_refusal_argv(argv: argv) {
-    Present { value: why } =>
-      UnitStatusCaptureRefused { reason: why }
-    Absent => unit_status_capture_from_outcome(outcome: typed_argv_exec_over_ssh(host: host, argv: argv))
-  }
-}
-
-// One outcome handler shared by both producers: the paths differ in how the leg is obtained, never
-// in how its result is read.
-fn unit_status_capture_from_outcome(outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome) -> UnitStatusCapture {
-  match outcome {
-    TypedArgvExecConverged { result: r } =>
-      unit_status_capture_from_stdout(stdout: r.stdout, refusal: "")
-    TypedArgvExecRefused { reason: why } => UnitStatusCaptureRefused { reason: why }
-  }
-}
-
-fn systemctl_status_read_fleet_ssh(
-  target: gunbc.fleet_known_hosts_anchor.SshTarget,
-  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
-  unit: std.types.NonEmptyStr,
-) -> UnitStatusCapture {
-  match systemctl_status_operation_argv(unit: unit) {
-    ArgvMaterialized { argv: argv } =>
-      unit_status_capture_from_outcome(
-        outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv),
-      )
-    ArgvMaterializationRefused { at: _, cause: c } =>
-      UnitStatusCaptureRefused { reason: v2.std.operation_argv.operation_argv_cause_label(cause: c) }
-  }
-}
-
-fn systemctl_status_read_ssh(host: std.types.NonEmptyStr, unit: std.types.NonEmptyStr) -> UnitStatusCapture {
-  match systemctl_status_operation_argv(unit: unit) {
-    ArgvMaterialized { argv: argv } => systemctl_status_read_ssh_argv(host: host, argv: argv)
-    ArgvMaterializationRefused { at: _, cause: c } =>
-      UnitStatusCaptureRefused { reason: v2.std.operation_argv.operation_argv_cause_label(cause: c) }
-  }
-}
-
+// One dispatch, in the realization layer. See gunbc.systemctl_is_active_read for the same shape
+// commented in full; this file carries only its operation row and its decoder.
 fn systemctl_status_read(transport: gunbc.host_effect.HostEffectTransport, unit: std.types.NonEmptyStr) -> UnitStatusCapture {
-  match transport {
-    LocalShell => systemctl_status_read_local(unit: unit)
-    SshShell { ssh_host: h } => systemctl_status_read_ssh(host: h, unit: unit)
-    FleetSsh { target: t, context: c } => systemctl_status_read_fleet_ssh(target: t, context: c, unit: unit)
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      UnitStatusCaptureRefused {
-        reason: "systemctl status refused EmitArtifactThenThinRun transport",
-      }
+  match gunbc.host_operation_exec.host_operation_exec(transport: transport, operation: gunbc.host_operation_exec.SystemctlStatus { unit: unit }) {
+    gunbc.host_operation_exec.HostOperationObserved { stdout: out, success: _, stderr: _ } =>
+      unit_status_capture_from_stdout(stdout: out, refusal: "")
+    gunbc.host_operation_exec.HostOperationRefused { operation: _, reason: why } =>
+      UnitStatusCaptureRefused { reason: why }
   }
 }
 
@@ -100,7 +44,7 @@ fn unit_status_capture_text(capture: UnitStatusCapture) -> String {
 
 fn systemctl_status_operation_argv_matches_authority(unit: std.types.NonEmptyStr) -> Bool {
   let authority = ["systemctl", "status", "--no-pager", "--full", unit as String]
-  match systemctl_status_operation_argv(unit: unit) {
+  match host_operation_materialize_argv(operation: SystemctlStatus { unit: unit }) {
     ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
     ArgvMaterializationRefused { at: _, cause: _ } => false
   }

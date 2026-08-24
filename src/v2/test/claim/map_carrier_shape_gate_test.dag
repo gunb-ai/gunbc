@@ -29,6 +29,27 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // it must then assert that the record route is unrepresentable, not that it works. It does not
 // simply delete: deleting it would remove the only executing evidence that the two shapes were
 // ever reconciled.
+// DISSOLUTION, AND ITS PREMISE IS NOW NARROWER THAN WHEN IT WAS WRITTEN. The original condition
+// read: when the finite `Map { lookup: ... }` literals have migrated to `empty_map` + `map_insert`
+// and the delegate lands as the closing move, `record_shaped` inverts — asserting the record route
+// is unrepresentable rather than that it works. It does not simply delete: that would remove the
+// only executing evidence that the two shapes were ever reconciled.
+//
+// The migration named there has happened. The 25 finite fact maps are `map_insert` chains over
+// `empty_map()`, the 8 empties are `empty_map()`, and the open population — every literal whose
+// lookup is a delegate or an unbounded-domain closure — names `PartialFunction` and is no longer
+// spelled `Map` at all. What survives is not a residue awaiting migration: `map_insert`'s own
+// `.dag` body constructs a record-shaped `Map` and MUST, because that is the arm the interpreter
+// falls through to. So the record route is now produced by exactly one authority — the insert
+// itself — plus this file's fixture.
+//
+// That changes what the closing move can be. The delegate cannot land by waiting for literals to
+// disappear, because the last one is `map_insert`'s own return value: making `map_insert` delegate
+// to the primitive while its body is the only record producer is the self-recursion that killed 14
+// floor witnesses. The remaining condition is a HOST fact, not a corpus one — the interpreter's
+// `free_call.map_insert` arm accepting the record shape, or the record shape ceasing to be
+// reachable — and until one of those holds, this gate is a healthy guard being quiet, not a dead
+// one.
 data map_carrier_shape_gate_note: String = "Gate for the map construction delegate. map_insert grounds on the native map shape only; its .dag body is the live arm for record-shaped maps built by Map { lookup: ... } literals. record_shaped_map_reaches_map_insert reds if the delegate lands while any such literal survives."
 
 fn native_map_after_insert() -> Optional<String> {

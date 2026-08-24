@@ -32,7 +32,7 @@ fn bash_build_round_trip_via_emit_matches_golden(
 ) -> v2.std.logic.Bool {
   let tree = v2.compiler.inferred_tree.InferredTree {
     root: emitted,
-    facts: std.types.Map { lookup: bash_build_round_trip_facts_lookup }
+    facts: std.algebra.PartialFunction { lookup: bash_build_round_trip_facts_lookup }
   }
   match v2.compiler.emit.emit(tree: tree, target: target) {
     Accepted { value: source, diagnostics: d } =>

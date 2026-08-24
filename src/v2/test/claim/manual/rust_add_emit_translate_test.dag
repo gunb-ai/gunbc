@@ -227,7 +227,7 @@ fn rust_add_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.c
 
 data rust_add_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: rust_add_emitted_root,
-  facts: std.types.Map {
+  facts: std.algebra.PartialFunction {
     lookup: rust_add_facts_lookup
   }
 }

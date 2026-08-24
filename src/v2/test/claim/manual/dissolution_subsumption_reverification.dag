@@ -311,7 +311,7 @@ fn subsumption_fact_lookup(node: Node) -> Optional<InferredFacts> {
 fn subsumption_inferred_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map {
+    facts: PartialFunction {
       lookup: subsumption_fact_lookup
     }
   }

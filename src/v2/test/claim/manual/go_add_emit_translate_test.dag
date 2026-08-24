@@ -206,7 +206,7 @@ fn go_add_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.com
 
 data go_add_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: go_add_emitted_root,
-  facts: std.types.Map {
+  facts: std.algebra.PartialFunction {
     lookup: go_add_facts_lookup
   }
 }

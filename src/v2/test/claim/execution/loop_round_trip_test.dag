@@ -117,7 +117,7 @@ fn loop_round_trip_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Option
 
 data loop_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: loop_emitted_root,
-  facts: std.types.Map {
+  facts: std.algebra.PartialFunction {
     lookup: loop_round_trip_facts_lookup
   }
 }

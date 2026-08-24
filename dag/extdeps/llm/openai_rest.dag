@@ -15,8 +15,6 @@ service llm.OpenAI {
     auth_input: api_key
 
     rate_limit: { requests: 500, per: minute, scope: chat }
-
-    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
   }
 
   operation ChatCompletion {

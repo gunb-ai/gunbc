@@ -63,7 +63,7 @@ fn effect_io_pure_operation_ref() -> v2.std.model_core.PrimitiveOperationRef {
 
 fn effect_io_pure_empty_environment() -> v2.std.runtime.EvaluationEnvironment {
   v2.std.runtime.EvaluationEnvironment {
-    bindings: std.types.Map {
+    bindings: std.algebra.PartialFunction {
       lookup: fn(_) {
         v2.std.optional.Absent
       }

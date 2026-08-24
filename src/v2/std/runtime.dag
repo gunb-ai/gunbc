@@ -21,7 +21,7 @@ fn environment_binding_key_for_symbol(sym: v2.std.node.Symbol) -> v2.std.runtime
 }
 
 type EvaluationEnvironment {
-  bindings: Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue>
+  bindings: std.algebra.PartialFunction<EnvironmentBindingKey, RuntimeValue>
 }
 
 type RuntimePrimitiveValue {

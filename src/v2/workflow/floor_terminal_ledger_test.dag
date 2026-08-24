@@ -38,6 +38,16 @@ fn ledger_with(publication: LedgerPublication) -> TerminalLedger {
   }
 }
 
+// A ONE-ROW FINALIZED LEDGER over the same fixture binding, so the admission tests below differ
+// in the ROW and in nothing else.
+fn ledger_of(row: ClaimTerminalRow) -> TerminalLedger {
+  TerminalLedger {
+    binding: ledger_with(publication: LedgerPartial { reason: "unused" }).binding,
+    rows: [row],
+    publication: LedgerFinalized { row_count: 1, digest: hash(h: "aaaabbbbccccdddd") }
+  }
+}
+
 fn empty_reconciliation() -> LedgerReconciliation {
   LedgerReconciliation {
     planned_without_terminal: [],
@@ -134,6 +144,48 @@ test fn a_footer_count_below_the_planned_population_is_not_green() -> Bool {
          ledger: ledger_with(publication: LedgerFinalized { row_count: 2, digest: hash(h: "aaaabbbbccccdddd") }),
          reconciliation: empty_reconciliation(),
          planned: [ident(f: "a"), ident(f: "b")]
+       ) == EvidenceComplete
+}
+
+// A ROW THAT CONTRADICTS ITSELF REFUSES THE LEDGER, AND THE CONTROL BESIDE IT IS THE POINT.
+//
+// `BudgetRefused { safety: CompletedWithinSafetyLimits }` says a claim reached a budget terminal
+// while staying inside its limits. Nothing observed either a refusal or a completed overrun, so
+// the disposition names the contradiction instead of picking one -- and naming it is only half a
+// repair: an arm that is published and green describes a contradiction and permits it, which is
+// how a deficit's frequency becomes unobservable by construction.
+//
+// THE DISCRIMINATING RED: delete the incoherent-row arm from `ledger_green_admission` and the
+// first half returns `EvidenceComplete`. The second half is the positive control -- the identical
+// ledger with a coherent row IS complete -- without which an admission that refused everything
+// would also pass.
+test fn a_row_carrying_a_contradictory_budget_terminal_refuses_the_ledger() -> Bool {
+  let incoherent = ClaimTerminalRow {
+    identity: ident(f: "contradictory"),
+    expectation: ExpectedToHold,
+    terminal: BudgetRefused { safety: CompletedWithinSafetyLimits }
+  }
+  let coherent = ClaimTerminalRow {
+    identity: ident(f: "contradictory"),
+    expectation: ExpectedToHold,
+    terminal: BudgetRefused {
+      safety: SafetyInterrupted {
+        raised_by: "cpu",
+        elapsed_cpu_at_least: 5001,
+        elapsed_wall_at_least: 5001
+      }
+    }
+  }
+  claim_disposition(row: incoherent) == BudgetTerminalWithoutSafetyCause
+    && ledger_green_admission(
+         ledger: ledger_of(row: incoherent),
+         reconciliation: empty_reconciliation(),
+         planned: [ident(f: "contradictory")]
+       ) == EvidenceCarriesIncoherentRow { rows: [ident(f: "contradictory")] }
+    && ledger_green_admission(
+         ledger: ledger_of(row: coherent),
+         reconciliation: empty_reconciliation(),
+         planned: [ident(f: "contradictory")]
        ) == EvidenceComplete
 }
 

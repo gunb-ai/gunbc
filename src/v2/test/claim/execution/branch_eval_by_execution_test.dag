@@ -261,7 +261,7 @@ fn branch_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.com
 fn branch_admitted_tree(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.types.Map {
+    facts: std.algebra.PartialFunction {
       lookup: branch_facts_lookup
     }
   }

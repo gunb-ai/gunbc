@@ -54,7 +54,7 @@ fn rust_rec_nine_eval_composed_facts(key: v2.std.node.Node) -> v2.std.optional.O
 fn rust_rec_nine_eval_inferred_tree() -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: rust_rec_nine_arrow_node(),
-    facts: std.types.Map { lookup: rust_rec_nine_eval_composed_facts }
+    facts: std.algebra.PartialFunction { lookup: rust_rec_nine_eval_composed_facts }
   }
 }
 

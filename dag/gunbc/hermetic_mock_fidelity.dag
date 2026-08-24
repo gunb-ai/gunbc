@@ -3,15 +3,25 @@ module gunbc.hermetic_mock_fidelity
 // A DISCOVERED ERROR CLASS, FILED AS DESIGN section 4b REQUIRES: an operation whose hermetic
 // mock_response answers with ONE unconditional value, so every hermetic caller receives a
 // success the operation never performed.
+import std.types { String, List, Bool, Int }
+import gunbc.guarantee_rung_drop { gunbc.guarantee_rung_drop.GuaranteeRung, gunbc.guarantee_rung_drop.Mitigatable, gunbc.guarantee_rung_drop.StructurallyGuaranteed }
+import v2.std.algebra { v2.std.algebra.fold_list }
+
+// A DISCOVERED ERROR CLASS, FILED AS DESIGN section 4b REQUIRES, AND SINCE REPAIRED: an
+// operation whose hermetic mock_response answered with ONE unconditional value, so every
+// hermetic caller received a success the operation never performed. The paragraphs below are
+// written in the PAST TENSE where they describe the defect, because the arms are deleted as of
+// 2026-08-23 and a present-tense recital of a repaired defect is the same premise contamination
+// as a present-tense recital of a deleted mechanism.
 //
-// THE INVALID STATE. `service shell.Exec` declares `operation Run` with a single mock arm,
-// `0 => { exit_code: 0, success: true, stdout: "", stderr: "" }`. The arm is keyed on an exit
-// status the mock itself supplies, so it is not a function of the input at all: in hermetic
-// mode `bash -s` running `exit 1` and `bash -s` running `true` return the SAME value.
-// `operation RunArgv` and `operation Check` carry the same shape.
+// THE INVALID STATE. `service shell.Exec` declared `operation Run` with a single mock arm,
+// `0 => { exit_code: 0, success: true, stdout: "", stderr: "" }`. The arm was keyed on an exit
+// status the mock itself supplied, so it was not a function of the input at all: in hermetic
+// mode `bash -s` running `exit 1` and `bash -s` running `true` returned the SAME value.
+// `operation RunArgv` and `operation Check` carried the same shape.
 //
 // THE HARM. Not a witness that fails -- a witness that PASSES against a fabricated exit status.
-// Every hermetically-executed claim downstream of a shell effect is asserting about the mock,
+// Every hermetically-executed claim downstream of a shell effect was asserting about the mock,
 // and a claim whose subject is "this fails closed" cannot be satisfied at all. That is DESIGN
 // section 5's central prohibition (no fabricated plausible output), and the floor's own CI
 // clause already names this exact case: mocking the refusal "would pass it against a fabricated
@@ -29,8 +39,8 @@ module gunbc.hermetic_mock_fidelity
 // observe this: it is two lines of a required run, and the pair is what makes it a finding
 // rather than a reading of the declaration.
 //
-// THE ARM FABRICATES THREE FACTS, NOT ONE, and this is the part a reading of the exit status
-// alone misses. The mock supplies every output field, so each field is a separate fabrication
+// THE ARM FABRICATED THREE FACTS, NOT ONE, and this is the part a reading of the exit status
+// alone misses. The mock supplied every output field, so each field is a separate fabrication
 // with its own discriminating row -- and the third one reds in the OPPOSITE direction from the
 // other two, which is why "the exit-1 witnesses" is the wrong description of the population:
 //   exit status           test.claim.host_effect_apply_witness
@@ -52,20 +62,29 @@ module gunbc.hermetic_mock_fidelity
 // source and every one asserts on a fact in the three-way list above; none is a separate defect
 // wearing the same symptom.
 //
-// THE RUNG. Below the floor, so `OutsideTheLadder` rather than `Mitigatable`: nothing refuses,
-// nothing counts, nothing is logged, and the fabricated value is indistinguishable from a real
-// one at every consumer. The attainable ceiling is `StructurallyGuaranteed` and the class is
-// fully decidable -- an operation either has a response that varies with its declared input or
-// it does not -- so nothing but a decision stands between here and there.
+// THE RUNG. The class SAT below the floor -- `OutsideTheLadder`, because nothing refused,
+// nothing counted, nothing was logged, and the fabricated value was indistinguishable from a real
+// one at every consumer. With the arms deleted it sits at `Mitigatable`: the failure still occurs
+// (a hermetic caller of these operations gets no answer) but it is contained by a typed, located,
+// per-identity refusal that the floor counts. It is NOT `StructurallyGuaranteed` -- that ceiling
+// needs the ingest-time check named below, because nothing in the tree today refuses a re-added
+// unconditional arm. Deleting three arms is a repair, not a wall.
 //
-// THE REMEDY IS NOT MINE TO APPLY, and this module deliberately changes no behaviour. Deleting
-// the unconditional arms makes the interpreter refuse (`HermeticEffectGround.NoMockResponse`,
-// already implemented) instead of fabricating, which is the honest arm -- but ~75 call sites
-// across ~30 modules reach these three operations, every currently-passing witness downstream
-// of one is passing against the same fabrication, and `route_gap_unenrolled` must stay 0 or the
-// required floor reds. That is one measured motion on a green tree, escalated to the operator
-// on 2026-08-23 and NOT taken here. Recording it is what stops the tree claiming coverage it
-// does not have while the decision is made.
+// THE REMEDY WAS APPLIED, 2026-08-23, BY OPERATOR RULING. The three unconditional arms in
+// `extdeps/shell/exec.dag` are DELETED. Hermetic execution of shell.Exec.Run / RunArgv / Check
+// now returns `HermeticEffectGround.NoMockResponse` -- typed, located, counted per identity on
+// the route-gap roster -- instead of a success the operation never performed. The rows below
+// therefore read `NoMockArm`: they are no longer a live defect roster, they are the record of a
+// closed class and the shape a re-added arm would have to take to reopen it.
+//
+// WHAT THE DELETION COST, stated rather than left for the run to reveal: every witness that
+// reached one of these three operations hermetically was passing (or being held red) against the
+// fabrication, and each now surfaces as a route gap. Those identities are enrolled in
+// `v2.workflow.floor_route_gap` in the same change, from the run's own per-identity output --
+// enrollment records that the floor has no route for them today, and the remedy for each is a
+// route, never an edit to what the witness asserts. The ten held reds this class was diagnosed
+// from are the reverse motion: they were held because the arm answered where the witness needed
+// a refusal, so they leave `floor_expected_red` as their subject stops being unreachable.
 //
 // WHY THIS ROW IS AN OBSERVATION AND NOT AN AUTHORITY. The discrimination fact below is
 // DERIVABLE from the operation's own declaration -- count the mock arms, ask whether any names
@@ -125,23 +144,23 @@ fn hermetic_mock_fidelity_rows() -> List<HermeticMockRow> {
   [
     HermeticMockRow {
       operation: "shell.Exec.Run",
-      discrimination: UnconditionalArm {},
-      fabricates: [ExitStatus {}, CapturedOutput {}, TransportReachability {}],
-      rung: OutsideTheLadder {},
+      discrimination: NoMockArm {},
+      fabricates: [],
+      rung: Mitigatable {},
       ceiling: StructurallyGuaranteed {}
     },
     HermeticMockRow {
       operation: "shell.Exec.RunArgv",
-      discrimination: UnconditionalArm {},
-      fabricates: [ExitStatus {}, CapturedOutput {}, TransportReachability {}],
-      rung: OutsideTheLadder {},
+      discrimination: NoMockArm {},
+      fabricates: [],
+      rung: Mitigatable {},
       ceiling: StructurallyGuaranteed {}
     },
     HermeticMockRow {
       operation: "shell.Exec.Check",
-      discrimination: UnconditionalArm {},
-      fabricates: [ExitStatus {}, TransportReachability {}],
-      rung: OutsideTheLadder {},
+      discrimination: NoMockArm {},
+      fabricates: [],
+      rung: Mitigatable {},
       ceiling: StructurallyGuaranteed {}
     }
   ]

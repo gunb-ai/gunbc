@@ -183,17 +183,15 @@ fn ecmascript_primitive_spec_facts(
   surface_spelling: Symbol,
   encoding_value: Symbol
 ) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: ecmascript_inhabitant_atom(id: surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: ecmascript_inhabitant_atom(id: encoding_value) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      empty_map(),
+      discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      ecmascript_inhabitant_atom(id: surface_spelling)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    ecmascript_inhabitant_atom(id: encoding_value)
+  )
 }
 
 fn ecmascript_primitive_algebra_witness_node(

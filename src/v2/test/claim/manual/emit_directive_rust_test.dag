@@ -35,7 +35,7 @@ fn emit_directive_rust_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagno
   v2.compiler.emit.emit(
     tree: v2.compiler.inferred_tree.InferredTree {
       root: rust_emit_directive_emitted_call,
-      facts: std.types.Map { lookup: emit_directive_facts_lookup }
+      facts: std.algebra.PartialFunction { lookup: emit_directive_facts_lookup }
     },
     target: rust_emit_directive_target_model(d: d)
   )
@@ -45,7 +45,7 @@ fn emit_directive_bash_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagno
   v2.compiler.emit.emit(
     tree: v2.compiler.inferred_tree.InferredTree {
       root: emit_directive_bash_emitted_command,
-      facts: std.types.Map { lookup: emit_directive_facts_lookup }
+      facts: std.algebra.PartialFunction { lookup: emit_directive_facts_lookup }
     },
     target: emit_directive_bash_target_model(d: d)
   )

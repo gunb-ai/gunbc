@@ -57,8 +57,6 @@ service ebay.OAuth {
     endpoint: extdeps.ebay.ebay.production_api_base
 
     rate_limit: { requests: 1000, per: minute, scope: oauth }
-
-    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
   }
 
   operation MintApplicationToken {

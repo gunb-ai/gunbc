@@ -55,7 +55,7 @@ fn rust_bind_let_facts_miss(key: v2.std.node.Node) -> v2.std.optional.Optional<v
 fn rust_bind_let_inferred_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.types.Map { lookup: rust_bind_let_facts_miss }
+    facts: std.algebra.PartialFunction { lookup: rust_bind_let_facts_miss }
   }
 }
 

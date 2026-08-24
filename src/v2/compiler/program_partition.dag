@@ -383,7 +383,7 @@ fn facts_closure_entries_fold(
   )
 }
 
-fn facts_closure_fold(partition: ProgramPartition) -> Outcome<Map<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts>> {
+fn facts_closure_fold(partition: ProgramPartition) -> Outcome<std.algebra.PartialFunction<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts>> {
   match partition.boundary {
     AmbientContextAvailable =>
       outcome_accepted(value: partition.ambient.facts)

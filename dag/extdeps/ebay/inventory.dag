@@ -311,8 +311,6 @@ service ebay.Inventory {
     auth_input: access_token
 
     rate_limit: { requests: 2000000, per: day, scope: sell_inventory }
-
-    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
   }
 
   operation CreateOrReplaceInventoryItem {

@@ -6,7 +6,8 @@ fn is_file_grain_function(function: String) -> Bool {
   function == ""
 }
 
-data failure_receipt_companion_note: String = "claim_executor invokes <witness>_failure_receipt on Bool(false) via the _holds/_passes → _failure_receipt naming convention (v2.std.native_agreement / gunbc#7644). Single authority for the suffix derivation: Rust cli_run::failure_receipt_companion delegates here. The clause that used to sit here — that orphan reachability treats the companion as reachable from its witness even though no .dag decl references it — described the census deleted in gunbc#8155 and is removed with it rather than left describing machinery that is gone."
+data failure_receipt_companion_note: String = "claim_executor invokes <witness>_failure_receipt on Bool(false). Single authority for the derivation: Rust cli_run::failure_receipt_companion delegates here.\n\nTHE PROJECTION IS TOTAL, AND THAT IS THE POINT (operator ruling, 2026-08-24). It used to return Optional<String>, Absent whenever the witness name ended in neither _holds nor _passes. That made a NAMING CONVENTION into a second answer to a question one authority already owns -- is this an executing witness -- which floor discovery answers structurally by selecting test-marked declarations. Measured, the two authorities disagreed on 84.8% of the discovered roster, and the tempting repair was to read that as debt and rename the witnesses. It was not debt; it was predicate nicknaming (DESIGN section 3), and an enrolment wall keyed on the suffix would have promoted an accidental spelling into the language's definition of a witness. So the suffix is deleted as an ELIGIBILITY test and survives only here, inside the projection, as backward-compatible normalization of the stem: x_holds -> x_failure_receipt, x_passes -> x_failure_receipt, x -> x_failure_receipt. It gets no vote on membership.\n\nTotality is structural rather than conventional: the return type is String, so Absent has no spelling and the host has no arm to decode. What remains AFTER this change, stated so the channel is not read as complete: a false witness whose companion does not exist still yields an opaque Bool(false), because the host maps NoSuchFunction to the empty string and appends nothing. That is deliberate -- it keeps the total derivation operationally non-breaking -- and it means this change closes the eligibility fork ONLY. The narrow claim it licenses: every structurally discovered witness maps to its conventional companion spelling, and suffixes no longer determine eligibility. It does NOT license the claim that every witness can explain its failure; the producer population is small (16 companions, 4 working pairs at the time of this change) and is a separate, unclosed obligation.\n\nThe sibling _verdict_diagnostic channel is derived the same way and has a consumer, but ZERO producers. It is uninhabited and must not be cited as a capability this repository possesses; its disposition is binary -- one real end-to-end producer, or delete the channel with its consumer.\n\nThe clause that used to sit here about orphan reachability described the census deleted in gunbc#8155 and went with it."
+
 
 fn without_suffix(s: String, suffix: String) -> String {
   if ends_with(s: s, suffix: suffix) {
@@ -20,32 +21,25 @@ fn without_suffix(s: String, suffix: String) -> String {
   }
 }
 
-fn failure_receipt_companion(function: String) -> v2.std.optional.Optional<String> {
-  if ends_with(s: function, suffix: "_holds") {
-    v2.std.optional.optional_present(
-      value: concat(gunbc.test_module_hygiene.without_suffix(s: function, suffix: "_holds"), "_failure_receipt")
-    )
-  } else if ends_with(s: function, suffix: "_passes") {
-    v2.std.optional.optional_present(
-      value: concat(gunbc.test_module_hygiene.without_suffix(s: function, suffix: "_passes"), "_failure_receipt")
-    )
+// Exactly ONE suffix is stripped, mirroring the if/else-if this replaced: chaining two
+// without_suffix calls would take `foo_passes_holds` to `foo`, where the derivation it
+// replaces yielded `foo_passes`. No such name is authored today, and the point is that the
+// normalization must not quietly change any stem it already produced -- totality is the
+// change, the stem is not.
+fn witness_stem(test.claim.observation_seed_scoped_run_witness.function: String) -> String {
+  if ends_with(s: test.claim.observation_seed_scoped_run_witness.function, suffix: "_holds") {
+    without_suffix(s: test.claim.observation_seed_scoped_run_witness.function, suffix: "_holds")
   } else {
-    v2.std.optional.optional_absent()
+    without_suffix(s: test.claim.observation_seed_scoped_run_witness.function, suffix: "_passes")
   }
 }
 
-fn witness_verdict_diagnostic_companion(function: String) -> v2.std.optional.Optional<String> {
-  if ends_with(s: function, suffix: "_holds") {
-    v2.std.optional.optional_present(
-      value: concat(gunbc.test_module_hygiene.without_suffix(s: function, suffix: "_holds"), "_verdict_diagnostic")
-    )
-  } else if ends_with(s: function, suffix: "_passes") {
-    v2.std.optional.optional_present(
-      value: concat(gunbc.test_module_hygiene.without_suffix(s: function, suffix: "_passes"), "_verdict_diagnostic")
-    )
-  } else {
-    v2.std.optional.optional_absent()
-  }
+fn failure_receipt_companion(test.claim.observation_seed_scoped_run_witness.function: String) -> String {
+  concat(witness_stem(test.claim.observation_seed_scoped_run_witness.function: test.claim.observation_seed_scoped_run_witness.function), "_failure_receipt")
+}
+
+fn witness_verdict_diagnostic_companion(test.claim.observation_seed_scoped_run_witness.function: String) -> String {
+  concat(witness_stem(test.claim.observation_seed_scoped_run_witness.function: test.claim.observation_seed_scoped_run_witness.function), "_verdict_diagnostic")
 }
 
 type ExplicitExpandInput {

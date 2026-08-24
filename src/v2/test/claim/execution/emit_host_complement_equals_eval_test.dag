@@ -25,7 +25,7 @@ fn emit_complement_eval_composed_facts(key: v2.std.node.Node) -> v2.std.optional
 fn emit_complement_eval_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.types.Map { lookup: emit_complement_eval_composed_facts }
+    facts: std.algebra.PartialFunction { lookup: emit_complement_eval_composed_facts }
   }
 }
 

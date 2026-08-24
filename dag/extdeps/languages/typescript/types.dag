@@ -28,7 +28,7 @@ data ts_algebra_inhabitants: List<std.coercion.InhabitantDecl> = [
     import_path: none,
     is_copy: false },
 
-  { algebra: "BooleanAlgebra",
+  { algebra: "FinitePowerSet",
     template: "Set<\{0\}>",
     arity: 1,
     identity_expr: "new Set()",
@@ -43,6 +43,13 @@ data ts_algebra_inhabitants: List<std.coercion.InhabitantDecl> = [
     is_copy: false },
 
   { algebra: "PartialFunction",
+    template: "Map<\{0\}, \{1\}>",
+    arity: 2,
+    identity_expr: "new Map()",
+    import_path: none,
+    is_copy: false },
+
+  { algebra: "FinitelySupportedFunction",
     template: "Map<\{0\}, \{1\}>",
     arity: 2,
     identity_expr: "new Map()",

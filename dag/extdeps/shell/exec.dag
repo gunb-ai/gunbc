@@ -75,6 +75,23 @@ data shell_exec_transport_ceiling_authority: std.measure.ByteSize = extdeps.exec
 // and the process: nothing is quoted, joined, or re-parsed. A nonzero exit is DATA, not an error --
 // refusing there would hard-code one exit policy into the seam and make every legitimate nonzero
 // convention unreachable.
+// NO mock_response ARM ON ANY OPERATION HERE, AND THAT IS THE POINT (operator ruling, 2026-08-23).
+// Each of the three operations carried one unconditional arm -- Run answered
+// `{ exit_code: 0, success: true, stdout: "", stderr: "" }`, RunArgv and Check the same shape --
+// keyed on an exit status the arm itself supplied, so it was not a function of the declared input
+// at all: in hermetic mode `bash -s` running `exit 1` returned exactly what `true` returned, and a
+// witness asserting "this fails closed" could not be satisfied. The arm fabricated three distinct
+// facts (exit status, captured output, transport reachability), each with its own remedy; that
+// census and its measured receipts are gunbc.hermetic_mock_fidelity.
+//
+// The arms are DELETED rather than made input-varying. Hermetic execution of these operations now
+// reaches HermeticEffectGround.NoMockResponse -- a typed, located, per-identity refusal that
+// surfaces on the route-gap roster -- instead of a fabricated success. A witness that reaches this
+// seam hermetically needs a ROUTE, never a better mock: reachability in particular has no honest
+// mock, since consulting the transport is what hermetic mode forbids.
+//
+// DO NOT RE-ADD ONE. An arm here is only honest if its value varies with the operation's declared
+// input, and even then it cannot answer whether a remote endpoint replied.
 service shell.Exec {
   operation Run {
     input { script: TransportScript }
@@ -93,9 +110,6 @@ service shell.Exec {
     exit {
       0 => Unit
       nonzero => String "Script failed"
-    }
-    mock_response {
-      0 => { exit_code: 0, success: true, stdout: "", stderr: "" } "hermetic shell.Exec.Run success"
     }
   }
 
@@ -116,9 +130,6 @@ service shell.Exec {
       0 => Unit
       nonzero => Unit
     }
-    mock_response {
-      0 => { exit_code: 0, stdout: "", stderr: "" } "hermetic shell.Exec.RunArgv success"
-    }
   }
 
   operation Check {
@@ -130,9 +141,6 @@ service shell.Exec {
     exit {
       0 => Unit
       nonzero => String "Command failed"
-    }
-    mock_response {
-      0 => { exists: true } "hermetic shell.Exec.Check success"
     }
   }
 }

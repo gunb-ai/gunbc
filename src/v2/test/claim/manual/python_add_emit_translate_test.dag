@@ -164,7 +164,7 @@ fn python_add_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2
 
 data python_add_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: python_add_emitted_root,
-  facts: std.types.Map {
+  facts: std.algebra.PartialFunction {
     lookup: python_add_facts_lookup
   }
 }

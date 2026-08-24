@@ -8,19 +8,6 @@ type HostnameShortCapture =
     HostnameShortCaptured { value: String }
   | HostnameShortCaptureRefused { reason: String }
 
-data hostname_read_short_path: String = "dag/extdeps/tools/hostname.dag"
-data hostname_read_short_service: String = "os.Hostname"
-data hostname_read_short_operation: String = "ReadShort"
-
-fn hostname_short_read_operation_argv() -> v2.std.operation_argv.ArgvMaterialization {
-  shell_materialize_operation_argv(
-    hostname_read_short_path,
-    hostname_read_short_service,
-    hostname_read_short_operation,
-    []
-  )
-}
-
 fn hostname_short_value_from_stdout(success: Bool, stdout: String) -> HostnameShortCapture {
   if success {
     let trimmed = trim(stdout)
@@ -34,65 +21,20 @@ fn hostname_short_value_from_stdout(success: Bool, stdout: String) -> HostnameSh
   }
 }
 
-fn hostname_short_read_local() -> HostnameShortCapture {
-  let result = os.Hostname.ReadShort()
-  hostname_short_value_from_stdout(success: result.success, stdout: result.value)
-}
-
-// ONE OUTCOME HANDLER, TWO PRODUCERS. The SshShell and FleetSsh paths differ only in HOW the leg is
-// obtained -- an endpoint plus an assembled invocation, versus a sealed context that cannot be
-// constructed without a verified anchor -- and not at all in how its result is read. Splitting the
-// handler out is what keeps the second path from being a copy of the first with two lines changed,
-// which is how the corpus acquired one site requiring host-key verification and another disabling it.
-fn hostname_short_capture_from_outcome(outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome) -> HostnameShortCapture {
-  match outcome {
-    TypedArgvExecConverged { result: r } =>
-      hostname_short_value_from_stdout(success: r.success, stdout: r.stdout)
-    TypedArgvExecRefused { reason: why } => HostnameShortCaptureRefused { reason: why }
-  }
-}
-
-fn hostname_short_read_ssh_argv(host: std.types.NonEmptyStr, argv: List<String>) -> HostnameShortCapture {
-  match typed_argv_shell_safe_refusal_argv(argv: argv) {
-    Present { value: why } => HostnameShortCaptureRefused { reason: why }
-    Absent => hostname_short_capture_from_outcome(outcome: typed_argv_exec_over_ssh(host: host, argv: argv))
-  }
-}
-
-fn hostname_short_read_fleet_ssh(target: gunbc.fleet_known_hosts_anchor.SshTarget, context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext) -> HostnameShortCapture {
-  match hostname_short_read_operation_argv() {
-    ArgvMaterialized { argv: argv } =>
-      hostname_short_capture_from_outcome(
-        outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv),
-      )
-    ArgvMaterializationRefused { at: _, cause: c } =>
-      HostnameShortCaptureRefused { reason: v2.std.operation_argv.operation_argv_cause_label(cause: c) }
-  }
-}
-
-fn hostname_short_read_ssh(host: std.types.NonEmptyStr) -> HostnameShortCapture {
-  match hostname_short_read_operation_argv() {
-    ArgvMaterialized { argv: argv } => hostname_short_read_ssh_argv(host: host, argv: argv)
-    ArgvMaterializationRefused { at: _, cause: c } =>
-      HostnameShortCaptureRefused { reason: v2.std.operation_argv.operation_argv_cause_label(cause: c) }
-  }
-}
-
+// One dispatch, in the realization layer. See gunbc.systemctl_is_active_read for the same shape
+// commented in full.
 fn hostname_short_read(transport: gunbc.host_effect.HostEffectTransport) -> HostnameShortCapture {
-  match transport {
-    LocalShell => hostname_short_read_local()
-    SshShell { ssh_host: h } => hostname_short_read_ssh(host: h)
-    FleetSsh { target: t, context: c } => hostname_short_read_fleet_ssh(target: t, context: c)
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      HostnameShortCaptureRefused {
-        reason: "hostname -s read refused EmitArtifactThenThinRun transport",
-      }
+  match gunbc.host_operation_exec.host_operation_exec(transport: transport, operation: gunbc.host_operation_exec.HostnameReadShort) {
+    gunbc.host_operation_exec.HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
+      hostname_short_value_from_stdout(success: ok, stdout: out)
+    gunbc.host_operation_exec.HostOperationRefused { operation: _, reason: why } =>
+      HostnameShortCaptureRefused { reason: why }
   }
 }
 
 fn hostname_short_read_operation_argv_matches_authority() -> Bool {
   let authority = hostname_short_read_argv()
-  match hostname_short_read_operation_argv() {
+  match host_operation_materialize_argv(operation: HostnameReadShort) {
     ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
     ArgvMaterializationRefused { at: _, cause: _ } => false
   }

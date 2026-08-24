@@ -133,3 +133,87 @@ test fn determinism_gate_accepts_sorted_map_keys_sibling() -> v2.std.logic.Bool 
 test fn determinism_gate_rejects_nested_map_keys_in_subtree() -> v2.std.logic.Bool {
   gate_rejects(o: determinism_compile_gate(node: nested_map_keys_fixture()))
 }
+
+// ---------------------------------------------------------------------------
+// Identity-keyed classification controls.
+//
+// The seven controls above discriminate the SYMBOL half and still pass
+// unchanged, which is the point: keys and values stay accepted, and they now
+// stay accepted for a structural reason rather than because nobody registered
+// them. The controls below discriminate the ORDER half, which the deleted
+// two-row registry had no way to express -- it could only answer registered or
+// not, so every one of these five fixtures would have been accepted by it,
+// including the two that must refuse.
+
+fn index_by_call_fixture() -> Node {
+  det_call(callee: ^index_by, arg: det_atom(id: ^emit_export_list))
+}
+
+fn length_call_fixture() -> Node {
+  det_call(callee: ^length, arg: det_atom(id: ^emit_export_list))
+}
+
+fn decl_facts_call_fixture() -> Node {
+  det_call(callee: ^decl_facts, arg: det_atom(id: ^emit_pool_roots))
+}
+
+fn concept_decl_facts_live_call_fixture() -> Node {
+  det_call(callee: ^concept_decl_facts_live, arg: det_atom(id: ^emit_pool_roots))
+}
+
+fn fold_list_call_fixture() -> Node {
+  det_call(callee: ^fold_list, arg: det_atom(id: ^emit_export_list))
+}
+
+test fn determinism_gate_rejects_unclassified_traversal_order() -> Bool {
+  gate_rejects(o: determinism_compile_gate(node: index_by_call_fixture()))
+}
+
+test fn determinism_gate_accepts_order_free_result() -> Bool {
+  gate_accepts(o: determinism_compile_gate(node: length_call_fixture()))
+}
+
+test fn determinism_gate_accepts_canonical_order() -> Bool {
+  gate_accepts(o: determinism_compile_gate(node: decl_facts_call_fixture()))
+}
+
+test fn determinism_gate_accepts_source_preserving_order() -> Bool {
+  gate_accepts(o: determinism_compile_gate(node: concept_decl_facts_live_call_fixture()))
+}
+
+test fn determinism_gate_accepts_fold_list_source_order() -> Bool {
+  gate_accepts(o: determinism_compile_gate(node: fold_list_call_fixture()))
+}
+
+// ---------------------------------------------------------------------------
+// Denominator-closure controls (the enrollment half of the wall).
+//
+// The GREEN side is the live denominator: every declared primitive carries a
+// traversal fact today, which is what lets every gate control above be about
+// the tree rather than about the roster. The RED side has to be authored,
+// because a fixture cannot add a declaration to std.primitive_identity -- so it
+// plants a definition with no fact and asserts the closure predicate finds it.
+// Without that arm the green one is a permanently-true reading of a list that
+// happens to be complete, and could not distinguish a working predicate from
+// one that returns Empty unconditionally.
+
+fn unclassified_planted_definition() -> PrimitiveDefinition {
+  PrimitiveDefinition {
+    identity: primitive_identity_slug(name: "planted_primitive_with_no_traversal_fact"),
+    semantic_contract: PrimitiveSemanticContract {
+      canonical_name: "planted_primitive_with_no_traversal_fact" as NonEmptyStr
+    }
+  }
+}
+
+test fn determinism_denominator_is_closed_on_declared_primitives() -> Bool {
+  primitive_traversal_denominator_is_closed()
+}
+
+test fn determinism_denominator_predicate_finds_a_planted_hole() -> Bool {
+  count(primitive_definitions_missing_traversal_fact_in(defs: [unclassified_planted_definition()])) == 1
+}
+
+test fn determinism_denominator_predicate_passes_a_classified_definition() -> Bool {
+  count(primitive_definitions_missing_traversal_fact_in(defs: [primitive_map_keys_definition])) == 0
+}

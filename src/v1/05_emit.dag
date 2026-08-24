@@ -201,15 +201,10 @@ fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> ResolvedFuncSig?
   func_sig_if_resolved(lookup: lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name))
 }
 
-fn typed_named_arg_matches(arg: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let n = arg_name_at(n: arg, source_indices: source_indices)
-  if n == none {
-    false
-  } else {
-    n.value == name
-  }
-}
-
+// Translate named source arguments to target positional order through infer's
+// accepted-label authority. `_args` accepts exact `_args` and caller-facing
+// `args`; anonymous `_` has no reorderable identity. Both indexes consume that
+// bounded label set, keeping construction and lookup linear.
 fn order_typed_call_args(args: List<Node>, func: String, scope: InferScope) -> List<Node> {
   let has_unnamed = args |> any(arg => arg_name_at(n: arg, source_indices: scope.type_env.source_indices) == none)
   if has_unnamed {
@@ -222,11 +217,18 @@ fn order_typed_call_args(args: List<Node>, func: String, scope: InferScope) -> L
           let n = arg_name_at(n: arg, source_indices: scope.type_env.source_indices)
           if n != none { map_insert(acc, n.value, arg) } else { acc }
         )
-        let param_name_set = sig.params |> fold(init: empty_map(), f: (acc, param) =>
-          map_insert(acc, param_node_name_at(n: param, source_indices: scope.type_env.source_indices), true)
+        let param_label_set = sig.params |> fold(init: empty_map(), f: (acc, param) =>
+          call_param_caller_labels(param_name: param_node_name_at(n: param, source_indices: scope.type_env.source_indices))
+            |> fold(init: acc, f: (labels, label) => map_insert(labels, label, true))
         )
         let ordered = sig.params |> flat_map(param =>
-          match map_get(arg_map, param_node_name_at(n: param, source_indices: scope.type_env.source_indices)) {
+          let param_name = param_node_name_at(n: param, source_indices: scope.type_env.source_indices)
+          let matching = call_param_caller_labels(param_name: param_name)
+            |> flat_map(label => match map_get(arg_map, label) {
+              Present { value: arg } => [arg]
+              Absent => []
+            })
+          match matching |> first {
             Present { value: arg } => [arg]
             Absent => []
           }
@@ -236,7 +238,7 @@ fn order_typed_call_args(args: List<Node>, func: String, scope: InferScope) -> L
           if n == none {
             true
           } else {
-            emit_map_has(m: param_name_set, key: n.value) == false
+            emit_map_has(m: param_label_set, key: n.value) == false
           }
         )
         concat(ordered, leftovers)

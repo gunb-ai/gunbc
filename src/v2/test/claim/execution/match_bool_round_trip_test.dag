@@ -103,7 +103,7 @@ fn match_bool_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2
 
 data match_bool_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: match_bool_emitted_root,
-  facts: std.types.Map {
+  facts: std.algebra.PartialFunction {
     lookup: match_bool_facts_lookup
   }
 }

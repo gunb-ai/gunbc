@@ -212,7 +212,7 @@ fn direct_rust_door_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optio
 
 data direct_rust_door_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: rust_fixture_emitted_add_fn,
-  facts: std.types.Map {
+  facts: std.algebra.PartialFunction {
     lookup: direct_rust_door_facts_lookup
   }
 }

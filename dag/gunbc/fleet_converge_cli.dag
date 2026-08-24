@@ -1,6 +1,59 @@
 module gunbc.fleet_converge_cli
 
-data gunbc_converge_cli_stage0_receiver_disposition: std.disposition.Disposition = std.disposition.Terminal {  reason: "THERE IS NO STAGE0 RECEIVER, AND THERE WILL NOT BE ONE — that is the terminal state this row records, not a gap awaiting repair. Corrected 2026-08-16 (PR #8286, review 52676) when the cli-run driver cut deleted cli_run handle_converge: until then this row named that handler as the live argv transport, so a canonical disposition asserted a terminal hand-Rust route that no longer existed. The stale half was not the arm but the reason — DESIGN §3's stale-citation class, in a carrier the cut itself falsified.
+import extdeps.filesystem.filesystem_io { extdeps.filesystem.filesystem_io.Filesystem }
+import extdeps.shell
+import std.algebra { std.algebra.trim }
+import gunbc.command_runner { gunbc.command_runner.stat_owner_name_capture }
+import extdeps.shell.exec { extdeps.shell.exec.ProcessOutputPresent, extdeps.shell.exec.ProcessOutputAbsent, extdeps.shell.exec.ProcessRefused }
+import gunbc.fleet_posix_accounts { gunbc.fleet_posix_accounts.fleet_posix_operator_user }
+
+import gunbc.hostname_read {
+  gunbc.hostname_read.HostnameShortCaptured,
+  gunbc.hostname_read.HostnameShortCaptureRefused,
+  gunbc.hostname_read.hostname_short_read,
+}
+import gunbc.fleet_converge_apply { gunbc.fleet_converge_apply.converge_apply_for_host, gunbc.fleet_converge_apply.fleet_compute_host_for_identity }
+import gunbc.host_layout { gunbc.host_layout.fleet_converge_receipt_dir, gunbc.host_layout.srv1_gunbc_repo_root }
+import gunbc.fleet_desired_observe {
+  gunbc.fleet_desired_observe.FleetRevisionStanding,
+  gunbc.fleet_desired_observe.RevisionConverged,
+  gunbc.fleet_desired_observe.RevisionDrifted,
+  gunbc.fleet_desired_observe.RevisionUnobserved,
+  gunbc.fleet_desired_observe.fleet_revision_standing,
+}
+import extdeps.git.object_store { extdeps.git.object_store.git_object_id_wire_hex }
+import gunbc.host_converge_slice1 {
+  gunbc.host_converge_slice1.host_converge_slice1_converge_loop,
+  gunbc.host_converge_slice1.host_converge_slice1_receipt_is_valid,
+  gunbc.host_converge_slice1.host_converge_slice1_tasks_receipt_is_valid,
+  gunbc.host_converge_slice1.host_converge_slice1_converge_srv3,
+  gunbc.host_converge_slice1.host_converge_slice1_host_result_all_valid,
+  gunbc.host_converge_slice1.host_converge_slice1_host_result_applied_count,
+  gunbc.host_converge_slice1.host_converge_slice1_host_result_refusal_reason,
+}
+import gunbc.host_runner_memory_provision { gunbc.host_runner_memory_provision.runner_memory_host_converge }
+import gunbc.host_runner_memory_cap_verify { gunbc.host_runner_memory_cap_verify.runner_memory_cap_verify_run }
+import gunbc.host_converge { gunbc.host_converge.fleet_converge_policy, gunbc.host_converge.find_by_identity, gunbc.host_converge.converge_verdict, gunbc.host_converge.converge_verdict_label, gunbc.host_converge.converge_verdict_meet, gunbc.host_converge.codex_runtime_bundle_knob }
+import gunbc.host_effect {
+  gunbc.host_effect.HostOs,
+  gunbc.host_effect.ProvisionCodexRuntime,
+  gunbc.host_effect.host_effect_identity_evidence,
+  gunbc.host_effect.LocalShell,
+}
+import gunbc.host_effect_realize { gunbc.host_effect_realize.host_effect_apply }
+import std.realization_reconcile { Converged, std.realization_reconcile.NotConverged }
+import product.placement_supply { product.placement_supply.HostIdentity }
+import gunbc.fleet_intent_network {
+  gunbc.fleet_intent_network.operator_host_srv1,
+  gunbc.fleet_intent_network.operator_host_srv2,
+  gunbc.fleet_intent_network.operator_host_srv3,
+  gunbc.fleet_intent_network.operator_host_srv4,
+  gunbc.fleet_intent_network.operator_host_srv5,
+  gunbc.fleet_intent_network.operator_host_srv6,
+}
+
+data gunbc_converge_cli_stage0_receiver_disposition: std.disposition.Disposition = std.disposition.Terminal {
+  reason: "THERE IS NO STAGE0 RECEIVER, AND THERE WILL NOT BE ONE — that is the terminal state this row records, not a gap awaiting repair. Corrected 2026-08-16 (PR #8286, review 52676) when the cli-run driver cut deleted cli_run handle_converge: until then this row named that handler as the live argv transport, so a canonical disposition asserted a terminal hand-Rust route that no longer existed. The stale half was not the arm but the reason — DESIGN §3's stale-citation class, in a carrier the cut itself falsified.
 
 WHY TERMINAL SURVIVES THE DELETION. Transport is a handler, one of N, never a fact about the interface (DESIGN §3), so removing the stage0 CLI transport does not demote this .dag interface — it removes one binding. All interpretation, the byte-locked receipt grammar, and every typed refusal cause remain modeled here and in gunbc.host_converge / gunbc.fleet_converge_apply, exactly as before; what changed is only which host reaches them.
 
@@ -82,7 +135,7 @@ fn converge_kernel_short_hostname_from_content(raw: String) -> String {
 }
 
 fn converge_local_kernel_short_hostname() -> String {
-  match gunbc.hostname_read.hostname_short_read_local() {
+  match gunbc.hostname_read.hostname_short_read(transport: gunbc.host_effect.LocalShell) {
     HostnameShortCaptured { value: v } => v
     HostnameShortCaptureRefused { reason: _ } => ""
   }

@@ -103,7 +103,7 @@ fn branch_if_then_else_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Op
 
 data branch_if_then_else_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: branch_if_then_else_emitted_root,
-  facts: std.types.Map {
+  facts: std.algebra.PartialFunction {
     lookup: branch_if_then_else_facts_lookup
   }
 }

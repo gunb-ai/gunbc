@@ -253,8 +253,6 @@ service gcp.IAM {
     auth_input: access_token
 
     rate_limit: { requests: 60, per: minute, scope: iam_credentials }
-
-    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 503] }
   }
 
   operation GenerateAccessToken {

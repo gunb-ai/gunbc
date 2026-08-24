@@ -86,7 +86,7 @@ fn record_construct_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optio
 
 data record_construct_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: record_construct_emitted_root,
-  facts: std.types.Map { lookup: record_construct_facts_lookup }
+  facts: std.algebra.PartialFunction { lookup: record_construct_facts_lookup }
 }
 
 test fn record_construct_emit_holds() -> v2.std.logic.Bool {

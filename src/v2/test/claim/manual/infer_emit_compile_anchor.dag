@@ -31,7 +31,7 @@ data anchor_stub_inferred_facts: v2.compiler.inferred_tree.InferredFacts = claim
   }
 )
 
-data anchor_stub_empty_facts_map: Map<Node, v2.compiler.inferred_tree.InferredFacts> = std.types.Map {
+data anchor_stub_empty_facts_map: std.algebra.PartialFunction<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts> = std.algebra.PartialFunction {
   lookup: fn(_) {
     Absent
   }

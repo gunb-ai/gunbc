@@ -65,14 +65,15 @@ type SymbolIndex {
   global_bare: Map<String, v1.compiler.infer_env.GlobalBareLookupState>
   services: Map<String, v1.compiler.infer_env.ServiceCensusEntry>
   transparent_alias_rep: Map<String, String>
+  type_head_exposures: Map<String, TypeHeadExposure>
 }
 
 type Scope {
   locals: Map<String, v1.compiler.infer_env.ScopeBinding>
 }
 
-fn empty_symbol_index() -> v1.compiler.infer_env.SymbolIndex {
-  v1.compiler.infer_env.SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map() }
+fn empty_symbol_index() -> SymbolIndex {
+  SymbolIndex { entries: v2.std.collection.empty_map(), global_bare: v2.std.collection.empty_map(), services: v2.std.collection.empty_map(), transparent_alias_rep: v2.std.collection.empty_map(), type_head_exposures: v2.std.collection.empty_map() }
 }
 
 fn empty_type_env() -> v1.compiler.infer_env.TypeEnv {
@@ -134,7 +135,8 @@ fn symbol_index_insert(index: v1.compiler.infer_env.SymbolIndex, qualified_name:
     entries: map_insert(index.entries, qualified_name, resolved),
     global_bare: index.global_bare,
     services: index.services,
-    transparent_alias_rep: index.transparent_alias_rep
+    transparent_alias_rep: index.transparent_alias_rep,
+    type_head_exposures: index.type_head_exposures
   }
 }
 
@@ -143,7 +145,8 @@ fn symbol_index_insert_decl(index: v1.compiler.infer_env.SymbolIndex, module_pat
     entries: map_insert(index.entries, concat(module_path, ".", binding.name), binding.resolved),
     global_bare: v1.compiler.infer_env.symbol_index_track_global_bare(global_bare: index.global_bare, module_path: module_path, binding: binding),
     services: index.services,
-    transparent_alias_rep: index.transparent_alias_rep
+    transparent_alias_rep: index.transparent_alias_rep,
+    type_head_exposures: index.type_head_exposures
   }
 }
 
@@ -151,8 +154,9 @@ fn symbol_index_insert_service(index: v1.compiler.infer_env.SymbolIndex, name: S
   SymbolIndex {
     entries: index.entries,
     global_bare: index.global_bare,
-    services: map_insert(index.services, name, v1.compiler.infer_env.ServiceCensusEntry { module_path: module_path, item: item }),
-    transparent_alias_rep: index.transparent_alias_rep
+    services: v2.std.collection.map_insert(index.services, name, ServiceCensusEntry { test.claim.observation_seed_scoped_run_witness.module_path: test.claim.observation_seed_scoped_run_witness.module_path, v2.test.resolve.qualified_module_projection_g1b_fixture.item: v2.test.resolve.qualified_module_projection_g1b_fixture.item }),
+    transparent_alias_rep: index.transparent_alias_rep,
+    type_head_exposures: index.type_head_exposures
   }
 }
 

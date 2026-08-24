@@ -82,8 +82,8 @@ fn claim_inferred_facts(
   )
 }
 
-fn claim_inferred_facts_map(facts: v2.compiler.inferred_tree.InferredFacts) -> Map<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts> {
-  std.types.Map {
+fn claim_inferred_facts_map(facts: v2.compiler.inferred_tree.InferredFacts) -> std.algebra.PartialFunction<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts> {
+  std.algebra.PartialFunction {
     lookup: fn(_) {
       v2.std.optional.Present { value: facts }
     }

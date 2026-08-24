@@ -67,7 +67,7 @@ fn lbe_inferred_tree(root: v2.std.node.Node) -> v2.compiler.inferred_tree.Inferr
   let facts = lbe_inferred_facts(resolved: root)
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.types.Map {
+    facts: std.algebra.PartialFunction {
       lookup: fn(_) {
         Present { value: facts }
       }

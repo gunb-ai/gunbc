@@ -117,6 +117,35 @@ type PointwisePower<T> {
   member: fn(T) -> Bool
 }
 
+// THE FINITE POWER SET -- Pfin, the set of FINITE subsets -- is the enumerable counterpart of
+// `PointwisePower` above, which presents the full power set as a characteristic function. The two
+// sit on the SUPPORT axis exactly as `PartialFunction` and `FinitelySupportedFunction` do below:
+// one answers membership and nothing else, the other can be walked.
+//
+// AUTHORED HERE BECAUSE THE CONCEPT WAS ALREADY IN TREE UNDER A BORROWED NAME. Every language that
+// carries an algebra inhabitant row files the finite-set realization under `"BooleanAlgebra"`:
+//
+//   rust        BTreeSet<{0}>            go          map[{0}]struct{}
+//   python      set[{0}]                 typescript  Set<{0}>
+//
+// Four independent realizations, four finite-set containers, not one lattice among them -- while
+// the TYPE `BooleanAlgebra<T>` is `{ meet, join, complement, top, bottom }` and its only
+// construction in the corpus is `v2.std.logic` `bool_boolean_algebra`, a genuine Boolean algebra
+// over `Bool`. The realization roster and the type disagreed about what the name meant, and the
+// rust roster carried the tell outright: the `"BooleanAlgebra"` and `"PointwisePower"` rows were
+// BYTE-IDENTICAL, two algebra names resolving to one realization with nothing saying which was
+// which. This declaration takes the finite-set concept out from under the lattice's name; the
+// lattice keeps its name, its type and its one construction site unchanged.
+type FinitePowerSet<T> {
+  member: fn(T) -> Bool
+  union: fn(FinitePowerSet<T>) -> FinitePowerSet<T>
+  intersect: fn(FinitePowerSet<T>) -> FinitePowerSet<T>
+  diff: fn(FinitePowerSet<T>) -> FinitePowerSet<T>
+  contains: fn(T) -> Bool
+  count: fn() -> Int
+  length: fn() -> Int
+}
+
 type FreeMonoid<T>
   = Empty
   | Cons { head: T, tail: std.algebra.FreeMonoid<T> }
@@ -126,17 +155,80 @@ type FreeSemigroup<T> {
   tail: std.algebra.FreeMonoid<T>
 }
 
+// TWO AXES, THREE INHABITED CORNERS. The family below is a 2x2 space and the corpus lives in
+// three of its corners, so three carriers are authored and the fourth is named rather than
+// silently omitted.
+//
+// TOTALITY -- does the function answer at every point (`fn(K) -> V`) or may it decline
+// (`fn(K) -> V?`) -- is independent of SUPPORT -- does it differ from the absent value at
+// finitely many points, so that it can be enumerated, or at arbitrarily many, so that it cannot.
+//
+//                   arbitrary support           finite support
+//   total           TotalMap                    (uninhabited)
+//   partial         PartialFunction             FinitelySupportedFunction
+//
+// The uninhabited corner is REPRESENTABLE, not impossible: a total function taking a non-default
+// value at finitely many points is a perfectly good object. It is unauthored because no corpus
+// site needs one. The condition that fills it is a site that must both answer everywhere and be
+// enumerated; author it then, and not before.
+//
+// The predicate family sits on the same support axis one row up: `PointwisePower` is the full
+// power set presented as a characteristic function, and its finite counterpart has no carrier
+// yet -- see the `Set` alias in `std.types` for that open half and its trigger.
 type PartialFunction<K, V> {
   lookup: fn(K) -> V?
-  empty: PartialFunction<K, V>
+}
+
+// FINITE SUPPORT IS WHAT MAKES THE ENUMERATION SURFACE HONEST. Everything below `lookup` here --
+// keys, values, size, and the insert/merge that must preserve them -- is answerable only because
+// the support is finite. That is exactly why these rows may not sit on `PartialFunction`: an open
+// partial function cannot produce `map_keys` at all, and until this split every one of the 145
+// `Map { lookup: .. }` literals in the corpus named a carrier promising ten operations it
+// supplied one of. Measured before the split: 0 of those 145 supplied any field beyond `lookup`.
+//
+// `lookup` appears on BOTH carriers rather than being inherited, because the substrate has no
+// subtyping: a finite map really does answer lookup, and saying so twice is the honest encoding
+// of "this one can do everything that one can, and more".
+//
+// RECORDED, NOT INTRODUCED, and not dissolved here: `lookup`, `get` and `map_get` are three
+// spellings of one operation, which the template rosters below carry as three rows. That is the
+// same Section 3 fork `algebra_count_length_name_fork_note` records for count/length/size, it
+// predates this change, and collapsing it is a corpus-wide rename touching every call site --
+// its own lane. The split neither widens nor narrows it; the three spellings move together.
+type FinitelySupportedFunction<K, V> {
+  lookup: fn(K) -> V?
+  empty: FinitelySupportedFunction<K, V>
   get: fn(K) -> V?
   insert: fn(K, V) -> PartialFunction<K, V>
   merge: fn(PartialFunction<K, V>) -> PartialFunction<K, V>
   map_keys: fn() -> std.algebra.FreeMonoid<K>
   map_values: fn() -> std.algebra.FreeMonoid<V>
+  insert: fn(K, V) -> FinitelySupportedFunction<K, V>
+  gunbc.scm.merge.merge: fn(FinitelySupportedFunction<K, V>) -> FinitelySupportedFunction<K, V>
+  map_keys: fn() -> FreeMonoid<K>
+  map_values: fn() -> FreeMonoid<V>
   map_has: fn(K) -> Bool
   contains_key: fn(K) -> Bool
   size: fn() -> Int
+}
+
+// MOVED HERE from `v2.std.collection` by the change that split `PartialFunction`. They are the
+// total corner of the family above, and leaving them in a different module from their own axis is
+// where a fork starts. `TotalPolicy` travels with `TotalMap` rather than staying behind: it is the
+// same total lookup carrying a context argument, and splitting a pair across two modules is the
+// thing this change exists to stop doing.
+//
+// Both had ZERO code consumers at the time of the move -- one declaration each and two prose cells
+// in `gunbc.plans.self_applying_lenses`, which marks `table_decision_tree` as an Unrealized
+// scaffold and names these as its target substrate rows. So they are carriers authored ahead of a
+// consumer that a plan does declare, which is weaker than an untracked scaffold and stronger than
+// healthy. The home is the cheap part of the answer; the consumer is that plan's to land.
+type TotalMap<K, V> {
+  lookup: fn(K) -> V
+}
+
+type TotalPolicy<K, Context, RowTemplate> {
+  lookup: fn(K, Context) -> RowTemplate
 }
 
 type Ordering = Less | Equal | Greater
@@ -170,11 +262,12 @@ type AlgebraProfile
   = OrderedRingProfile
   | ApproximateFieldProfile
   | BooleanAlgebraProfile
-  | BooleanAlgebraCollectionProfile
+  | FinitePowerSetProfile
   | PointwisePowerCollectionProfile
   | FreeMonoidScalarProfile
   | FreeMonoidCollectionProfile
   | PartialFunctionProfile
+  | FinitelySupportedFunctionProfile
 
 type ContainerSource
   = SameAsReceiver
@@ -214,6 +307,25 @@ type AlgebraFieldTemplate {
   callback_element_position: Int?
 }
 
+// THE CARRIER NAMES ARE KEYS HERE, NOT ONLY THE ALIAS SPELLINGS, and that is a repair rather
+// than an extension. This map is what `kernel_profile_lookup` consults to decide whether a
+// receiver has a declared method surface at all; `04_infer.dag`'s method-existence wall refuses
+// with `MethodExistenceUndecided` when it does not. Keyed on `"Set"` and `"Map"` alone, a
+// declaration that wrote the CARRIER name instead of the alias had no surface — so
+// `tree.facts.lookup(node)` on a `PartialFunction<Node, InferredFacts>` receiver refused, while
+// the byte-identical call on a `Map` receiver resolved. One concept, two answers, decided by
+// which of two spellings for it the author happened to write: the §3 fork exactly.
+//
+// It was invisible while every site wrote the alias. The carrier decomposition made the carrier
+// names the ones declarations write, and the hole surfaced immediately at the floor's strict
+// preparation — a stricter instrument than the compile board, which reported 0 blocking on the
+// same tree.
+//
+// `PointwisePower` is deliberately NOT added here. Its 80 declaration positions predate this
+// lane, its templates are a different set from `FinitePowerSet`'s, and adding it changes the
+// wall from UNDECIDED to DECIDED for every one of them at once — which would turn any method
+// absent from `pointwise_power_collection_templates` into a hard `MethodNotFound`. That is a
+// measurement this change has not taken, so the row is named as residue rather than added blind.
 fn kernel_algebra_profile_value() -> Map<String, AlgebraProfile> {
   map_insert(
     map_insert(
@@ -221,13 +333,19 @@ fn kernel_algebra_profile_value() -> Map<String, AlgebraProfile> {
         map_insert(
           map_insert(
             map_insert(
-              map_insert(empty_map(), "Int", OrderedRingProfile),
-              "Float", ApproximateFieldProfile),
-            "Bool", BooleanAlgebraProfile),
-          "String", FreeMonoidScalarProfile),
-        "List", FreeMonoidCollectionProfile),
-      "Set", PointwisePowerCollectionProfile),
-    "Map", PartialFunctionProfile)
+              map_insert(
+                map_insert(
+                  map_insert(
+                    map_insert(empty_map(), "Int", OrderedRingProfile),
+                    "Float", ApproximateFieldProfile),
+                  "Bool", BooleanAlgebraProfile),
+                "String", FreeMonoidScalarProfile),
+              "List", FreeMonoidCollectionProfile),
+            "Set", FinitePowerSetProfile),
+          "Map", FinitelySupportedFunctionProfile),
+        "FinitePowerSet", FinitePowerSetProfile),
+      "FinitelySupportedFunction", FinitelySupportedFunctionProfile),
+    "PartialFunction", PartialFunctionProfile)
 }
 
 data kernel_algebra_profile: Map<String, AlgebraProfile> = kernel_algebra_profile_value()
@@ -266,7 +384,7 @@ fn boolean_algebra_templates() -> List<AlgebraFieldTemplate> {
   ]
 }
 
-fn boolean_algebra_collection_templates() -> List<AlgebraFieldTemplate> {
+fn finite_power_set_templates() -> List<AlgebraFieldTemplate> {
   [
     { name: "union", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "intersect", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
@@ -347,6 +465,14 @@ fn partial_function_templates() -> List<AlgebraFieldTemplate> {
   [
     { name: "get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "lookup", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none }
+  ]
+}
+
+fn finitely_supported_function_templates() -> List<AlgebraFieldTemplate> {
+  [
+    { name: "get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "lookup", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_insert", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "map_merge", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
@@ -371,11 +497,12 @@ fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTe
     OrderedRingProfile => ordered_ring_templates()
     ApproximateFieldProfile => approximate_field_templates()
     BooleanAlgebraProfile => boolean_algebra_templates()
-    BooleanAlgebraCollectionProfile => boolean_algebra_collection_templates()
+    FinitePowerSetProfile => finite_power_set_templates()
     PointwisePowerCollectionProfile => pointwise_power_collection_templates()
     FreeMonoidScalarProfile => free_monoid_scalar_templates()
     FreeMonoidCollectionProfile => free_monoid_collection_templates()
     PartialFunctionProfile => partial_function_templates()
+    FinitelySupportedFunctionProfile => finitely_supported_function_templates()
   }
 }
 
@@ -384,11 +511,12 @@ fn algebra_type_param_names(profile: AlgebraProfile) -> List<String> {
     OrderedRingProfile => []
     ApproximateFieldProfile => []
     BooleanAlgebraProfile => []
-    BooleanAlgebraCollectionProfile => ["T"]
+    FinitePowerSetProfile => ["T"]
     PointwisePowerCollectionProfile => ["T"]
     FreeMonoidScalarProfile => []
     FreeMonoidCollectionProfile => ["T"]
     PartialFunctionProfile => ["K", "V"]
+    FinitelySupportedFunctionProfile => ["K", "V"]
   }
 }
 
@@ -397,11 +525,12 @@ fn all_algebra_profiles() -> List<AlgebraProfile> {
     OrderedRingProfile,
     ApproximateFieldProfile,
     BooleanAlgebraProfile,
-    BooleanAlgebraCollectionProfile,
+    FinitePowerSetProfile,
     PointwisePowerCollectionProfile,
     FreeMonoidScalarProfile,
     FreeMonoidCollectionProfile,
     PartialFunctionProfile,
+    FinitelySupportedFunctionProfile,
   ]
 }
 

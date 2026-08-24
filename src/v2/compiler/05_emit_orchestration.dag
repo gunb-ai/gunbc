@@ -38,7 +38,7 @@ fn orch_emit_from_registry(
       v2.compiler.emit.emit(
         tree: v2.compiler.inferred_tree.InferredTree {
           root: emitted_root,
-          facts: std.types.Map { lookup: orch_emit_facts_lookup }
+          facts: std.algebra.PartialFunction { lookup: orch_emit_facts_lookup }
         },
         target: target
       )
@@ -51,7 +51,7 @@ fn orch_emit_node_spelling(emitted_root: v2.std.node.Node, target: v2.std.compil
     o: v2.compiler.emit.emit(
       tree: v2.compiler.inferred_tree.InferredTree {
         root: emitted_root,
-        facts: std.types.Map { lookup: orch_emit_facts_lookup }
+        facts: std.algebra.PartialFunction { lookup: orch_emit_facts_lookup }
       },
       target: target
     ),

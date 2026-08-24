@@ -102,9 +102,4 @@ type FiniteSet<T> {
   head: T
   tail: List<T>
 }
-type TotalMap<K, V> {
-  lookup: fn(K) -> V
-}
-type TotalPolicy<K, Context, RowTemplate> {
-  lookup: fn(K, Context) -> RowTemplate
-}
+

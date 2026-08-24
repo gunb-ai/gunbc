@@ -28,7 +28,7 @@ fn emit_match_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infe
       v2.std.diagnostic.outcome_accepted(
         value: v2.compiler.inferred_tree.InferredTree {
           root: root,
-          facts: std.types.Map { lookup: emit_match_eval_composed_facts }
+          facts: std.algebra.PartialFunction { lookup: emit_match_eval_composed_facts }
         }
       )
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -41,7 +41,7 @@ fn emit_match_eval_swapped_producer_tree() -> v2.std.diagnostic.Outcome<v2.compi
       v2.std.diagnostic.outcome_accepted(
         value: v2.compiler.inferred_tree.InferredTree {
           root: root,
-          facts: std.types.Map { lookup: emit_match_eval_composed_facts }
+          facts: std.algebra.PartialFunction { lookup: emit_match_eval_composed_facts }
         }
       )
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -251,6 +251,91 @@ fn emit_match_eval_verdict_is_semantic_mismatch(run: v2.compiler.eval.TestClaimR
     BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+test fn emit_host_match_equals_eval_holds() -> v2.std.logic.Bool {
+// WHAT THIS PAIR ESTABLISHES, AND THE STRONGER THING IT DOES NOT. Each `test fn` is its own
+// execution and each calls emit_match_eval_run, so the equals row and this row launch TWO
+// INDEPENDENT UNCACHED rustc subprocesses over the same subject. They are two samples of the
+// environment, not two classifications of one run.
+//
+// So the reading "equals red + reached green therefore emit and eval genuinely disagree" DOES NOT
+// FOLLOW, and an earlier revision of this file's PR asserted it. The counter-case is precisely the
+// population being diagnosed: the first subprocess dies under contention (BuildFailed or RunFailed)
+// while the second, moments later, passes. Both rows would then be telling the truth about
+// different attempts, and the pair would have accused the compiler on the strength of an
+// environment failure -- the same wrong-owner conclusion, one level up.
+//
+// WHAT IT HONESTLY BUYS: a second, independently sampled row whose subject is "can the emit-host
+// path reach a semantic judgment here at all". Both rows red is strong evidence the environment
+// could not run, since two independent attempts failed to reach semantics. Equals red with this
+// row green is a NARROWING, not a proof: it says a contemporaneous run of the same subject did
+// reach judgment, which raises but does not settle the question of what the equals run did.
+//
+// NEXT-RUNG TRIGGER, and it is the durable fix rather than more rows: the floor receipt preserving
+// the typed Verdict instead of reducing it to Bool. One run, one Verdict, both propositions read
+// off the same value -- at which point this row's job is done by construction and it becomes a
+// regression control rather than a sampler. That is a change to the witness protocol, not to this
+// module, which is why it is named here instead of attempted here.
+//
+// AND THE TRIGGER IS NOT DEFERRED POLISH, BECAUSE A CLASSIFICATION REQUIRES A SINGLE RECEIPT
+// LINEAGE. Cross-execution comparison may establish INSTABILITY; it can never classify the CAUSE
+// of either execution. emit -> host run -> parse actual -> compare must sit in ONE lineage. So
+// without the typed Verdict carried with its receipt, this row can only ever report stability,
+// never cause -- the current shape cannot answer the question the row's NAME asks.
+
+// TEST-SIDE PROJECTION AT THE ASSERTION BOUNDARY, WHICH IS WHERE THE COLLAPSE IS ALLOWED TO LIVE.
+// A `test fn` must return Bool, so a witness over a coproduct verdict has to collapse it somewhere;
+// the predicate-dissolution rule forbids the AUTHORITY exposing an is_* Bool over its own coproduct,
+// not the witness performing the collapse it is obliged to perform. v2.std.verdict exposes no such
+// predicate and this change adds none to it. The precedent is recorded in
+// test.claim.self_host_promotion_admission `pa_admitted`, whose annotation states the boundary in
+// as many words after review 51217.
+//
+// AND THE CANONICAL QUERY SURFACE CANNOT ANSWER THIS QUESTION, WHICH IS THE WHOLE POINT OF THE ROW.
+// v2.std.verdict verdict_tally_add is the fold over Verdict, and it counts SemanticMismatch,
+// BuildFailed and RunFailed all as `fail`. That is the exact collapse this witness exists to
+// undo: routing through it would classify "the compiler disagreed with itself" and "rustc was
+// killed" into one bucket again, one layer further from the assertion. A tally is the right
+// surface for counting outcomes and the wrong one for distinguishing two of them.
+fn emit_match_eval_verdict_reached_semantics(run: v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue>) -> v2.std.logic.Bool {
+  match run.verdict {
+    v2.std.verdict.Pass => true
+    v2.std.verdict.SemanticMismatch { actual: _, falsification: _ } => true
+    BuildFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.RunFailed { actual: _, diagnostic: _ } => false
+    v2.std.verdict.Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+data emit_match_eval_unbuildable_source_text: String = "fn main() { this is not rust"
+
+fn emit_match_eval_unbuildable_run(tree: v2.compiler.inferred_tree.InferredTree) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
+  v2.compiler.emit_host.run_test_claim_from_source_emit_vs_eval(
+    subject: emit_match_eval_subject(tree: tree),
+    source_outcome: v2.std.diagnostic.outcome_accepted(
+      value: Medium { carried: emit_match_eval_unbuildable_source_text, fidelity: extdeps.communication.medium.Lossless }
+    ),
+    target: v2.extdeps.languages.rust_test.rust_match_target_model_staging()
+  )
+}
+
+test fn emit_host_match_run_reaches_semantics_holds() -> v2.std.logic.Bool {
+  match emit_match_eval_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      emit_match_eval_verdict_reached_semantics(run: emit_match_eval_run(tree: tree))
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_match_unbuildable_source_does_not_reach_semantics_holds() -> v2.std.logic.Bool {
+  match emit_match_eval_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      emit_match_eval_verdict_reached_semantics(
+        run: emit_match_eval_unbuildable_run(tree: tree)
+      ) == false
+    v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 

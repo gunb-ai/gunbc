@@ -46,7 +46,7 @@ fn runtime_run_fact_lookup(node: v2.std.node.Node) -> v2.std.optional.Optional<v
 fn runtime_run_test_tree() -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: runtime_run_node_a,
-    facts: std.types.Map { lookup: runtime_run_fact_lookup }
+    facts: std.algebra.PartialFunction { lookup: runtime_run_fact_lookup }
   }
 }
 

@@ -87,7 +87,7 @@ fn dag_add_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.co
 
 data dag_add_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: dag_add_emitted_root,
-  facts: std.types.Map {
+  facts: std.algebra.PartialFunction {
     lookup: dag_add_facts_lookup
   }
 }
@@ -160,7 +160,7 @@ test fn dag_add_domain_translate_accepts_holds() -> v2.std.logic.Bool {
   match translate_emitted_node(
     tree: v2.compiler.inferred_tree.InferredTree {
       root: dag_arrow_domain_conj_node(),
-      facts: std.types.Map { lookup: dag_add_facts_lookup }
+      facts: std.algebra.PartialFunction { lookup: dag_add_facts_lookup }
     },
     target: dag_add_target_model
   ) {

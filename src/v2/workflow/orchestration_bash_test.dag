@@ -11,7 +11,7 @@ fn orch_emit_bash(root: v2.std.node.Node, target: v2.std.compilers.target_model.
   v2.compiler.emit.emit(
     tree: v2.compiler.inferred_tree.InferredTree {
       root: root,
-      facts: std.types.Map { lookup: orch_bash_facts_lookup }
+      facts: std.algebra.PartialFunction { lookup: orch_bash_facts_lookup }
     },
     target: target
   )

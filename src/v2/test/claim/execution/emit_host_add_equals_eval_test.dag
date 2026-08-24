@@ -130,8 +130,8 @@ fn emit_eval_composed_facts(node: v2.std.node.Node) -> v2.std.optional.Optional<
 
 fn emit_eval_subject_tree() -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
-    root: v2.extdeps.languages.rust.rust_fixture_emitted_add_fn,
-    facts: std.types.Map { lookup: emit_eval_composed_facts }
+    test.claim.extdeps_llm_claude_trust_witness.root: v2.extdeps.languages.rust.rust_fixture_emitted_add_fn,
+    facts: std.algebra.PartialFunction { v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree.facts.lookup: emit_eval_composed_facts }
   }
 }
 

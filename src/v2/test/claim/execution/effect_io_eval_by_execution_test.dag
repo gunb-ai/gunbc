@@ -142,7 +142,7 @@ fn effect_io_eval_fact_lookup(node: v2.std.node.Node) -> v2.std.optional.Optiona
 fn effect_io_eval_tree() -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: effect_io_eval_roundtrip_node,
-    facts: std.types.Map { lookup: effect_io_eval_fact_lookup }
+    facts: std.algebra.PartialFunction { lookup: effect_io_eval_fact_lookup }
   }
 }
 

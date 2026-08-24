@@ -1497,39 +1497,43 @@ fn wasm_language_model_canonical_symbols() -> PointwisePower<Symbol> {
 }
 
 fn wasm_integer_spec_facts(facts: WasmIntegerPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          v2.std.optional.Present { value: wasm_int_width_node(width: facts.width) }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          v2.std.optional.Present { value: wasm_inhabitant_atom(id: ^wasm_tag_sign_agnostic_modular) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: wasm_inhabitant_atom(id: ^wasm_repr_sign_agnostic_modular) }
-      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
-          v2.std.optional.Present { value: wasm_inhabitant_atom(id: ^wasm_tag_modular_wrap) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(
+            empty_map(),
+            discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+            wasm_inhabitant_atom(id: facts.surface_spelling)
+          ),
+          discriminant(v: ModelCoreFactAxisWidth {}),
+          wasm_int_width_node(width: facts.width)
+        ),
+        discriminant(v: ModelCoreFactAxisSignedness {}),
+        wasm_inhabitant_atom(id: ^wasm_tag_sign_agnostic_modular)
+      ),
+      discriminant(v: ModelCoreFactAxisEncoding {}),
+      wasm_inhabitant_atom(id: ^wasm_repr_sign_agnostic_modular)
+    ),
+    discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
+    wasm_inhabitant_atom(id: ^wasm_tag_modular_wrap)
+  )
 }
 
 fn wasm_float_spec_facts(facts: WasmFloatPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: wasm_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          v2.std.optional.Present { value: wasm_float_width_node(width: facts.width) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: wasm_inhabitant_atom(id: facts.ieee754_binary) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      map_insert(
+        empty_map(),
+        discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+        wasm_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      discriminant(v: ModelCoreFactAxisWidth {}),
+      wasm_float_width_node(width: facts.width)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    wasm_inhabitant_atom(id: facts.ieee754_binary)
+  )
 }
 
 fn wasm_primitive_bundle_from_integer_facts(facts: WasmIntegerPrimitiveFacts) -> PrimitiveFactBundle {

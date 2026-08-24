@@ -225,44 +225,36 @@ fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> v2.std.node.
 }
 }
 
-fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
-  std.types.Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}) {
-          v2.std.optional.Present { value: sql_inhabitant_atom(id: ^sql_tag_signed) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Node> {
+  v2.std.collection.map_insert(
+    v2.std.collection.map_insert(
+      v2.std.collection.empty_map(),
+      discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
+      sql_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}),
+    sql_inhabitant_atom(id: ^sql_tag_signed)
+  )
 }
 
-fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
-  std.types.Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Node> {
+  v2.std.collection.map_insert(
+    v2.std.collection.empty_map(),
+    discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
+    sql_inhabitant_atom(id: facts.surface_spelling)
+  )
 }
 
-fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
-  std.types.Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: sql_inhabitant_atom(id: facts.representation) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Node> {
+  v2.std.collection.map_insert(
+    v2.std.collection.map_insert(
+      v2.std.collection.empty_map(),
+      discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
+      sql_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}),
+    sql_inhabitant_atom(id: facts.representation)
+  )
 }
 
 fn sql_primitive_bundle_from_integer_facts(facts: SqlIntegerPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {

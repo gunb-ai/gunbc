@@ -18,14 +18,14 @@ use crate::std_coercion::TypeRealizationDecision::*;
 pub use crate::std_coercion::{
     CallableRepr, CastSyntax, InhabitantDecl, TypeCheckpoint, TypeRealizationDecision,
 };
-pub use crate::std_types::List;
 pub use crate::std_types::{canonical_container_names, container_template_algebra};
 pub use crate::v1_compiler_artifact::RenderTarget;
-use crate::v1_compiler_artifact::RenderTarget::*;
+use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::qualified_last_segment;
-pub use crate::v1_std_core::Node;
+use crate::v1_std_core::InferredNode::Resolved;
+pub use crate::v1_std_core::{InferredNode, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -33,27 +33,27 @@ use std::rc::Rc;
 
 pub fn target_checkpoints(target: RenderTarget) -> Rc<Vec<Rc<TypeCheckpoint>>> {
     match target.clone() {
-        RenderTarget::Rust => crate::extdeps_languages_rust_types::rust_type_checkpoints(),
-        RenderTarget::Python => crate::extdeps_languages_python_types::python_type_checkpoints(),
-        RenderTarget::Go => crate::extdeps_languages_go_types::go_type_checkpoints(),
-        RenderTarget::Dag => crate::extdeps_languages_dag_types::dag_type_checkpoints(),
+        RenderTarget::Rust => rust_type_checkpoints(),
+        RenderTarget::Python => python_type_checkpoints(),
+        RenderTarget::Go => go_type_checkpoints(),
+        RenderTarget::Dag => dag_type_checkpoints(),
     }
 }
 
 pub fn target_inhabitants(target: RenderTarget) -> Rc<Vec<Rc<InhabitantDecl>>> {
     match target.clone() {
-        RenderTarget::Rust => crate::extdeps_languages_rust_types::rust_algebra_inhabitants(),
-        RenderTarget::Python => crate::extdeps_languages_python_types::python_algebra_inhabitants(),
-        RenderTarget::Go => crate::extdeps_languages_go_types::go_algebra_inhabitants(),
+        RenderTarget::Rust => rust_algebra_inhabitants(),
+        RenderTarget::Python => python_algebra_inhabitants(),
+        RenderTarget::Go => go_algebra_inhabitants(),
         RenderTarget::Dag => Rc::new(vec![]),
     }
 }
 
 pub fn target_callable(target: RenderTarget) -> Rc<CallableRepr> {
     match target.clone() {
-        RenderTarget::Rust => crate::extdeps_languages_rust_types::rust_callable(),
-        RenderTarget::Python => crate::extdeps_languages_python_types::python_callable(),
-        RenderTarget::Go => crate::extdeps_languages_go_types::go_callable(),
+        RenderTarget::Rust => rust_callable(),
+        RenderTarget::Python => python_callable(),
+        RenderTarget::Go => go_callable(),
         RenderTarget::Dag => Rc::new(CallableRepr {
             template: "fn({params}) -> {return}".to_string(),
             param_separator: ", ".to_string(),
@@ -65,18 +65,18 @@ pub fn target_callable(target: RenderTarget) -> Rc<CallableRepr> {
 
 pub fn target_optional_template(target: RenderTarget) -> String {
     match target.clone() {
-        RenderTarget::Rust => crate::extdeps_languages_rust_types::rust_optional_template(),
-        RenderTarget::Python => crate::extdeps_languages_python_types::python_optional_template(),
-        RenderTarget::Go => crate::extdeps_languages_go_types::go_optional_template(),
+        RenderTarget::Rust => rust_optional_template(),
+        RenderTarget::Python => python_optional_template(),
+        RenderTarget::Go => go_optional_template(),
         RenderTarget::Dag => "{0}?".to_string(),
     }
 }
 
 pub fn target_cast_syntax(target: RenderTarget) -> Option<Rc<CastSyntax>> {
     match target.clone() {
-        RenderTarget::Rust => Some(crate::extdeps_languages_rust_types::rust_cast_syntax()),
-        RenderTarget::Python => Some(crate::extdeps_languages_python_types::python_cast_syntax()),
-        RenderTarget::Go => Some(crate::extdeps_languages_go_types::go_cast_syntax()),
+        RenderTarget::Rust => Some(rust_cast_syntax()),
+        RenderTarget::Python => Some(python_cast_syntax()),
+        RenderTarget::Go => Some(go_cast_syntax()),
         RenderTarget::Dag => None,
     }
 }
@@ -273,14 +273,14 @@ pub fn type_realization_decision(
                     };
                     match native.clone() {
                         Some(host) => Rc::new(TypeRealizationDecision::Realized {
-                            checkpoint: TypeCheckpoint {
+                            checkpoint: Rc::new(TypeCheckpoint {
                                 dag_name: dag_name.clone(),
                                 target_type: host.clone(),
                                 grounding_type: host.clone(),
                                 default_expr: None,
                                 is_copy: None,
                                 literal_suffix: None,
-                            },
+                            }),
                         }),
                         None => Rc::new(TypeRealizationDecision::Unrealized),
                     }
@@ -330,7 +330,7 @@ pub fn coerce_primitive_type_dotted_fallback_note() -> String {
 pub fn coerce_primitive_type(target: RenderTarget, dag_name: String, decl_file: String) -> String {
     match lookup_checkpoint(target.clone(), dag_name.clone(), decl_file.clone()) {
         Some(cp) => cp.target_type.clone(),
-        None => crate::v1_std_core::qualified_last_segment(dag_name.clone()),
+        None => qualified_last_segment(dag_name.clone()),
     }
 }
 
@@ -366,7 +366,7 @@ pub fn lookup_inhabitant(target: RenderTarget, algebra: String) -> Option<Rc<Inh
 }
 
 pub fn coerce_container_template(target: RenderTarget, container_name: String) -> Option<String> {
-    match crate::std_types::container_template_algebra(container_name.clone()) {
+    match container_template_algebra(container_name.clone()) {
         Some(algebra) => match lookup_inhabitant(target.clone(), algebra.clone()) {
             Some(inh) => Some(inh.template.clone()),
             None => None,
@@ -456,10 +456,7 @@ pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
 }
 
 pub fn inhabitant_test_names() -> Rc<Vec<String>> {
-    v1_rt::concat(
-        crate::std_types::canonical_container_names(),
-        Rc::new(vec!["PointwisePower".to_string()]),
-    )
+    canonical_container_names()
 }
 
 pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {

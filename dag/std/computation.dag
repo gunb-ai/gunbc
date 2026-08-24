@@ -126,16 +126,23 @@ type IterationDimension
   | CollectionFold
   | ArithmeticRepeat
 
+// THE FOLDABLE PROFILES ARE EXACTLY THE FINITELY SUPPORTED ONES, and saying that became possible
+// only once the carriers were split. `PartialFunctionProfile` answered `CollectionFold` here while
+// `PointwisePowerCollectionProfile` answered `none` -- the same distinction, decided two different
+// ways, because one name carried both an open function and a finite table. An open partial
+// function has no iteration dimension for the same reason an open characteristic function does
+// not: there is nothing to walk. The two open profiles now agree, and the two finite ones do.
 fn algebra_profile_to_dimension(profile: std.algebra.AlgebraProfile) -> IterationDimension? {
   match profile {
-    FreeMonoidCollectionProfile     => Present { value: CollectionFold }
-    FreeMonoidScalarProfile         => Present { value: CollectionFold }
-    BooleanAlgebraCollectionProfile => Present { value: CollectionFold }
-    PointwisePowerCollectionProfile => none
-    PartialFunctionProfile          => Present { value: CollectionFold }
-    OrderedRingProfile              => Present { value: ArithmeticRepeat }
-    ApproximateFieldProfile         => Present { value: ArithmeticRepeat }
-    BooleanAlgebraProfile           => none
+    FreeMonoidCollectionProfile        => Present { value: CollectionFold }
+    FreeMonoidScalarProfile            => Present { value: CollectionFold }
+    FinitePowerSetProfile              => Present { value: CollectionFold }
+    FinitelySupportedFunctionProfile   => Present { value: CollectionFold }
+    PointwisePowerCollectionProfile    => none
+    PartialFunctionProfile             => none
+    OrderedRingProfile                 => Present { value: ArithmeticRepeat }
+    ApproximateFieldProfile            => Present { value: ArithmeticRepeat }
+    BooleanAlgebraProfile              => none
   }
 }
 

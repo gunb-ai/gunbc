@@ -83,7 +83,7 @@ fn ingested_staging_inferred_tree_from_source(source: String) -> v2.std.diagnost
           v2.std.diagnostic.outcome_accepted(
             value: v2.compiler.inferred_tree.InferredTree {
               root: inferred.root,
-              facts: std.types.Map {
+              facts: std.algebra.PartialFunction {
                 lookup: fn(key) {
                   ingested_classical_not_staging_facts_lookup(canonical: inferred, key: key)
                 }
@@ -103,7 +103,7 @@ fn ingested_emit_shape_frontier_tree_from_source(source: String) -> v2.std.diagn
       v2.std.diagnostic.outcome_accepted(
         value: v2.compiler.inferred_tree.InferredTree {
           root: arrow,
-          facts: std.types.Map {
+          facts: std.algebra.PartialFunction {
             lookup: fn(_key) {
               v2.std.optional.Absent
             }
@@ -124,7 +124,7 @@ fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> v2.std.di
           v2.std.diagnostic.outcome_accepted(
             value: v2.compiler.inferred_tree.InferredTree {
               root: inferred.root,
-              facts: std.types.Map {
+              facts: std.algebra.PartialFunction {
                 lookup: fn(key) {
                   v2.std.optional.Present { value: ingested_classical_not_composed_facts(key: key) }
                 }

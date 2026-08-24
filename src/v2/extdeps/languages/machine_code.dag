@@ -338,24 +338,28 @@ fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> v2.std.node.Nod
 }
 }
 
-fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
-  std.types.Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: mc_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}) {
-          v2.std.optional.Present { value: mc_int_width_node(width: facts.width) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}) {
-          v2.std.optional.Present { value: mc_int_kind_node(kind: facts.kind) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: mc_inhabitant_atom(id: ^mc_repr_twos_complement) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisOverflowDisposition {}) {
-          v2.std.optional.Present { value: mc_overflow_node(overflow: facts.overflow_release) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Node> {
+  v2.std.collection.map_insert(
+    v2.std.collection.map_insert(
+      v2.std.collection.map_insert(
+        v2.std.collection.map_insert(
+          v2.std.collection.map_insert(
+            v2.std.collection.empty_map(),
+            discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
+            mc_inhabitant_atom(id: facts.surface_spelling)
+          ),
+          discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}),
+          mc_int_width_node(width: facts.width)
+        ),
+        discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}),
+        mc_int_kind_node(kind: facts.kind)
+      ),
+      discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}),
+      mc_inhabitant_atom(id: ^mc_repr_twos_complement)
+    ),
+    discriminant(v: v2.std.model_core.ModelCoreFactAxisOverflowDisposition {}),
+    mc_overflow_node(overflow: facts.overflow_release)
+  )
 }
 
 fn mc_primitive_bundle_from_integer_facts(facts: MachineIntegerPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {

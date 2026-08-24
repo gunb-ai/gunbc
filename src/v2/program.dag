@@ -280,7 +280,7 @@ fn program_facts_lookup(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.c
 fn program_tree(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.types.Map { lookup: program_facts_lookup }
+    facts: std.algebra.PartialFunction { lookup: program_facts_lookup }
   }
 }
 
@@ -318,7 +318,7 @@ fn program_pick_if_arrow_facts_lookup(node: v2.std.node.Node) -> v2.std.optional
 fn program_pick_if_arrow_tree(callee: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: callee,
-    facts: std.types.Map { lookup: program_pick_if_arrow_facts_lookup }
+    facts: std.algebra.PartialFunction { lookup: program_pick_if_arrow_facts_lookup }
   }
 }
 

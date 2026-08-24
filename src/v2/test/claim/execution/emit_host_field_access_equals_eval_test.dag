@@ -60,8 +60,8 @@ fn rust_field_access_emit_host_wrong_field_body() -> v2.std.node.Node {
 fn emit_field_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   v2.std.diagnostic.outcome_accepted(
     value: v2.compiler.inferred_tree.InferredTree {
-      root: v2.extdeps.languages.dag.dag_field_access_arrow_with_body_fixture,
-      facts: std.types.Map { lookup: emit_field_eval_composed_facts }
+      test.claim.extdeps_llm_claude_trust_witness.root: v2.extdeps.languages.dag.dag_field_access_arrow_with_body_fixture,
+      facts: std.algebra.PartialFunction { lookup: emit_field_eval_composed_facts }
     }
   )
 }
@@ -69,8 +69,8 @@ fn emit_field_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infe
 fn emit_field_eval_alt_descent_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   v2.std.diagnostic.outcome_accepted(
     value: v2.compiler.inferred_tree.InferredTree {
-      root: v2.extdeps.languages.dag.dag_field_access_arrow_with_body_fixture,
-      facts: std.types.Map { lookup: emit_field_eval_alt_descent_composed_facts }
+      test.claim.extdeps_llm_claude_trust_witness.root: v2.extdeps.languages.dag.dag_field_access_arrow_with_body_fixture,
+      facts: std.algebra.PartialFunction { lookup: emit_field_eval_alt_descent_composed_facts }
     }
   )
 }

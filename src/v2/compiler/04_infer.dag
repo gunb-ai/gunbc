@@ -84,7 +84,7 @@ data infer_emit_shape_frontier_note: String = "Test-only emit-shape frontier (re
 fn infer_emit_shape_frontier_inferred_tree(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.types.Map {
+    facts: std.algebra.PartialFunction {
       lookup: fn(_key) {
         v2.std.optional.Absent
       }
@@ -395,7 +395,7 @@ fn lookup_inferred_facts_in_entries(
   )
 }
 
-fn facts_map_from_entries(entries: List<v2.compiler.inferred_tree.InferredFactsEntry>) -> v2.std.diagnostic.Outcome<Map<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts>> {
+fn facts_map_from_entries(entries: List<v2.compiler.inferred_tree.InferredFactsEntry>) -> v2.std.diagnostic.Outcome<std.algebra.PartialFunction<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts>> {
   match fold(entries, init: v2.std.diagnostic.Accepted { value: empty_inferred_facts_entry_list(), diagnostics: v2.std.diagnostic.None }, f: fn(acc, entry) {
     match acc {
       Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -414,7 +414,7 @@ fn facts_map_from_entries(entries: List<v2.compiler.inferred_tree.InferredFactsE
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
     Accepted { value: admitted, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
-        value: std.types.Map {
+        value: std.algebra.PartialFunction {
           lookup: fn(key) {
             lookup_inferred_facts_in_entries(entries: admitted, key: key)
           }

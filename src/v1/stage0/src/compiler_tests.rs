@@ -415,6 +415,56 @@ mod compiler_tests {
     }
 
     #[test]
+    fn unlisted_import_use_witness() {
+        // Discriminating witness for the selective-import fail-closed mask
+        // (resolve_node_bounded masked boundary). module_b references `Widget`
+        // without importing it (imports only `Gadget`) -> UnlistedImportUse must
+        // be emitted. module_c imports `Widget` -> must NOT be flagged (red control:
+        // an inert mask fails the first assert; an over-firing mask fails the second).
+        let result = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let module_a = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "module_a.dag".to_string(),
+                    content: "module module_a\ntype Widget { x: String }\ntype Gadget { y: String }\n".to_string(),
+                });
+                let module_b = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "module_b.dag".to_string(),
+                    content: "module module_b\nimport module_a { Gadget }\nfn use_widget(w: Widget) -> Widget { w }\n".to_string(),
+                });
+                let module_c = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "module_c.dag".to_string(),
+                    content: "module module_c\nimport module_a { Widget }\nfn use_widget(w: Widget) -> Widget { w }\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(
+                    std::rc::Rc::new(im::vector![module_a, module_b, module_c]),
+                    crate::v1_compiler_artifact::RenderTarget::Rust,
+                );
+                let unlisted: Vec<_> = result.diagnostics.iter()
+                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }))
+                    .collect();
+                let widget_in_b = unlisted.iter().any(|e| {
+                    e.module_name == "module_b"
+                        && matches!(&*e.diagnostic, crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { name, .. } if name == "Widget")
+                });
+                assert!(
+                    widget_in_b,
+                    "expected UnlistedImportUse 'Widget' in module_b (uses Widget, imports only Gadget), got: {:?}",
+                    result.diagnostics
+                );
+                let flagged_in_c = unlisted.iter().any(|e| e.module_name == "module_c");
+                assert!(
+                    !flagged_in_c,
+                    "module_c imports Widget -> must NOT be flagged (mask over-firing), got: {:?}",
+                    unlisted
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("unlisted_import_use_witness panicked");
+    }
+
+    #[test]
     fn call_shape_wall_witness() {
         // DISCRIMINATING RED for direct_call_shape_wall_note (04_infer). Before the
         // wall, `sub(a: 10, bb: 3)` against `fn sub(a: Int, b: Int)` compiled with
@@ -472,12 +522,30 @@ mod compiler_tests {
                 // it, so the compile seam must too) all stay silent.
                 let green = compile_one(
                     "green.dag",
-                    "module green\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn named() -> Int { sub(a: 10, b: 3) }\nfn positional() -> Int { sub(10, 3) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\n",
+                    "module green\nfn sub(a: Int, b: Int) -> Int { a - b }\nfn ignore_ctx(_ctx: Int, b: Int) -> Int { b }\nfn direct_order(a: Int, b: Int) -> Int { b }\nfn underscore_order(_a: Int, b: Int) -> Int { b }\nfn underscore_exact_order(_a: Int, b: Int) -> Int { b }\nfn named() -> Int { sub(a: 10, b: 3) }\nfn positional() -> Int { sub(10, 3) }\nfn underscore_idiom() -> Int { ignore_ctx(ctx: 1, b: 2) }\nfn direct_order_control() -> Int { direct_order(b: 23, a: 11) }\nfn underscore_order_witness() -> Int { underscore_order(b: 23, a: 11) }\nfn underscore_exact_order_control() -> Int { underscore_exact_order(b: 23, _a: 11) }\n",
                 );
                 assert!(
                     green.diagnostics.is_empty(),
                     "correct call shapes must compile with NO diagnostic of any severity, got: {:?}",
                     green.diagnostics
+                );
+                let emitted = green.files.iter()
+                    .find(|f| f.path.ends_with("green.rs"))
+                    .expect("green fixture must emit its Rust module");
+                assert!(
+                    emitted.content.contains("direct_order(11, 23)"),
+                    "control: ordinary named arguments must follow declaration order, got: {}",
+                    emitted.content
+                );
+                assert!(
+                    emitted.content.contains("underscore_exact_order(11, 23)"),
+                    "control: exact underscore-prefixed caller labels must remain accepted and follow declaration order, got: {}",
+                    emitted.content
+                );
+                assert!(
+                    emitted.content.contains("underscore_order(11, 23)"),
+                    "named arguments accepted through the declaration-side underscore idiom must follow that same declaration order, got: {}",
+                    emitted.content
                 );
             })
             .expect("failed to spawn thread")
@@ -1785,39 +1853,39 @@ mod compiler_tests {
     fn coercion_rust_checkpoint_resolves_primitives() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Int".into()),
+            coerce_primitive_type(RenderTarget::Rust, "Int".into(), "".into()),
             "i64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Float".into()),
+            coerce_primitive_type(RenderTarget::Rust, "Float".into(), "".into()),
             "f64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Bool".into()),
+            coerce_primitive_type(RenderTarget::Rust, "Bool".into(), "".into()),
             "bool"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Symbol".into()),
+            coerce_primitive_type(RenderTarget::Rust, "Symbol".into(), "".into()),
             "String"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Unit".into()),
+            coerce_primitive_type(RenderTarget::Rust, "Unit".into(), "".into()),
             "()"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "String".into()),
+            coerce_primitive_type(RenderTarget::Rust, "String".into(), "".into()),
             "String"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Bytes".into()),
+            coerce_primitive_type(RenderTarget::Rust, "Bytes".into(), "".into()),
             "Vec<u8>"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Secret".into()),
+            coerce_primitive_type(RenderTarget::Rust, "Secret".into(), "".into()),
             "String"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Json".into()),
+            coerce_primitive_type(RenderTarget::Rust, "Json".into(), "".into()),
             "serde_json::Value"
         );
     }
@@ -1826,35 +1894,35 @@ mod compiler_tests {
     fn coercion_python_checkpoint_resolves_primitives() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Int".into()),
+            coerce_primitive_type(RenderTarget::Python, "Int".into(), "".into()),
             "int"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Float".into()),
+            coerce_primitive_type(RenderTarget::Python, "Float".into(), "".into()),
             "float"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Bool".into()),
+            coerce_primitive_type(RenderTarget::Python, "Bool".into(), "".into()),
             "bool"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Unit".into()),
+            coerce_primitive_type(RenderTarget::Python, "Unit".into(), "".into()),
             "None"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "String".into()),
+            coerce_primitive_type(RenderTarget::Python, "String".into(), "".into()),
             "str"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Bytes".into()),
+            coerce_primitive_type(RenderTarget::Python, "Bytes".into(), "".into()),
             "bytes"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Secret".into()),
+            coerce_primitive_type(RenderTarget::Python, "Secret".into(), "".into()),
             "str"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Python, "Json".into()),
+            coerce_primitive_type(RenderTarget::Python, "Json".into(), "".into()),
             "dict"
         );
     }
@@ -1863,35 +1931,35 @@ mod compiler_tests {
     fn coercion_go_checkpoint_resolves_primitives() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Int".into()),
+            coerce_primitive_type(RenderTarget::Go, "Int".into(), "".into()),
             "int64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Float".into()),
+            coerce_primitive_type(RenderTarget::Go, "Float".into(), "".into()),
             "float64"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Bool".into()),
+            coerce_primitive_type(RenderTarget::Go, "Bool".into(), "".into()),
             "bool"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Unit".into()),
+            coerce_primitive_type(RenderTarget::Go, "Unit".into(), "".into()),
             "struct{}"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "String".into()),
+            coerce_primitive_type(RenderTarget::Go, "String".into(), "".into()),
             "string"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Bytes".into()),
+            coerce_primitive_type(RenderTarget::Go, "Bytes".into(), "".into()),
             "[]byte"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Secret".into()),
+            coerce_primitive_type(RenderTarget::Go, "Secret".into(), "".into()),
             "string"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Go, "Json".into()),
+            coerce_primitive_type(RenderTarget::Go, "Json".into(), "".into()),
             "interface{}"
         );
     }
@@ -1900,8 +1968,12 @@ mod compiler_tests {
     fn coercion_rust_inhabitant_resolves_containers() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "BooleanAlgebra".into()),
+            coerce_container_template(RenderTarget::Rust, "FinitePowerSet".into()),
             Some("BTreeSet<{0}>".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "FinitelySupportedFunction".into()),
+            Some("HashMap<{0}, {1}>".to_string())
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Rust, "FreeMonoid".into()),
@@ -1912,15 +1984,7 @@ mod compiler_tests {
             Some("Vec<{0}>".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "std.types.List".into()),
-            Some("Vec<{0}>".to_string())
-        );
-        assert_eq!(
             coerce_container_template(RenderTarget::Rust, "Map".into()),
-            Some("HashMap<{0}, {1}>".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "std.types.Map".into()),
             Some("HashMap<{0}, {1}>".to_string())
         );
         assert_eq!(
@@ -1928,27 +1992,11 @@ mod compiler_tests {
             Some("HashMap<{0}, {1}>".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "Set".into()),
-            Some("BTreeSet<{0}>".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "std.types.Set".into()),
-            Some("BTreeSet<{0}>".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "std.algebra.FreeMonoid".into()),
-            Some("Vec<{0}>".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "std.algebra.BooleanAlgebra".into()),
-            Some("BTreeSet<{0}>".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Rust, "std.algebra.PartialFunction".into()),
-            Some("HashMap<{0}, {1}>".to_string())
-        );
-        assert_eq!(
             coerce_container_template(RenderTarget::Rust, "PointwisePower".into()),
+            Some("BTreeSet<{0}>".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Rust, "Set".into()),
             Some("BTreeSet<{0}>".to_string())
         );
     }
@@ -1957,8 +2005,12 @@ mod compiler_tests {
     fn coercion_python_inhabitant_resolves_containers() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_container_template(RenderTarget::Python, "BooleanAlgebra".into()),
+            coerce_container_template(RenderTarget::Python, "FinitePowerSet".into()),
             Some("set[{0}]".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Python, "FinitelySupportedFunction".into()),
+            Some("dict[{0}, {1}]".to_string())
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Python, "FreeMonoid".into()),
@@ -1969,15 +2021,7 @@ mod compiler_tests {
             Some("list[{0}]".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Python, "std.types.List".into()),
-            Some("list[{0}]".to_string())
-        );
-        assert_eq!(
             coerce_container_template(RenderTarget::Python, "Map".into()),
-            Some("dict[{0}, {1}]".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Python, "std.types.Map".into()),
             Some("dict[{0}, {1}]".to_string())
         );
         assert_eq!(
@@ -1985,27 +2029,11 @@ mod compiler_tests {
             Some("dict[{0}, {1}]".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Python, "Set".into()),
-            Some("set[{0}]".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Python, "std.types.Set".into()),
-            Some("set[{0}]".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Python, "std.algebra.FreeMonoid".into()),
-            Some("list[{0}]".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Python, "std.algebra.BooleanAlgebra".into()),
-            Some("set[{0}]".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Python, "std.algebra.PartialFunction".into()),
-            Some("dict[{0}, {1}]".to_string())
-        );
-        assert_eq!(
             coerce_container_template(RenderTarget::Python, "PointwisePower".into()),
+            Some("set[{0}]".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Python, "Set".into()),
             Some("set[{0}]".to_string())
         );
     }
@@ -2014,8 +2042,12 @@ mod compiler_tests {
     fn coercion_go_inhabitant_resolves_containers() {
         use crate::v1_compiler_coercion::*;
         assert_eq!(
-            coerce_container_template(RenderTarget::Go, "BooleanAlgebra".into()),
+            coerce_container_template(RenderTarget::Go, "FinitePowerSet".into()),
             Some("map[{0}]struct{}".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Go, "FinitelySupportedFunction".into()),
+            Some("map[{0}]{1}".to_string())
         );
         assert_eq!(
             coerce_container_template(RenderTarget::Go, "FreeMonoid".into()),
@@ -2026,15 +2058,7 @@ mod compiler_tests {
             Some("[]{0}".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Go, "std.types.List".into()),
-            Some("[]{0}".to_string())
-        );
-        assert_eq!(
             coerce_container_template(RenderTarget::Go, "Map".into()),
-            Some("map[{0}]{1}".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Go, "std.types.Map".into()),
             Some("map[{0}]{1}".to_string())
         );
         assert_eq!(
@@ -2042,27 +2066,11 @@ mod compiler_tests {
             Some("map[{0}]{1}".to_string())
         );
         assert_eq!(
-            coerce_container_template(RenderTarget::Go, "Set".into()),
-            Some("map[{0}]struct{}".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Go, "std.types.Set".into()),
-            Some("map[{0}]struct{}".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Go, "std.algebra.FreeMonoid".into()),
-            Some("[]{0}".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Go, "std.algebra.BooleanAlgebra".into()),
-            Some("map[{0}]struct{}".to_string())
-        );
-        assert_eq!(
-            coerce_container_template(RenderTarget::Go, "std.algebra.PartialFunction".into()),
-            Some("map[{0}]{1}".to_string())
-        );
-        assert_eq!(
             coerce_container_template(RenderTarget::Go, "PointwisePower".into()),
+            Some("map[{0}]struct{}".to_string())
+        );
+        assert_eq!(
+            coerce_container_template(RenderTarget::Go, "Set".into()),
             Some("map[{0}]struct{}".to_string())
         );
     }
@@ -2070,15 +2078,42 @@ mod compiler_tests {
     #[test]
     fn coercion_is_copy_from_checkpoint() {
         use crate::v1_compiler_coercion::*;
-        assert_eq!(is_copy(RenderTarget::Rust, "Int".into()), Some(true));
-        assert_eq!(is_copy(RenderTarget::Rust, "Float".into()), Some(true));
-        assert_eq!(is_copy(RenderTarget::Rust, "Bool".into()), Some(true));
-        assert_eq!(is_copy(RenderTarget::Rust, "Symbol".into()), Some(false));
-        assert_eq!(is_copy(RenderTarget::Rust, "Unit".into()), Some(true));
-        assert_eq!(is_copy(RenderTarget::Rust, "String".into()), Some(false));
-        assert_eq!(is_copy(RenderTarget::Rust, "Bytes".into()), Some(false));
-        assert_eq!(is_copy(RenderTarget::Rust, "Secret".into()), Some(false));
-        assert_eq!(is_copy(RenderTarget::Rust, "Json".into()), Some(false));
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Int".into(), "".into()),
+            Some(true)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Float".into(), "".into()),
+            Some(true)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Bool".into(), "".into()),
+            Some(true)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Symbol".into(), "".into()),
+            Some(false)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Unit".into(), "".into()),
+            Some(true)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "String".into(), "".into()),
+            Some(false)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Bytes".into(), "".into()),
+            Some(false)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Secret".into(), "".into()),
+            Some(false)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Json".into(), "".into()),
+            Some(false)
+        );
     }
 
     #[test]
@@ -2277,48 +2312,10 @@ mod compiler_tests {
             crate::v1_compiler_emit_rust::render_rust_type(
                 diagnostics_node,
                 empty_shared,
-                crate::v1_compiler_infer_emit_info::RustCorpusRepr::HostNative,
                 source_indices,
                 empty_emit
             ),
             "Option<NonEmptyDiagnostics>"
-        );
-    }
-
-    #[test]
-    fn groupcompletion_int_checkpoint_fires_under_faithful_corpus() {
-        // Discriminating witness for the (b) checkpoint-order fix (sharp-bee-290 sign-off,
-        // msg_6fc2ba88-549b-491e-9b6f-ab949539d682): emit_typed_item's zero-param alias-decl
-        // branch calls rust_scalar_checkpoint_render_base (the single-authority checkpoint
-        // lookup), not the HostNative-only rust_seed_host_numeric_alias, so the Int -> i64
-        // checkpoint row (dag/extdeps/languages/rust/types.dag) fires BEFORE the RHS
-        // (GroupCompletion<Nat>) is unfolded — under BOTH corpus representations. A
-        // regression that narrows this back to the HostNative-only alias makes the
-        // FaithfulFreeMonoid arm return None, which is what this witness guards.
-        assert_eq!(
-            crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
-                "Int".to_string(),
-                crate::v1_compiler_infer_emit_info::RustCorpusRepr::FaithfulFreeMonoid
-            ),
-            Some("i64".to_string())
-        );
-        assert_eq!(
-            crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
-                "Int".to_string(),
-                crate::v1_compiler_infer_emit_info::RustCorpusRepr::HostNative
-            ),
-            Some("i64".to_string())
-        );
-        // GroupCompletion itself has no checkpoint row and is not the seed host numeric
-        // alias, so the checkpoint correctly declines to render it directly (the RHS
-        // unfolding path handles it as a real 2-field struct) — the checkpoint fires ONLY
-        // for the Int/Nat leaf name, never widening to the container type.
-        assert_eq!(
-            crate::v1_compiler_emit_rust::rust_scalar_checkpoint_render_base(
-                "GroupCompletion".to_string(),
-                crate::v1_compiler_infer_emit_info::RustCorpusRepr::FaithfulFreeMonoid
-            ),
-            None
         );
     }
 
@@ -2339,7 +2336,6 @@ mod compiler_tests {
             applied,
             generics,
             shared,
-            crate::v1_compiler_infer_emit_info::RustCorpusRepr::FaithfulFreeMonoid,
             source_indices,
             variant_to_enum,
             env,
@@ -3111,6 +3107,7 @@ mod compiler_tests {
                         typed_path,
                         crate::v1_compiler_infer::build_variant_export_surface(
                             typed.clone(),
+                            variant_surfaces.clone(),
                             source_indices.clone(),
                         ),
                     );

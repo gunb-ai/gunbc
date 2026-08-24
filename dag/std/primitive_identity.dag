@@ -28,10 +28,6 @@ data primitive_interpreter_surface_unenumerable_finding_note: String = "Finding 
 data primitive_fold_list_spelling_fork_note: String = "Named finding — SPELLING FORK, not alias: contract/algebra carry fold while interpreter/emit carry fold_list. Distinct from alias groups (length/count/size are one eval_builtin_inner arm with three spellings — aliases sharing an arm cannot disagree). fold and fold_list are separate surfaces that CAN disagree; fold_list additionally lives on eval_call intercept before eval_builtin_inner, so it never reaches builtin_function_registry."
 
 // Named finding — first two-realizations-one-name specimen: lookup has eval_method_call short-circuit AND an algebra template arm; the short-circuit shadows the algebra arm. Better join specimen than index_by for SurfaceJoinsTwoIdentities / realization reconciliation. keys and values DO have algebra template arms — determinism undetectability is about the lens view of unqualified symbols, not absence of algebra arms.
-type PrimitiveIdentity {
-  slug: std.types.NonEmptyStr
-}
-
 type PrimitiveSemanticContract {
   canonical_name: std.types.NonEmptyStr
 }
@@ -72,6 +68,7 @@ type TraversalOrder
   = HostUnspecifiedOrder
   | CanonicalOrder
   | SourcePreservingOrder
+  | OrderFreeResult
   | TraversalOrderUnclassified
 
 type PrimitiveTraversalOrderFact {
@@ -119,10 +116,6 @@ type PrimitiveJoinViolation
       handler: std.decl_ref.DeclarationRef
     }
   | DuplicateSemanticDefinition { identity: PrimitiveIdentity }
-
-fn primitive_identity_slug(name: String) -> PrimitiveIdentity {
-  PrimitiveIdentity { slug: concat("primitive.", name) as std.types.NonEmptyStr }
-}
 
 fn primitive_identity_eq(left: PrimitiveIdentity, right: PrimitiveIdentity) -> Bool {
   left.slug == right.slug
@@ -294,12 +287,7 @@ fn primitive_identity_for_symbol(
 ) -> PrimitiveIdentity? {
   match primitive_identity_lookup(authority: authority, authored_symbol: authored_symbol) {
     Present { value: id } => Present { value: id }
-    Absent =>
-      if primitive_identity_is_declared(identity: primitive_identity_slug(name: authored_symbol)) {
-        Present { value: primitive_identity_slug(name: authored_symbol) }
-      } else {
-        none
-      }
+    Absent => primitive_identity_for_canonical_name(authored_symbol: authored_symbol)
   }
 }
 
@@ -741,33 +729,6 @@ fn primitive_d0_host_unspecified_traversal_classified() -> Bool {
     })
 }
 
-// ---------------------------------------------------------------------------
-// Primitive projection: is a DECLARATION the modeled surface of a PRIMITIVE?
-// ---------------------------------------------------------------------------
-
-data primitive_projection_identity_key_note: String = "The projection is keyed on std.decl_ref DeclarationRef, which is the namespace layer's own identity for a declaration (DESIGN section 3: namespace supplies declaration identity, this carrier supplies semantic primitive identity). No new identity type is minted here. The alternative shape considered and refused was a per-declaration marker row beside each fn: it is a second representation scattered across modules rather than one authority, it keys on a bare name inside a module scope so two same-named declarations collapse into one, and it has no room for a fidelity distinction. Module qualification answers the second; this single carrier answers the first; ProjectionFidelity answers the third."
-
-data primitive_projection_fidelity_note: String = "HostRealizedSeam and ModeledProjection agree at the resolver -- both mean the declaration and the primitive are ONE authority, so a candidate collector must not report them as two. They are kept apart because they are different facts with different futures, and averaging them into one flag would erase the difference. A HostRealizedSeam body is a SELF-CALL (v2.std.decl_index decl_facts is decl_facts(pool_roots: pool_roots)): it is correct by construction, because a body that could never survive being reached is exactly what a declared host seam should look like -- reaching it recurses to the evaluation-budget refusal. A ModeledProjection body is REAL CODE that the builtin arm intercepts ahead of user-fn dispatch (v2.std.algebra length has a genuine fold_list body no bare call reaches): it is dead code that looks live, and someone will eventually edit it believing it runs. This carrier makes that observable rather than folklore. Repairing the dead-code half is NOT this carrier's job and is not claimed here."
-
-type ProjectionFidelity
-  = HostRealizedSeam
-  | ModeledProjection
-  | DivergentProjection { divergence: NonEmptyStr }
-
-type PrimitiveProjection {
-  primitive: PrimitiveIdentity
-  declaration: DeclarationRef
-  fidelity: ProjectionFidelity
-}
-
-type PrimitiveProjectionAnswer
-  = DeclarationProjectsPrimitive {
-      identity: PrimitiveIdentity
-      fidelity: ProjectionFidelity
-    }
-  | DeclarationProjectsNoPrimitive
-  | DeclarationPrimitiveUndisposed { authored_symbol: NonEmptyStr }
-
 type PrimitiveJoinProjectionViolation
   = ProjectionNamesUnknownPrimitive {
       declaration: DeclarationRef
@@ -776,16 +737,6 @@ type PrimitiveJoinProjectionViolation
   | DuplicateProjectionForDeclaration { declaration: DeclarationRef }
 
 data primitive_declared_population_note: String = "The declared semantic-primitive population. It is the join's denominator: a projection row or a surface row naming an identity that is not declared here REFUSES rather than being admitted on the strength of its spelling. It is NOT yet the whole primitive vocabulary -- primitive_undisposed_surface_symbol_count measures what is still undeclared, and the roadmap node primitive-identity-join keeps population-wide closure as its terminal bar."
-
-data primitive_length: PrimitiveIdentity = primitive_identity_slug(name: "length")
-data primitive_map_insert: PrimitiveIdentity = primitive_identity_slug(name: "map_insert")
-data primitive_map_get: PrimitiveIdentity = primitive_identity_slug(name: "map_get")
-data primitive_empty_map: PrimitiveIdentity = primitive_identity_slug(name: "empty_map")
-data primitive_decl_facts: PrimitiveIdentity = primitive_identity_slug(name: "decl_facts")
-data primitive_export_signature_facts: PrimitiveIdentity = primitive_identity_slug(name: "export_signature_facts")
-data primitive_data_decl_type_facts: PrimitiveIdentity = primitive_identity_slug(name: "data_decl_type_facts")
-data primitive_concept_decl_facts: PrimitiveIdentity = primitive_identity_slug(name: "concept_decl_facts")
-data primitive_concept_decl_facts_live: PrimitiveIdentity = primitive_identity_slug(name: "concept_decl_facts_live")
 
 fn primitive_definition_of(name: String) -> PrimitiveDefinition {
   PrimitiveDefinition {
@@ -818,88 +769,6 @@ fn primitive_identity_is_declared(identity: PrimitiveIdentity) -> Bool {
     |> any(fn(d) { primitive_identity_eq(left: d.identity, right: identity) })
 }
 
-data primitive_projection_roster_note: String = "One row per declaration that is the modeled surface of a declared primitive. Every row was established by READING THE DECLARATION, not by matching its name: the HostRealizedSeam rows are declarations whose whole body is a self-call, and the ModeledProjection rows are declarations with a real body that the builtin arm intercepts ahead of. The single DivergentProjection row is v2.std.collection map_get, whose declared return type is Outcome<Optional<V>> against the primitive's Optional<V>; it is carried rather than omitted because omission and divergence are different answers -- omission means nobody has looked, divergence means someone looked and found two authorities. A consumer collecting call candidates must suppress the builtin co-candidate for the first two fidelities and must keep refusing on the third."
-
-fn primitive_projection_row(
-  primitive: PrimitiveIdentity,
-  module_path: String,
-  decl_name: String,
-  fidelity: ProjectionFidelity,
-) -> PrimitiveProjection {
-  PrimitiveProjection {
-    primitive: primitive,
-    declaration: decl_ref(module_path: module_path, decl_name: decl_name),
-    fidelity: fidelity,
-  }
-}
-
-fn primitive_projection_roster() -> List<PrimitiveProjection> {
-  [
-    primitive_projection_row(
-      primitive: primitive_decl_facts,
-      module_path: "v2.std.decl_index",
-      decl_name: "decl_facts",
-      fidelity: HostRealizedSeam,
-    ),
-    primitive_projection_row(
-      primitive: primitive_export_signature_facts,
-      module_path: "v2.std.decl_index",
-      decl_name: "export_signature_facts",
-      fidelity: HostRealizedSeam,
-    ),
-    primitive_projection_row(
-      primitive: primitive_data_decl_type_facts,
-      module_path: "v2.std.decl_index",
-      decl_name: "data_decl_type_facts",
-      fidelity: HostRealizedSeam,
-    ),
-    primitive_projection_row(
-      primitive: primitive_concept_decl_facts,
-      module_path: "v2.std.concept_index",
-      decl_name: "concept_decl_facts",
-      fidelity: HostRealizedSeam,
-    ),
-    primitive_projection_row(
-      primitive: primitive_concept_decl_facts_live,
-      module_path: "v2.std.concept_index",
-      decl_name: "concept_decl_facts_live",
-      fidelity: HostRealizedSeam,
-    ),
-    primitive_projection_row(
-      primitive: primitive_empty_map,
-      module_path: "v2.std.collection",
-      decl_name: "empty_map_primitive_delegate",
-      fidelity: HostRealizedSeam,
-    ),
-    primitive_projection_row(
-      primitive: primitive_length,
-      module_path: "v2.std.algebra",
-      decl_name: "length",
-      fidelity: ModeledProjection,
-    ),
-    primitive_projection_row(
-      primitive: primitive_map_insert,
-      module_path: "v2.std.collection",
-      decl_name: "map_insert",
-      fidelity: ModeledProjection,
-    ),
-    primitive_projection_row(
-      primitive: primitive_empty_map,
-      module_path: "v2.std.collection",
-      decl_name: "empty_map",
-      fidelity: ModeledProjection,
-    ),
-    primitive_projection_row(
-      primitive: primitive_map_get,
-      module_path: "v2.std.collection",
-      decl_name: "map_get",
-      fidelity: DivergentProjection {
-        divergence: "declared return Outcome<Optional<V>> against the primitive's Optional<V>" as NonEmptyStr,
-      },
-    ),
-  ]
-}
-
 data primitive_projection_query_note: String = "The question a candidate collector asks, and it is TOTAL: every DeclarationRef gets an answer. Absence and divergence are different states at the consumer, which is the distinction a boolean suppress flag could not carry.
 
 AND ABSENCE ITSELF IS TWO STATES, NOT ONE -- the top-as-answer / top-as-ignorance split, in the arm where it is most expensive. DeclarationProjectsNoPrimitive means CLASSIFIED: no primitive-bearing surface carries this declaration's name at all, so no builtin co-candidate can exist and a consumer may treat two candidates as two authorities. DeclarationPrimitiveUndisposed means UNCLASSIFIED: a surface does carry the name, but nobody has declared whether this declaration projects it. Collapsing them would hand a consumer one answer meaning both -this is genuinely not a projection- and -I do not know-, and at a candidate-resolution wall the ignorance arm lands on the REFUSING side: measured at the time of writing, 13 symbols are disposed against 196 undisposed, so the collapsed answer is the shortest path to a corpus-wide false-refusal storm. Requested by gunbc#8952, which consumes this query, and correct independently of that consumer.
@@ -909,23 +778,6 @@ The discrimination is DERIVED, not declared: it asks whether the five-surface ce
 fn primitive_surface_carries_symbol(authored_symbol: String) -> Bool {
   primitive_surface_census_derived()
     |> any(fn(row) { (row.authored_symbol as String) == authored_symbol })
-}
-
-fn primitive_projection_row_for_declaration(
-  declaration: DeclarationRef
-) -> PrimitiveProjection? {
-  primitive_projection_roster()
-    |> fold(init: none, f: fn(acc, row) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if declaration_ref_eq(a: row.declaration, b: declaration) {
-            Present { value: row }
-          } else {
-            acc
-          }
-      }
-    })
 }
 
 fn primitive_projection_for_declaration(declaration: DeclarationRef) -> PrimitiveProjectionAnswer {
@@ -1172,4 +1024,98 @@ fn registry_symbols_with_no_enumerated_runtime_row() -> List<String> {
 
 fn registry_symbols_with_no_enumerated_runtime_row_count() -> Int {
   count(registry_symbols_with_no_enumerated_runtime_row())
+}
+
+// ---------------------------------------------------------------------------
+// Traversal-order denominator (determinism-denominator-closure first slice).
+//
+// v2.lens.determinism used to carry its own two-row registry keyed on a raw
+// authored Symbol. That registry was the WallAfterGrounding this section is the
+// ground for: its own compile_gate_law recorded that absence from it was not
+// evidence of determinism, because nothing related the roster to the declared
+// primitive population. The relation now exists in one direction only -- every
+// DECLARED PrimitiveDefinition must carry exactly one PrimitiveTraversalOrderFact,
+// and a definition with no fact is a typed refusal, not a silent Deterministic.
+
+data primitive_order_free_result_note: String = "OrderFreeResult is a fourth classified answer, not a synonym for TraversalOrderUnclassified. The two are the not-applicable / malformed conflation DESIGN names as a recurring failure mode read on the traversal axis: OrderFreeResult says the primitive's result exposes no traversal at all (a count, a lookup, a constructed Map -- the order question belongs to whatever later TRAVERSES the result, not here), while TraversalOrderUnclassified says nobody has answered the question. They have opposite owners and opposite repairs: OrderFreeResult is terminal, Unclassified ranks for classification work and refuses at every call site until it is done. Collapsing them would have made every length/map_get call an order leak, which is false, or made every unclassified primitive silently safe, which is the fail-open this slice closes."
+
+data primitive_length_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_length, order: OrderFreeResult }
+
+data primitive_map_insert_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_map_insert, order: OrderFreeResult }
+
+data primitive_map_get_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_map_get, order: OrderFreeResult }
+
+data primitive_empty_map_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_empty_map, order: OrderFreeResult }
+
+data primitive_decl_facts_traversal_note: String = "The four parse-only reflection primitives are CanonicalOrder by EXECUTED READING of their realizations, not by their names. decl_facts routes through coproduct_reflection decl_facts_corpus_walk, whose final step sorts every fact by (rel_path, name, kind_ord) before returning. export_signature_facts derives from decl_facts_for_roots and preserves that order. concept_decl_facts and data_decl_type_facts route through decls_parse_only_fail_closed, which sorts its module list (decls_parse_only_from_disk) or its inventory entries by source path (decls_parse_only_from_inventory) before walking items in source order. concept_decl_facts_live is the one that is NOT canonical: eval_concept_decl_facts_live walks ctx.modules and module.items directly, so its order is the program's own module-load and source order -- deterministic for a fixed program, which is what SourcePreservingOrder means, and NOT a host hash order."
+
+data primitive_decl_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_decl_facts, order: CanonicalOrder }
+
+data primitive_export_signature_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_export_signature_facts, order: CanonicalOrder }
+
+data primitive_data_decl_type_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_data_decl_type_facts, order: CanonicalOrder }
+
+data primitive_concept_decl_facts_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_concept_decl_facts, order: CanonicalOrder }
+
+data primitive_concept_decl_facts_live_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_concept_decl_facts_live, order: SourcePreservingOrder }
+
+data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
+  primitive_length_traversal,
+  primitive_map_insert_traversal,
+  primitive_map_get_traversal,
+  primitive_empty_map_traversal,
+  primitive_decl_facts_traversal,
+  primitive_export_signature_facts_traversal,
+  primitive_data_decl_type_facts_traversal,
+  primitive_concept_decl_facts_traversal,
+  primitive_concept_decl_facts_live_traversal,
+]
+
+fn primitive_declared_traversal_facts() -> List<PrimitiveTraversalOrderFact> {
+  concat(primitive_d0_traversal_facts, primitive_projection_traversal_facts)
+}
+
+fn primitive_traversal_order_for_identity(identity: PrimitiveIdentity) -> TraversalOrder? {
+  primitive_declared_traversal_facts()
+    |> fold(init: none, f: fn(acc, fact) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if primitive_identity_eq(left: fact.primitive, right: identity) {
+            Present { value: fact.order }
+          } else {
+            none
+          }
+      }
+    })
+}
+
+data primitive_identity_for_canonical_name_note: String = "The declaration-scoped half of primitive_identity_for_symbol, lifted out so a consumer that is NOT one of the five realization surfaces can ask the same question without naming a surface it does not inhabit. A call node in a compiled tree is a SOURCE invocation, so passing it any PrimitiveSurfaceAuthority would be a fabricated join key; it may only ask whether the authored name IS a declared primitive's canonical name. primitive_identity_for_symbol's second arm now calls this, so the two cannot drift."
+
+fn primitive_identity_for_canonical_name(authored_symbol: String) -> PrimitiveIdentity? {
+  if primitive_identity_is_declared(identity: primitive_identity_slug(name: authored_symbol)) {
+    Present { value: primitive_identity_slug(name: authored_symbol) }
+  } else {
+    none
+  }
+}
+
+data primitive_traversal_denominator_note: String = "The closure predicate the determinism gate is enrolled on. It is deliberately one-directional: it asks that every DECLARED definition carry a fact, not that every fact name a declared definition, because an orphan fact is inert while a factless definition is a call site the gate would classify Deterministic by silence. Naming a new primitive in primitive_projection_target_canonical_names without classifying its traversal order therefore reds the determinism gate on the NEXT COMPILE OF ANY TREE -- before any caller uses it -- rather than being discovered when some emitted artifact turns out to differ between runs."
+
+fn primitive_definitions_missing_traversal_fact_in(defs: List<PrimitiveDefinition>) -> List<PrimitiveDefinition> {
+  defs
+    |> filter(fn(d) {
+      match primitive_traversal_order_for_identity(identity: d.identity) {
+        Present { value: _ } => false
+        Absent => true
+      }
+    })
+}
+
+fn primitive_definitions_missing_traversal_fact() -> List<PrimitiveDefinition> {
+  primitive_definitions_missing_traversal_fact_in(defs: primitive_declared_definitions())
+}
+
+fn primitive_traversal_denominator_is_closed() -> Bool {
+  count(primitive_definitions_missing_traversal_fact()) == 0
 }

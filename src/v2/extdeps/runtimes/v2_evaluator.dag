@@ -79,8 +79,8 @@ fn v2_eval_binding_lookup_miss(_key: v2.std.runtime.EnvironmentBindingKey) -> v2
   }
 }
 
-fn v2_eval_empty_bindings() -> Map<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
-  std.types.Map {
+fn v2_eval_empty_bindings() -> std.algebra.PartialFunction<v2.std.runtime.EnvironmentBindingKey, v2.std.runtime.RuntimeValue> {
+  std.algebra.PartialFunction {
     lookup: v2_eval_binding_lookup_miss
   }
 }

@@ -61,7 +61,7 @@ fn observe_unit_tasks(unit: std.types.NonEmptyStr) -> Srv1TasksUnitObservation {
     Present { value: tmax } =>
       match host_converge_slice1_read_tasks_current_raw(unit: unit) {
         Present { value: tcur } =>
-          match systemctl_show_property_read_local(unit: unit, property: ControlGroup) {
+          match systemctl_show_property_read(transport: LocalShell, unit: unit, property: ControlGroup) {
             SystemdPropertyCaptured { value: cg } =>
               if cg == "" {
                 Srv1TasksUnitObservationRefused { unit: unit, cause: "ControlGroup read returned empty — cannot locate cgroupfs pids files" }

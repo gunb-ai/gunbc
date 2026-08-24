@@ -40,9 +40,9 @@ fn sr_lookup_usage_site_witness() -> v2.std.optional.Optional<v2.compiler.inferr
   optional_absent()
 }
 
-fn sr_lookup_claim_fact_map() -> Map<Node, v2.compiler.inferred_tree.InferredFacts> {
+fn sr_lookup_claim_fact_map() -> std.algebra.PartialFunction<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts> {
   let resolved = sr_lookup_resolved_facts()
-  std.types.Map {
+  std.algebra.PartialFunction {
     lookup: fn(key) {
       if key == sr_lookup_use {
         optional_absent()

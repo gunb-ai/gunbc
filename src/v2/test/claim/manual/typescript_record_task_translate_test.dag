@@ -73,7 +73,7 @@ fn typescript_record_task_facts_lookup(key: v2.std.node.Node) -> v2.std.optional
 
 data typescript_record_task_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: typescript_record_task_emitted_root,
-  facts: std.types.Map { lookup: typescript_record_task_facts_lookup }
+  facts: std.algebra.PartialFunction { lookup: typescript_record_task_facts_lookup }
 }
 
 fn anchor_typescript_record_task_emit_accepts() -> v2.std.diagnostic.Outcome<Medium<String>> {

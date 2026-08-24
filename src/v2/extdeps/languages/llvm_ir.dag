@@ -605,34 +605,32 @@ fn llvm_float_facts_node(facts: LlvmFloatPrimitiveFacts) -> v2.std.node.Node {
 }
 }
 
-fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
-  std.types.Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}) {
-          v2.std.optional.Present { value: llvm_integer_bits_node(bits: facts.bits) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Node> {
+  v2.std.collection.map_insert(
+    v2.std.collection.map_insert(
+      v2.std.collection.map_insert(
+        v2.std.collection.empty_map(),
+        discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
+        llvm_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}),
+      llvm_integer_bits_node(bits: facts.bits)
+    ),
+    discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}),
+    llvm_inhabitant_atom(id: ^llvm_repr_sign_agnostic_integer)
+  )
 }
 
-fn llvm_float_spec_facts(facts: LlvmFloatPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
-  std.types.Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: llvm_float_kind_node(kind: facts.kind) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+fn llvm_float_spec_facts(facts: LlvmFloatPrimitiveFacts) -> std.types.Map<v2.std.node.Symbol, v2.std.node.Node> {
+  v2.std.collection.map_insert(
+    v2.std.collection.map_insert(
+      v2.std.collection.empty_map(),
+      discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}),
+      llvm_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}),
+    llvm_float_kind_node(kind: facts.kind)
+  )
 }
 
 fn llvm_primitive_bundle_from_integer_facts(facts: LlvmIntegerPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {

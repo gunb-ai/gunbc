@@ -104,7 +104,7 @@ fn idempotent_operation_inferred_tree(root: v2.std.node.Node) -> v2.compiler.inf
   let facts = idempotent_operation_inferred_facts(root: root)
   v2.compiler.inferred_tree.InferredTree {
     root: root,
-    facts: std.types.Map {
+    facts: std.algebra.PartialFunction {
       lookup: fn(_) {
         Present { value: facts }
       }
