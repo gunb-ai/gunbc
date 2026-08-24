@@ -35,6 +35,14 @@ different sites in one file that share a message and a type pair. Publishing bot
 between them a reading: a large strict/loose divergence means emitted line numbers are NOT
 stable across closures and the strict figure is the one to discard.
 
+SUBJECT ASSERTION IS PART OF THE JOIN, NOT PART OF THE CALLER'S DILIGENCE. `--rows` and
+`--expect-sha` make the cohort refuse unless every board's own row agrees on the ref it was taken
+at and that ref is the one the caller declared. A board taken at an unasserted ref is not a weak
+measurement; it is a contaminant in a comparison, indistinguishable afterwards from a genuine
+per-module difference. The same argument covers the population: the modules present as rows and
+the modules present as logs must be the same set, so a board that line-stopped cannot be quietly
+absent from a weighting that describes itself as covering the frontier.
+
 ROOT VOCABULARY IS BORROWED, NOT MINTED (DESIGN.md section 3). Cross-code mechanism identity
 comes from `rustc_mechanism_classify`; the E0308 15-root vocabulary comes from
 `e0308_classify_sites` and is carried as a CODE-LOCAL PROJECTION under its own column name, never
@@ -98,11 +106,39 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("log_dir", help="directory of <module>.cargo.log files, one per board")
     ap.add_argument("out_prefix", help="output path prefix for the TSVs this writes")
+    ap.add_argument("--rows", help="the cohort's probe rows TSV (curated_cargo_probe_one 13-column "
+                                   "rows); required together with --expect-sha")
+    ap.add_argument("--expect-sha", help="the ref every board must declare in its own row")
     args = ap.parse_args()
+
+    if bool(args.rows) != bool(args.expect_sha):
+        sys.exit("cross_module_weighting: REFUSED — --rows and --expect-sha are one assertion and "
+                 "must be given together; half of it asserts nothing")
 
     logs = sorted(f for f in os.listdir(args.log_dir) if f.endswith(".cargo.log"))
     if not logs:
         sys.exit("cross_module_weighting: REFUSED — no <module>.cargo.log under %s" % args.log_dir)
+
+    declared = {}
+    if args.rows:
+        with open(args.rows, encoding="utf-8") as fh:
+            for raw in fh:
+                fields = raw.rstrip("\n").split("\t")
+                if len(fields) < 9 or not fields[0].endswith(".dag"):
+                    continue
+                declared[os.path.basename(fields[0])[: -len(".dag")]] = fields[8]
+        if not declared:
+            sys.exit("cross_module_weighting: REFUSED — %s carried no probe rows" % args.rows)
+        wrong = {m: sha for m, sha in declared.items() if sha != args.expect_sha}
+        if wrong:
+            sys.exit("cross_module_weighting: REFUSED — %d board(s) declare a ref other than %s: %s"
+                     % (len(wrong), args.expect_sha, wrong))
+        logged = {name[: -len(".cargo.log")] for name in logs}
+        if logged != set(declared):
+            sys.exit("cross_module_weighting: REFUSED — rows and logs describe different cohorts; "
+                     "rows-without-log %s, log-without-row %s"
+                     % (sorted(set(declared) - logged), sorted(logged - set(declared))))
+        print("subject asserted: %d boards, all at %s" % (len(declared), args.expect_sha))
 
     rows = []
     per_module = collections.OrderedDict()
