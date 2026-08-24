@@ -84,3 +84,21 @@ fn w_resolved_signature_owner_selects_runtime_primitive() -> Bool {
     ["call target identity was not established"]
   )
 }
+
+fn w_selective_function_import_admits_named_function() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.selective_function_import_green\nimport std.types { Int }\nimport test.fixture.function_import_surface_provider { imported_fn }\nfn probe() -> Int { imported_fn(1) }\n",
+    "src/test_claim_selective_function_import_green.rs",
+    ["function_import_surface_provider::imported_fn(1)"],
+    []
+  )
+}
+
+fn w_selective_function_import_refuses_unlisted_parent_local() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module test.claim.selective_function_import_red\nimport std.types { Int }\nimport test.fixture.function_import_surface_provider { imported_fn }\nfn probe() -> Int { hidden_fn(1) }\n",
+    "src/test_claim_selective_function_import_red.rs",
+    [],
+    []
+  )
+}

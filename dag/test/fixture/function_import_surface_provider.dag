@@ -1,0 +1,7 @@
+module test.fixture.function_import_surface_provider
+
+import std.types { Int }
+
+fn imported_fn(value: Int) -> Int { value }
+
+fn hidden_fn(value: Int) -> Int { value + 1 }

@@ -10178,6 +10178,24 @@ fn build_imported_variants(resolved_imports: List<ResolvedImport>, parent_index:
   )
 }
 
+fn selective_func_env_view(env: ResolvedFuncEnv, names: List<String>) -> ResolvedFuncEnv {
+  let selected = fold(names, init: empty_map(), f: (acc, name) =>
+    match map_get(env.local, name) {
+      Present { value: sig } => map_insert(acc, name, sig)
+      Absent => acc
+    }
+  )
+  ResolvedFuncEnv { name: env.name, local: selected, parents: [] }
+}
+
+fn func_env_views_for_import(parent: ResolvedFuncEnv, is_all: Bool, specific_names: List<String>) -> List<ResolvedFuncEnv> {
+  if is_all { [parent] }
+  else {
+    concat([parent], parent.parents)
+      |> map(env => selective_func_env_view(env: env, names: specific_names))
+  }
+}
+
 fn build_module_context(contributions: List<ItemContribution>,
     parent_index: Map<String, TypedModule>,
     variant_surfaces: Map<String, VariantExportSurface>,
@@ -10246,7 +10264,7 @@ fn build_module_context(contributions: List<ItemContribution>,
   )
   let parent_envs = flat_map(resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
-      Present { value: typed_parent } => [typed_parent.func_env]
+      Present { value: typed_parent } => func_env_views_for_import(parent: typed_parent.func_env, is_all: imp.is_all, specific_names: imp.specific_names)
       Absent => []
     }
   )
@@ -11021,7 +11039,11 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
     let parents = flat_map(module_imports(n: m.module), imp =>
       let path = import_module_path_at(imp: imp, source_indices: source_indices)
       match map_get(index, path) {
-        Present { value: parent } => [parent.func_env]
+        Present { value: parent } => func_env_views_for_import(
+          parent: parent.func_env,
+          is_all: import_is_all(n: imp),
+          specific_names: import_specific_names_at(n: imp, source_indices: source_indices)
+        )
         Absent => []
       }
     )
