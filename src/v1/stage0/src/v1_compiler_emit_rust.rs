@@ -152,6 +152,9 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{
     FunctionValueCallSemantics, LookupCallSemantics, PlainCallSemantics,
 };
+use crate::v1_std_core::CallTargetIdentity::{
+    CallableTargetUndetermined, RuntimePrimitiveCall, SourceDeclarationCall,
+};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     AmbiguousAnonymousRecordLiteral, InternalError, UnlistedImportUse,
@@ -198,9 +201,9 @@ pub use crate::v1_std_core::{
     transport_stdin, transport_tls_posture, tuple_type_name, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
-    FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics,
-    NewlineIndex, Node, StringPart, TextFile, UnaryOpKind, VarBindingKind,
+    CallSemantics, CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective, ErrorNode,
+    ExprData, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -20001,10 +20004,21 @@ pub fn emit_rust_expr_field_access(
     }
 }
 
-pub fn call_semantics_is_function_value(cs: Option<CallSemantics>) -> bool {
-    match cs.clone() {
+pub fn call_semantics_is_function_value(cs: Option<Rc<CallSemantics>>) -> bool {
+    match cs.clone().as_deref().cloned() {
         Some(CallSemantics::FunctionValueCallSemantics) => true,
         _ => false,
+    }
+}
+
+pub fn call_semantics_target(cs: Option<Rc<CallSemantics>>) -> Rc<CallTargetIdentity> {
+    match cs.clone().as_deref().cloned() {
+        Some(CallSemantics::PlainCallSemantics { target: target, .. }) => target.clone(),
+        Some(CallSemantics::LookupCallSemantics { target: target, .. }) => target.clone(),
+        Some(CallSemantics::FunctionValueCallSemantics) => {
+            Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+        }
+        None => Rc::new(CallTargetIdentity::CallableTargetUndetermined),
     }
 }
 
@@ -20026,6 +20040,7 @@ pub fn emit_rust_expr_call(
                 expr.children.clone(),
                 expr.inferred.clone(),
                 call_semantics_is_function_value(cs.clone()),
+                call_semantics_target(cs.clone()),
                 registry.clone(),
                 scope.clone(),
                 depth.clone(),
@@ -20986,6 +21001,7 @@ pub fn emit_typed_call_expr(
     args: Rc<Vec<Rc<Node>>>,
     inferred: Option<Rc<InferredNode>>,
     callee_is_function_value: bool,
+    call_target: Rc<CallTargetIdentity>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
@@ -20993,7 +21009,13 @@ pub fn emit_typed_call_expr(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let call_str = if (func.clone() == "empty_map".to_string()) {
+        let target_is_runtime = match (*call_target.clone()).clone() {
+            CallTargetIdentity::RuntimePrimitiveCall {
+                primitive_name: _, ..
+            } => true,
+            _ => false,
+        };
+        let call_str = if (target_is_runtime.clone() && (func.clone() == "empty_map".to_string())) {
             match inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: ret_type, .. }) => {
                     let kv_type_str = rust_empty_map_kv_type_str(
@@ -21021,7 +21043,7 @@ pub fn emit_typed_call_expr(
                 ),
             }
         } else {
-            if (func.clone() == "empty_set".to_string()) {
+            if (target_is_runtime.clone() && (func.clone() == "empty_set".to_string())) {
                 match inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: ret_type, .. }) => {
                         emit_rust_empty_set_expr(
@@ -21038,6 +21060,7 @@ pub fn emit_typed_call_expr(
                     func.clone(),
                     args.clone(),
                     callee_is_function_value.clone(),
+                    call_target.clone(),
                     registry.clone(),
                     scope.clone(),
                     depth.clone(),
@@ -21047,7 +21070,13 @@ pub fn emit_typed_call_expr(
             }
         };
         if ((callee_is_function_value.clone() == false)
-            && rust_runtime_bridge_wraps_collection_result_in_rc(func.clone()))
+            && match (*call_target.clone()).clone() {
+                CallTargetIdentity::RuntimePrimitiveCall {
+                    primitive_name: primitive_name,
+                    ..
+                } => rust_runtime_bridge_wraps_collection_result_in_rc(primitive_name.clone()),
+                _ => false,
+            })
         {
             rust_shared_wrap_ctor(call_str.clone())
         } else {
@@ -21227,6 +21256,7 @@ pub fn emit_typed_call(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
     callee_is_function_value: bool,
+    call_target: Rc<CallTargetIdentity>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
@@ -21245,7 +21275,13 @@ pub fn emit_typed_call(
                 emit_info.clone(),
             );
         }
-        if (func.clone() == "get".to_string()) {
+        let target_is_runtime = match (*call_target.clone()).clone() {
+            CallTargetIdentity::RuntimePrimitiveCall {
+                primitive_name: _, ..
+            } => true,
+            _ => false,
+        };
+        if (target_is_runtime.clone() && (func.clone() == "get".to_string())) {
             {
                 let get_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
                 let get_list = get_args.clone().first().cloned();
@@ -21289,7 +21325,7 @@ pub fn emit_typed_call(
                 return get_result;
             }
         }
-        if (func.clone() == "with".to_string()) {
+        if (target_is_runtime.clone() && (func.clone() == "with".to_string())) {
             {
                 let with_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
                 if ((with_args.clone().len() as i64) == 0) {
@@ -21392,7 +21428,7 @@ pub fn emit_typed_call(
                 }
             }
         }
-        if (func.clone() == "to_string".to_string()) {
+        if (target_is_runtime.clone() && (func.clone() == "to_string".to_string())) {
             {
                 let to_string_args =
                     order_typed_call_args(args.clone(), func.clone(), scope.clone());
@@ -21417,7 +21453,7 @@ pub fn emit_typed_call(
                 return ts_result;
             }
         }
-        if (func.clone() == "utf8_decode_bytes".to_string()) {
+        if (target_is_runtime.clone() && (func.clone() == "utf8_decode_bytes".to_string())) {
             {
                 let decode_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
                 let decode_result = match decode_args.clone().first().cloned() {
@@ -21427,7 +21463,7 @@ pub fn emit_typed_call(
                 return decode_result;
             }
         }
-        if (func.clone() == "discriminant".to_string()) {
+        if (target_is_runtime.clone() && (func.clone() == "discriminant".to_string())) {
             {
                 let disc_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
                 let disc_result = match disc_args.clone().first().cloned() {
@@ -21447,7 +21483,17 @@ pub fn emit_typed_call(
             }
         }
         let ordered_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
-        let callee = lookup_item(registry.clone(), qualified_last_segment(func.clone()));
+        let callee = match (*call_target.clone()).clone() {
+            CallTargetIdentity::SourceDeclarationCall {
+                owner_module_path: owner,
+                decl_name: decl,
+                ..
+            } => lookup_item(
+                registry.clone(),
+                v1_rt::concat(v1_rt::concat(owner.clone(), ".".to_string()), decl.clone()),
+            ),
+            _ => None,
+        };
         let filled_args = fill_default_args(
             ordered_args.clone(),
             callee.clone(),
@@ -21457,10 +21503,17 @@ pub fn emit_typed_call(
             shared_types.clone(),
             emit_info.clone(),
         );
+        let runtime_primitive_name = match (*call_target.clone()).clone() {
+            CallTargetIdentity::RuntimePrimitiveCall {
+                primitive_name: primitive_name,
+                ..
+            } => primitive_name.clone(),
+            _ => "".to_string(),
+        };
         let is_rt = ((callee_is_function_value.clone() == false)
-            && v1_rt::map_contains_key(&rt_functions(), func.clone()));
-        let is_rt_ref_map = ((callee_is_function_value.clone() == false)
-            && v1_rt::map_contains_key(&rt_ref_map_functions(), func.clone()));
+            && (runtime_primitive_name.clone() != "".to_string()));
+        let is_rt_ref_map = (is_rt.clone()
+            && v1_rt::map_contains_key(&rt_ref_map_functions(), runtime_primitive_name.clone()));
         let arg_strs = Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new(
@@ -21553,7 +21606,7 @@ pub fn emit_typed_call(
         };
         let all_args = v1_rt::concat(arg_strs.clone(), extra_args.clone());
         let args_str = all_args.clone().join(&", ".to_string());
-        let runtime_name = rust_runtime_bridge_name(func.clone());
+        let runtime_name = rust_runtime_bridge_name(runtime_primitive_name.clone());
         let si = scope.type_env.clone().source_indices.clone();
         let callee_self_capture = if is_rt.clone() {
             false
@@ -21575,7 +21628,38 @@ pub fn emit_typed_call(
                 emit_ident(runtime_name.clone(), RenderTarget::Rust),
             )
         } else {
-            emit_value_ref_ident(func.clone(), registry.clone(), emit_info.clone())
+            match (*call_target.clone()).clone() {
+                CallTargetIdentity::SourceDeclarationCall {
+                    owner_module_path: owner,
+                    decl_name: decl,
+                    ..
+                } => {
+                    if (owner.clone() == scope.module_name.clone()) {
+                        emit_ident(decl.clone(), RenderTarget::Rust)
+                    } else {
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "crate::".to_string(),
+                                    module_to_filename(owner.clone()),
+                                ),
+                                "::".to_string(),
+                            ),
+                            emit_ident(decl.clone(), RenderTarget::Rust),
+                        )
+                    }
+                }
+                CallTargetIdentity::CallableTargetUndetermined => emit_error_expr(
+                    "call target identity was not established before Rust emission".to_string(),
+                    RenderTarget::Rust,
+                ),
+                CallTargetIdentity::RuntimePrimitiveCall {
+                    primitive_name: _, ..
+                } => emit_error_expr(
+                    "runtime call target lost its bridge identity".to_string(),
+                    RenderTarget::Rust,
+                ),
+            }
         };
         let func_name = if callee_self_capture.clone() {
             v1_rt::concat(func_ident.clone(), ".clone()".to_string())
@@ -23618,6 +23702,7 @@ pub fn emit_rust_generic_method_call(
     receiver: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
     result_type: Option<Rc<InferredNode>>,
+    runtime_bridge: bool,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
@@ -23626,11 +23711,13 @@ pub fn emit_rust_generic_method_call(
 ) -> String {
     {
         let function_name = method_name.clone();
-        if rust_receiver_has_callable_method_field(
-            receiver.clone(),
-            function_name.clone(),
-            scope.clone(),
-        ) {
+        if ((runtime_bridge.clone() == false)
+            && rust_receiver_has_callable_method_field(
+                receiver.clone(),
+                function_name.clone(),
+                scope.clone(),
+            ))
+        {
             {
                 let recv_str = emit_typed_expr_base(
                     receiver.clone(),
@@ -23672,7 +23759,7 @@ pub fn emit_rust_generic_method_call(
                 )
             }
         } else {
-            if (v1_rt::map_contains_key(&rt_functions(), function_name.clone()) == false) {
+            if (runtime_bridge.clone() == false) {
                 {
                     let spec = language_spec(RenderTarget::Rust);
                     apply_type_template1(spec.error_type_template.clone(), v1_rt::concat(v1_rt::concat("method ".to_string(), function_name.clone()), " is neither a resolved callable receiver field nor a registered v1_rt bridge function".to_string()))
@@ -23997,6 +24084,7 @@ pub fn emit_typed_method_call(
                                                     receiver.clone(),
                                                     args.clone(),
                                                     result_type.clone(),
+                                                    true,
                                                     registry.clone(),
                                                     scope.clone(),
                                                     depth.clone(),
@@ -24113,6 +24201,7 @@ pub fn emit_typed_method_call(
                                                                         receiver.clone(),
                                                                         args.clone(),
                                                                         result_type.clone(),
+                                                                        true,
                                                                         registry.clone(),
                                                                         scope.clone(),
                                                                         depth.clone(),
@@ -25707,21 +25796,17 @@ pub fn rust_receiver_has_callable_method_field(
     method_name: String,
     scope: Rc<InferScope>,
 ) -> bool {
-    if v1_rt::map_contains_key(&rt_functions(), method_name.clone()) {
-        false
-    } else {
-        {
-            let receiver_type = resolved_type(receiver.clone());
-            let receiver_type_name = authored_name_at(
-                scope.type_env.clone().source_indices.clone(),
-                receiver_type.clone(),
-            );
-            rust_record_field_needs_fn_rc(
-                scope.clone(),
-                receiver_type_name.clone(),
-                method_name.clone(),
-            )
-        }
+    {
+        let receiver_type = resolved_type(receiver.clone());
+        let receiver_type_name = authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            receiver_type.clone(),
+        );
+        rust_record_field_needs_fn_rc(
+            scope.clone(),
+            receiver_type_name.clone(),
+            method_name.clone(),
+        )
     }
 }
 
@@ -27786,6 +27871,7 @@ pub fn emit_rust_tco_non_self_call(
                 f.clone(),
                 frame.expr.clone().children.clone(),
                 call_semantics_is_function_value(cs.clone()),
+                call_semantics_target(cs.clone()),
                 registry.clone(),
                 frame.scope.clone(),
                 frame.depth.clone(),
@@ -31746,6 +31832,7 @@ pub fn data_value_has_cross_refs(value: Rc<Node>) -> bool {
             ExprData::ExprVar {
                 binding_kind: _, ..
             } => true,
+            ExprData::ExprCall { .. } => true,
             ExprData::ExprListLit => {
                 let mut __found = false;
                 for c in value.children.clone().iter().cloned() {
