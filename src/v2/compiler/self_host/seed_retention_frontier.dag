@@ -1,0 +1,358 @@
+module v2.compiler.self_host.seed_retention_frontier
+
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.std.algebra { any, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+// The third sibling of the two self-host frontiers already in tree
+// (v2.compiler.self_host.emit_coverage_frontier, which tracks native-eval construct
+// coverage, and v2.compiler.self_host.native_routing_frontier, which tracks CI
+// execution routing). Neither answers the axis DESIGN section 7 states first: every
+// module of the seed is either self-emitted or seed-retained, and a seed-retained
+// module is a declared row with a reason and a migration trigger.
+//
+// This module is that axis, at file grain, over the stage0 crate.
+
+data seed_retention_frontier_note: String = "SUBJECT, measured rather than asserted (2026-08-24, main at 79e0635e11): 92 .rs files in the stage0 crate, 116,478 lines — 42 percent of the crate's 283 thousand lines — never enter the required-regen comparison at all. Four disjoint mechanisms put them there and only one of them was ever visible: 36 top-level basenames are excluded by name through HAND_MAINTAINED_STAGE0_FILES; 9 more live inside the two hand-maintained directories, which the committed walk (required_regen_host committed_generated_basenames) never descends into; 31 host binaries live under src/bin, which that same top-level walk cannot see and which the emitter cannot produce because emitted Rust filenames are flat under src/ by construction; and 15 integration tests plus build.rs sit outside the crate's src/ tree entirely. THE GAP THIS CLOSES IS NOT THE EXCLUSION — it is that the excluded population carried no reason and no migration trigger, so it was uncountable and unprioritizable, which is exactly what DESIGN section 7 forbids of a seed-retained module. stage0_crate_layout's registration rows answer a DIFFERENT question (which basenames the crate's mod tree and the copy-into-candidate step must name); they are layout membership, they cover 45 of the 92, and their type asserts nothing about why the file is retained or what retires it. The one family that already carries reason and trigger, emitter_produced_divergent_registrations, is the precedent this roster generalizes."
+
+data seed_retention_frontier_totality_note: String = "WHY THIS IS NOT A SECOND HAND LIST BESIDE THE FIRST (DESIGN section 2). A roster of retained paths authored by hand counts the files someone remembered to author, which DESIGN section 5 rejects as an oracle. The roster here is joined against an INDEPENDENTLY DISCOVERED, CLOSED universe — every .rs file the stage0 crate contains — and the census refuses in three directions rather than reporting a count: a retained path with no row REFUSES (a new hand-authored seed file cannot be added invisibly), a row naming a path the tree no longer contains REFUSES (a row cannot outlive its file), and a row claiming retention for a path required-regen DOES compare REFUSES (a row cannot silence a live comparison). The census is a pure function of the two observed populations, so its discriminating REDs are authorable as ordinary fixture lists and execute in the required floor; wiring the live observation is a separate arm and is deliberately not what this roster's evidence rests on."
+
+data seed_retention_reason_undeclared_note: String = "ReasonNotYetDeclared IS THE POINT, not a hole in it. DESIGN section 4b(2) separates cannot-climb from can-climb-after-one-grounding from can-climb-now-but-unbuilt, and the honest state of most of these files is the third: nobody has written down why the seed retains them. Fabricating 60 plausible reasons would be the fabricated-plausible-output failure applied to the frontier's own self-description — worse than sitting low, because an invented reason never ranks for repair. So the variant carries no payload, undeclared_reason_rows counts it, and the count is the prioritizable debt. It is NOT a refusal arm and does not widen anything: every such row is still rostered, still joined, still covered by the three refusals above."
+
+type SeedRetentionCause
+  = SeedRetainedIntrinsicSource
+  | QuarantineScaffoldSource
+  | WetActuatorGeneratedSource
+  | EmitterProducedDivergentSource
+  | SupportDirectoryMemberSource
+  | HostBinaryEntryPointSource
+  | CrateTestHarnessSource
+  | CargoBuildScriptSource
+
+type SeedRetentionReason
+  = ReasonDeclaredHere { detail: String, dissolution: DissolutionCondition }
+  | ReasonDeclaredElsewhere { authority: DeclarationRef }
+  | ReasonNotYetDeclared
+
+type SeedRetentionFrontierRow {
+  crate_relative_path: String
+  cause: SeedRetentionCause
+  reason: SeedRetentionReason
+}
+
+data reason_declared_elsewhere_note: String = "ReasonDeclaredElsewhere carries a DeclarationRef and never a copy of the prose (DESIGN section 3). Five of these rows point at stage0_crate_layout notes that already state the reason and the trigger for their family; restating that text here would fork one fact into two carriers, and the fork is the failure mode this repository consolidates most often. The citation is symbolic — module and declaration name, never a line — per the section 3 standing rule."
+
+fn retained_reason_undeclared(path: String, cause: SeedRetentionCause) -> SeedRetentionFrontierRow {
+  SeedRetentionFrontierRow {
+    crate_relative_path: path,
+    cause: cause,
+    reason: ReasonNotYetDeclared
+  }
+}
+
+fn retained_reason_elsewhere(
+  path: String,
+  cause: SeedRetentionCause,
+  module_path: String,
+  decl_name: String
+) -> SeedRetentionFrontierRow {
+  SeedRetentionFrontierRow {
+    crate_relative_path: path,
+    cause: cause,
+    reason: ReasonDeclaredElsewhere {
+      authority: decl_ref(module_path: module_path, decl_name: decl_name)
+    }
+  }
+}
+
+fn retained_support_dir_member(path: String) -> SeedRetentionFrontierRow {
+  SeedRetentionFrontierRow {
+    crate_relative_path: path,
+    cause: SupportDirectoryMemberSource,
+    reason: ReasonDeclaredHere {
+      detail: "Lives inside one of the two hand-maintained stage0 directories. required_regen_host committed_generated_basenames enumerates only the top level of the crate's src tree, so no file here is ever a member of either compared population — the exclusion is a property of the walk, not a named exemption, which is why no per-file row existed anywhere before this one.",
+      dissolution: unbound_dissolution(description: "the directory's owning module is modeled in .dag and emitted, at which point the directory has no hand-authored member left and every row of this family deletes with it")
+    }
+  }
+}
+
+fn retained_host_binary(path: String) -> SeedRetentionFrontierRow {
+  SeedRetentionFrontierRow {
+    crate_relative_path: path,
+    cause: HostBinaryEntryPointSource,
+    reason: ReasonDeclaredHere {
+      detail: "A cargo binary target under src/bin. Emitted Rust filenames are flat under src/ by construction (v1.compiler.emit_core_support module_to_filename splits on '.' and joins with '_'), so the emitter cannot write a src/bin path at all: this family is outside the comparison because the emitter has no way to reach it, not because anything excluded it.",
+      dissolution: unbound_dissolution(description: "the emitter models binary targets — a target-relative artifact path that is not forced flat under src/ — so a bin entry point can be emitted and compared like any other module")
+    }
+  }
+}
+
+fn retained_test_harness(path: String) -> SeedRetentionFrontierRow {
+  SeedRetentionFrontierRow {
+    crate_relative_path: path,
+    cause: CrateTestHarnessSource,
+    reason: ReasonDeclaredHere {
+      detail: "A cargo integration test outside the crate's src tree. Both compared populations are rooted at src/, so nothing under tests/ can join either one. Named here because this is the growth surface with the least friction in the whole seed: a new hand-authored Rust file lands under tests/ with no registration, no exclusion row, and no census that could see it.",
+      dissolution: unbound_dissolution(description: "the claim each of these tests makes is carried by a witness in the required floor and the .rs harness deletes, or the emitter models cargo test targets")
+    }
+  }
+}
+
+fn retained_build_script(path: String) -> SeedRetentionFrontierRow {
+  SeedRetentionFrontierRow {
+    crate_relative_path: path,
+    cause: CargoBuildScriptSource,
+    reason: ReasonDeclaredHere {
+      detail: "The crate's cargo build script, at the crate root and outside src/. Same structural reason as the test harnesses: it cannot join a population rooted at src/.",
+      dissolution: unbound_dissolution(description: "the build-time facts this script computes are modeled and emitted, or the crate no longer needs a build script")
+    }
+  }
+}
+
+data seed_retention_frontier_roster: List<SeedRetentionFrontierRow> = [
+  retained_reason_elsewhere(path: "src/v1_interpreter.rs", cause: SeedRetainedIntrinsicSource, module_path: "gunbc.plans.interpreter_kernel_d", decl_name: "interpreter_kernel_d_plan"),
+  retained_reason_undeclared(path: "src/bounded_shell_host_drain.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/cli_run.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/codex_app_server_stdio_session.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/coproduct_reflection.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_elsewhere(path: "src/data_initializer_identity.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "data_initializer_identity_seed_retained_note"),
+  retained_reason_undeclared(path: "src/resolved_graph_cache.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/shared_typecheck_store.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/recorded_fixture.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/phase_profile.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/pre_push.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/census_exclude_derive.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/derived_realization_schedule.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/memory_governor.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/std_lens_verdict.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/v2_compiler_body_producer.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/v2_compiler_normalize.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/v2_compiler_target_carriers.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/v2_compiler_discovery_enumeration.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/v2_compiler_parse_engine_hooks.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_undeclared(path: "src/v2_compiler_use_site_verdict.rs", cause: SeedRetainedIntrinsicSource),
+  retained_reason_elsewhere(path: "src/cssl_seed_linked_closure_assembly.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
+  retained_reason_elsewhere(path: "src/required_regen_host.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
+  retained_reason_elsewhere(path: "src/v2_compiler_compile.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
+  retained_reason_elsewhere(path: "src/v2_compiler_program_assembly.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
+  retained_reason_elsewhere(path: "src/v2_compiler_source_authority.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
+  retained_reason_elsewhere(path: "src/usv_pilot_v2_std_algebra.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
+  retained_reason_elsewhere(path: "src/usv_pilot_v2_std_collection.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
+  retained_reason_elsewhere(path: "src/usv_pilot_v2_std_node.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
+  retained_reason_elsewhere(path: "src/v2_compiler_resolve.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
+  retained_reason_elsewhere(path: "src/v2_compiler_program_partition.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
+  retained_reason_elsewhere(path: "src/v2_compiler_tokenize.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
+  retained_reason_elsewhere(path: "src/v2_compiler_infer.rs", cause: QuarantineScaffoldSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "seed_retained_quarantine_scaffold_stage0_files_note"),
+  retained_reason_elsewhere(path: "src/bootstrap_stage0_crate_layout_generated.rs", cause: WetActuatorGeneratedSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "wet_actuator_generated_files_note"),
+  retained_reason_elsewhere(path: "src/v1_interpreter_dispatch_generated.rs", cause: WetActuatorGeneratedSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "v1_interpreter_dispatch_generated_family_note"),
+  retained_reason_elsewhere(path: "src/main.rs", cause: EmitterProducedDivergentSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "emitter_produced_divergent_registrations"),
+  retained_support_dir_member(path: "src/cli_run/floor_discovery_snapshot.rs"),
+  retained_support_dir_member(path: "src/cli_run/materialization_provider_consumer.rs"),
+  retained_support_dir_member(path: "src/cli_run/roadmap_acceptance_history_carrier.rs"),
+  retained_support_dir_member(path: "src/cli_run/shared_fill.rs"),
+  retained_support_dir_member(path: "src/cli_run/terminal_ledger_publish.rs"),
+  retained_support_dir_member(path: "src/cli_run/test_module_hygiene_bridge.rs"),
+  retained_support_dir_member(path: "src/module_path_index/index.rs"),
+  retained_support_dir_member(path: "src/module_path_index/mod.rs"),
+  retained_support_dir_member(path: "src/module_path_index/parsed_dag_file.rs"),
+  retained_host_binary(path: "src/bin/auth_declared_but_unwired_witness.rs"),
+  retained_host_binary(path: "src/bin/bootstrap_witness.rs"),
+  retained_host_binary(path: "src/bin/capture_func_env_semantic_oracle.rs"),
+  retained_host_binary(path: "src/bin/char_at_scaling_probe.rs"),
+  retained_host_binary(path: "src/bin/claim_batch.rs"),
+  retained_host_binary(path: "src/bin/claim_executor.rs"),
+  retained_host_binary(path: "src/bin/codex_app_server_stdio_session.rs"),
+  retained_host_binary(path: "src/bin/compile_clean_diagnostic_histogram.rs"),
+  retained_host_binary(path: "src/bin/compile_clean_unlisted_import_census.rs"),
+  retained_host_binary(path: "src/bin/complexity_linearity_audit.rs"),
+  retained_host_binary(path: "src/bin/cssl_assemble.rs"),
+  retained_host_binary(path: "src/bin/dag_collect_fingerprint_witness.rs"),
+  retained_host_binary(path: "src/bin/diagnostics_witness.rs"),
+  retained_host_binary(path: "src/bin/discover_owned_data.rs"),
+  retained_host_binary(path: "src/bin/discover_source_root_ingest.rs"),
+  retained_host_binary(path: "src/bin/effects_rest_transport_witness.rs"),
+  retained_host_binary(path: "src/bin/expected_red_roster_join.rs"),
+  retained_host_binary(path: "src/bin/floor_prepared_toll_receipt.rs"),
+  retained_host_binary(path: "src/bin/infer_semantics_witness.rs"),
+  retained_host_binary(path: "src/bin/interp_recorded_fixture_witness.rs"),
+  retained_host_binary(path: "src/bin/json_parse_scaling_probe.rs"),
+  retained_host_binary(path: "src/bin/measure_dependency_view_build.rs"),
+  retained_host_binary(path: "src/bin/measure_selected_closure_overlap.rs"),
+  retained_host_binary(path: "src/bin/measure_whole_tree_resolve.rs"),
+  retained_host_binary(path: "src/bin/measure_worker_private_memory.rs"),
+  retained_host_binary(path: "src/bin/namespace_structural_root_exposure_generated_witness.rs"),
+  retained_host_binary(path: "src/bin/p1_cohort_probe.rs"),
+  retained_host_binary(path: "src/bin/parse_witness.rs"),
+  retained_host_binary(path: "src/bin/realization_sweep_survey.rs"),
+  retained_host_binary(path: "src/bin/v1_src_dag_parse.rs"),
+  retained_host_binary(path: "src/bin/wiring_liveness_whole_tree.rs"),
+  retained_test_harness(path: "tests/bounded_shell_stream_capture_replay.rs"),
+  retained_test_harness(path: "tests/claim_in_process_equivalence.rs"),
+  retained_test_harness(path: "tests/floor_scope_compute_board_probe.rs"),
+  retained_test_harness(path: "tests/interpreter_dispatch_authority.rs"),
+  retained_test_harness(path: "tests/interpreter_dispatch_bijection_compile_red.rs"),
+  retained_test_harness(path: "tests/interpreter_dispatch_bijection_real_roster_red.rs"),
+  retained_test_harness(path: "tests/namespace_occurrence_serde.rs"),
+  retained_test_harness(path: "tests/phase_profile_claim_executor.rs"),
+  retained_test_harness(path: "tests/refinement_diagnostic_span_file_preservation.rs"),
+  retained_test_harness(path: "tests/scoped_run_observation.rs"),
+  retained_test_harness(path: "tests/serve_budget_e2e.rs"),
+  retained_test_harness(path: "tests/tokenize_escape_receipt.rs"),
+  retained_test_harness(path: "tests/unicode_xid_smoke.rs"),
+  retained_test_harness(path: "tests/uri_scalar_forgery_receipt.rs"),
+  retained_test_harness(path: "tests/walk_plan_stage_fixture.rs"),
+  retained_build_script(path: "build.rs")
+]
+
+type SeedRetentionCensusRow
+  = RetainedRostered { crate_relative_path: String }
+  | RetainedUnrostered { crate_relative_path: String }
+  | RosterRowWithoutObservedPath { crate_relative_path: String }
+  | RosteredPathIsCompared { crate_relative_path: String }
+
+type SeedRetentionCensus {
+  rostered: List<SeedRetentionCensusRow>
+  unrostered: List<SeedRetentionCensusRow>
+  stale_rows: List<SeedRetentionCensusRow>
+  compared_collisions: List<SeedRetentionCensusRow>
+}
+
+fn path_in(path: String, paths: List<String>) -> Bool {
+  any(xs: paths, predicate: fn(candidate) { candidate == path })
+}
+
+fn roster_paths() -> List<String> {
+  fold(
+    seed_retention_frontier_roster,
+    init: [],
+    f: fn(acc, row) { concat(acc, [row.crate_relative_path]) }
+  )
+}
+
+fn seed_retention_census(
+  observed_crate_rust_paths: List<String>,
+  compared_crate_rust_paths: List<String>
+) -> SeedRetentionCensus {
+  let rostered_paths = roster_paths()
+  let retained_rows = fold(
+    observed_crate_rust_paths,
+    init: SeedRetentionCensus { rostered: [], unrostered: [], stale_rows: [], compared_collisions: [] },
+    f: fn(acc, path) {
+      if path_in(path: path, paths: compared_crate_rust_paths) {
+        acc
+      } else {
+        if path_in(path: path, paths: rostered_paths) {
+          SeedRetentionCensus {
+            rostered: concat(acc.rostered, [RetainedRostered { crate_relative_path: path }]),
+            unrostered: acc.unrostered,
+            stale_rows: acc.stale_rows,
+            compared_collisions: acc.compared_collisions
+          }
+        } else {
+          SeedRetentionCensus {
+            rostered: acc.rostered,
+            unrostered: concat(acc.unrostered, [RetainedUnrostered { crate_relative_path: path }]),
+            stale_rows: acc.stale_rows,
+            compared_collisions: acc.compared_collisions
+          }
+        }
+      }
+    }
+  )
+  fold(
+    rostered_paths,
+    init: retained_rows,
+    f: fn(acc, path) {
+      if path_in(path: path, paths: compared_crate_rust_paths) {
+        SeedRetentionCensus {
+          rostered: acc.rostered,
+          unrostered: acc.unrostered,
+          stale_rows: acc.stale_rows,
+          compared_collisions: concat(
+            acc.compared_collisions,
+            [RosteredPathIsCompared { crate_relative_path: path }]
+          )
+        }
+      } else {
+        if path_in(path: path, paths: observed_crate_rust_paths) {
+          acc
+        } else {
+          SeedRetentionCensus {
+            rostered: acc.rostered,
+            unrostered: acc.unrostered,
+            stale_rows: concat(
+              acc.stale_rows,
+              [RosterRowWithoutObservedPath { crate_relative_path: path }]
+            ),
+            compared_collisions: acc.compared_collisions
+          }
+        }
+      }
+    }
+  )
+}
+
+data seed_retention_total_holds_note: String = "The conjunct is the three refusal populations being EMPTY, never a count of the rostered ones. A count equality would be satisfied by two errors cancelling — a path dropped from the tree and a path added to it — and DESIGN section 5 rules that completeness is an identity join, not a count equality. Every disagreement here is at path identity."
+
+fn seed_retention_frontier_total_holds(
+  observed_crate_rust_paths: List<String>,
+  compared_crate_rust_paths: List<String>
+) -> Bool {
+  let census = seed_retention_census(
+    observed_crate_rust_paths: observed_crate_rust_paths,
+    compared_crate_rust_paths: compared_crate_rust_paths
+  )
+  (length(xs: census.unrostered) == 0)
+    && (length(xs: census.stale_rows) == 0)
+    && (length(xs: census.compared_collisions) == 0)
+}
+
+fn row_reason_is_undeclared(row: SeedRetentionFrontierRow) -> Bool {
+  match row.reason {
+    ReasonNotYetDeclared => true
+    ReasonDeclaredHere { detail: _, dissolution: _ } => false
+    ReasonDeclaredElsewhere { authority: _ } => false
+  }
+}
+
+fn undeclared_reason_rows() -> List<SeedRetentionFrontierRow> {
+  fold(
+    seed_retention_frontier_roster,
+    init: [],
+    f: fn(acc, row) {
+      if row_reason_is_undeclared(row: row) { concat(acc, [row]) } else { acc }
+    }
+  )
+}
+
+fn declared_reason_rows() -> List<SeedRetentionFrontierRow> {
+  fold(
+    seed_retention_frontier_roster,
+    init: [],
+    f: fn(acc, row) {
+      if row_reason_is_undeclared(row: row) { acc } else { concat(acc, [row]) }
+    }
+  )
+}
+
+fn seed_retention_reason_split_holds() -> Bool {
+  (length(xs: declared_reason_rows()) + length(xs: undeclared_reason_rows()))
+    == length(xs: seed_retention_frontier_roster)
+}
+
+fn cited_reason_authorities() -> List<DeclarationRef> {
+  fold(
+    seed_retention_frontier_roster,
+    init: [],
+    f: fn(acc, row) {
+      match row.reason {
+        ReasonDeclaredElsewhere { authority: authority } => concat(acc, [authority])
+        ReasonDeclaredHere { detail: _, dissolution: _ } => acc
+        ReasonNotYetDeclared => acc
+      }
+    }
+  )
+}
