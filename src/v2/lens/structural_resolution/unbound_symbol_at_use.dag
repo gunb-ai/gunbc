@@ -56,7 +56,7 @@ fn sr_unbound_usage_site_witness() -> Optional<InferredFacts> {
 
 fn sr_unbound_claim_fact_map() -> PartialFunction<Node, InferredFacts> {
   let resolved = sr_unbound_resolved_facts()
-  Map {
+  PartialFunction {
     lookup: fn(key) {
       if key == sr_unbound_use {
         optional_absent()

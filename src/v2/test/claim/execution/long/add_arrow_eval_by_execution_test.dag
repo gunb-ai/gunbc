@@ -837,7 +837,7 @@ fn add_arrow_eval_lazy_arm_loop_node() -> Node {
 fn add_arrow_eval_loop_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map {
+    facts: PartialFunction {
       lookup: fn(key) {
         match key.kind {
           ComputationNode { behavior: Loop } =>
