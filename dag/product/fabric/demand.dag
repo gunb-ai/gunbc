@@ -304,6 +304,44 @@ type DemandRefusal<P>
       replacement_work: FabricIdentity<P, WorkKey>,
     }
 
+// THE POPULATION IS SEALED, for the same reason the command is. The whole claim
+// of this module is that only the core knows the complete demand population -
+// and a core handed an ordinary caller-supplied List does not know it, it is
+// TOLD it. A GitHub binding could pass a list omitting the GitLab demand and the
+// fold would correctly conclude that nothing requires the Work and release it:
+// the exact two-provider failure the model exists to prevent, arriving through
+// the shape of an argument rather than through a decision.
+//
+// Unlike authentication, this one is inside the core's observation boundary.
+// Population completeness is the core's OWN state, not a fact about the world,
+// so it is not a boundary obligation to declare - it is a construction to make.
+// The only routes to a DemandPopulation are the empty registry and the output of
+// an admitted transition, so a population that omits a demand cannot be
+// authored; it can only have been produced by the transitions that built it.
+//
+// WHAT THIS DOES NOT CLOSE, named rather than left to be found: a caller may
+// still present a STALE population - an earlier value this module really did
+// produce - and the core cannot tell it from the current one, because nothing
+// here carries a generation. That is the same fencing problem execution.dag
+// solves for leases with LeaseIdentity, and the next-rung trigger is a
+// registry identity plus generation on this carrier, fenced the same way.
+//
+// The grant roster passed alongside is NOT sealed and has the sibling weakness:
+// a caller omitting a grant causes under-release. Sealing it belongs with grant
+// issuance, which lives above this module and has no authority carrier yet, so
+// it is recorded here as a known residual rather than silently left.
+type DemandPopulation<P> sole_constructor {
+  demands: List<Demand<P>>
+}
+
+fn empty_demand_population<P>() -> DemandPopulation<P> {
+  DemandPopulation { demands: [] }
+}
+
+fn population_demands<P>(p: DemandPopulation<P>) -> List<Demand<P>> {
+  p.demands
+}
+
 // Every admitted command names exactly one subject Work, and carrying it out of
 // the transition is what lets the execution half be decided without a second
 // lookup that could disagree. For a withdrawal the subject is the work of the
@@ -312,7 +350,7 @@ type DemandRefusal<P>
 // answer has already left.
 type DemandRegistration<P>
   = RegistrationAdvanced {
-      population: List<Demand<P>>,
+      population: DemandPopulation<P>,
       subject_work: FabricIdentity<P, WorkKey>,
     }
   | RegistrationRefused { refusal: DemandRefusal<P> }
@@ -374,7 +412,10 @@ fn submit_demand_into<P>(population: List<Demand<P>>, d: Demand<P>) -> DemandReg
     Cons { head: _, tail: _ } =>
       RegistrationRefused { refusal: DuplicateDemand { demand: d.id } }
     Empty {} =>
-      RegistrationAdvanced { population: concat(population, [d]), subject_work: d.work }
+      RegistrationAdvanced {
+        population: DemandPopulation { demands: concat(population, [d]) },
+        subject_work: d.work,
+      }
   }
 }
 
@@ -411,10 +452,12 @@ fn supersede_demand_in<P>(
           Cons { head: _, tail: _ } =>
             if fabric_identity_eq(left: replacement.id, right: superseded) {
               RegistrationAdvanced {
-                population: concat(
-                  population_without(population: population, id: superseded),
-                  [replacement],
-                ),
+                population: DemandPopulation {
+                  demands: concat(
+                    population_without(population: population, id: superseded),
+                    [replacement],
+                  ),
+                },
                 subject_work: prior.work,
               }
             } else {
@@ -424,10 +467,12 @@ fn supersede_demand_in<P>(
             }
           Empty {} =>
             RegistrationAdvanced {
-              population: concat(
-                population_without(population: population, id: superseded),
-                [replacement],
-              ),
+              population: DemandPopulation {
+                demands: concat(
+                  population_without(population: population, id: superseded),
+                  [replacement],
+                ),
+              },
               subject_work: prior.work,
             }
         }
@@ -460,9 +505,10 @@ fn acting_principal<P>(command: DemandCommand<P>) -> P {
 // learn whether a key exists under another principal from the difference
 // between two refusals.
 fn apply_demand_command<P>(
-  population: List<Demand<P>>,
+  registry: DemandPopulation<P>,
   core: CoreCommand<P>,
 ) -> DemandRegistration<P> {
+  let population = population_demands(p: registry)
   match core.command {
     SubmitDemand { demand: d } => submit_demand_into(population: population, d: d)
     WithdrawDemand { demand: id, evidence: _ } =>
@@ -470,7 +516,9 @@ fn apply_demand_command<P>(
         DemandLookupRefused { refusal: r } => RegistrationRefused { refusal: r }
         DemandFound { demand: d } =>
           RegistrationAdvanced {
-            population: population_without(population: population, id: id),
+            population: DemandPopulation {
+              demands: population_without(population: population, id: id),
+            },
             subject_work: d.work,
           }
       }

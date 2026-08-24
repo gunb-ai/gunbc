@@ -1,13 +1,14 @@
 module product.fabric.arbitration
 
 import std.types { NonEmptyStr, List }
+import std.decl_ref { DeclarationRef }
 import product.fabric.identity {
   fabric_identity_eq, FabricIdentity, ExecutionAttemptKey, WorkKey,
 }
 import product.fabric.demand {
   Demand, DemandCommand, SubmitDemand, WithdrawDemand, SupersedeDemand,
   DemandRefusal, DemandRegistration, RegistrationAdvanced, RegistrationRefused,
-  CoreCommand, ObservationReceiptRef,
+  CoreCommand, ObservationReceiptRef, DemandPopulation, population_demands,
   WorkRequirement, WorkStillRequired, WorkNoLongerRequired,
   SatisfactionDirective, TerminalReceiptAvailability,
   ExecutionPresence, ExecutionInFlight, NoExecutionInFlight,
@@ -44,6 +45,14 @@ import product.fabric.execution { ExecutionGrant, ReservationRef, LeaseIdentity 
 // authorized_by is the withdrawal's own evidence. A release that could not name
 // the observation that caused it is a capacity and budget movement with no
 // provenance, and the command was already carrying the answer.
+// vouched_by carries the attestation's verification_authority forward. Naming
+// who vouched on the ATTESTATION and then dropping it at the effect defeats the
+// field's whole purpose one layer down: the release is the artifact a later
+// reader actually finds, so an authority that stops short of it is unattributable
+// exactly where attribution is needed. authorized_by and vouched_by are two
+// facts, not one - the observation that meant withdraw, and the authority that
+// vouched for the command carrying it - and collapsing them would lose whichever
+// question was not asked first.
 type ReleaseDirective<P> {
   attempt: FabricIdentity<P, ExecutionAttemptKey>
   lease: LeaseIdentity
@@ -51,6 +60,7 @@ type ReleaseDirective<P> {
   resource_reservations: List<ReservationRef>
   reason: NonEmptyStr
   authorized_by: ObservationReceiptRef
+  vouched_by: DeclarationRef
 }
 
 // Both execution-bearing arms carry a LIST, and the plural is load-bearing
@@ -79,23 +89,23 @@ type ReleaseDirective<P> {
 // release directive naming an attempt and reservations that do not exist.
 type DemandCommandEffect<P>
   = CommandRefused { refusal: DemandRefusal<P> }
-  | DemandAdmitted { population: List<Demand<P>>, directive: SatisfactionDirective }
+  | DemandAdmitted { population: DemandPopulation<P>, directive: SatisfactionDirective }
   | WorkStillRequiredAttemptContinues {
-      population: List<Demand<P>>,
+      population: DemandPopulation<P>,
       remaining: List<Demand<P>>,
       attempts: List<FabricIdentity<P, ExecutionAttemptKey>>,
     }
   | WorkStillRequiredNothingRunning {
-      population: List<Demand<P>>,
+      population: DemandPopulation<P>,
       remaining: List<Demand<P>>,
     }
   | WorkReleasedAttemptStops {
-      population: List<Demand<P>>,
+      population: DemandPopulation<P>,
       work: FabricIdentity<P, WorkKey>,
       release_plan: List<ReleaseDirective<P>>,
     }
   | WorkReleasedNothingRunning {
-      population: List<Demand<P>>,
+      population: DemandPopulation<P>,
       work: FabricIdentity<P, WorkKey>,
     }
 
@@ -122,6 +132,7 @@ fn execution_presence<P>(
 fn release_directive_for<P>(
   g: ExecutionGrant<P>,
   authorized_by: ObservationReceiptRef,
+  vouched_by: DeclarationRef,
 ) -> ReleaseDirective<P> {
   ReleaseDirective {
     attempt: g.context.attempt,
@@ -130,6 +141,7 @@ fn release_directive_for<P>(
     resource_reservations: g.resource_reservations,
     reason: "no remaining demand requires this work",
     authorized_by: authorized_by,
+    vouched_by: vouched_by,
   }
 }
 
@@ -139,13 +151,14 @@ fn release_directive_for<P>(
 // consequence first and authorizing afterwards is how an unauthorized
 // withdrawal comes to have already cancelled something.
 fn withdrawal_effect<P>(
-  population: List<Demand<P>>,
+  population: DemandPopulation<P>,
   grants: List<ExecutionGrant<P>>,
   work: FabricIdentity<P, WorkKey>,
   authorized_by: ObservationReceiptRef,
+  vouched_by: DeclarationRef,
 ) -> DemandCommandEffect<P> {
   let live = grants_for_work(grants: grants, work: work)
-  match work_requirement(population: population, work: work) {
+  match work_requirement(population: population_demands(p: population), work: work) {
     WorkStillRequired { remaining: rem } =>
       if live.length() == 0 {
         WorkStillRequiredNothingRunning { population: population, remaining: rem }
@@ -163,19 +176,25 @@ fn withdrawal_effect<P>(
         WorkReleasedAttemptStops {
           population: population,
           work: w,
-          release_plan: live |> map(g => release_directive_for(g: g, authorized_by: authorized_by)),
+          release_plan: live |> map(g =>
+            release_directive_for(
+              g: g,
+              authorized_by: authorized_by,
+              vouched_by: vouched_by,
+            )
+          ),
         }
       }
   }
 }
 
 fn decide_demand_command<P>(
-  population: List<Demand<P>>,
+  registry: DemandPopulation<P>,
   grants: List<ExecutionGrant<P>>,
   terminal: TerminalReceiptAvailability,
   core: CoreCommand<P>,
 ) -> DemandCommandEffect<P> {
-  match apply_demand_command(population: population, core: core) {
+  match apply_demand_command(registry: registry, core: core) {
     RegistrationRefused { refusal: r } => CommandRefused { refusal: r }
     RegistrationAdvanced { population: next, subject_work: w } =>
       match core.command {
@@ -203,6 +222,7 @@ fn decide_demand_command<P>(
             grants: grants,
             work: w,
             authorized_by: ev,
+            vouched_by: core.attestation.verification_authority,
           )
       }
   }

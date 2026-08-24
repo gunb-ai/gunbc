@@ -14,7 +14,7 @@ import product.fabric.demand {
   DemandRefusal, SatisfactionDirective, CommandAttestation,
   attest_command_principal, AttestationDoesNotCoverPrincipal,
   CoreCommand, CommandAdmission, CommandAdmitted, CommandAdmissionRefused,
-  admit_command,
+  admit_command, DemandPopulation, empty_demand_population, population_demands,
   TerminalReceiptAvailability, TerminalReceiptPresent, NoTerminalReceipt,
   acting_principal,
   SatisfiedByTerminalReceipt, AttachToExistingExecution, RequireNewAttempt, AwaitAdmission,
@@ -192,9 +192,12 @@ fn directive_label(d: SatisfactionDirective) -> NonEmptyStr {
   }
 }
 
-fn effect_population(e: DemandCommandEffect<NonEmptyStr>) -> List<Demand<NonEmptyStr>> {
+// A refusal carries no population at all, so the helper cannot return one; the
+// empty registry is the honest stand-in and every test that reads it is
+// asserting an arm it already named, never inferring the refusal from emptiness.
+fn effect_population(e: DemandCommandEffect<NonEmptyStr>) -> DemandPopulation<NonEmptyStr> {
   match e {
-    CommandRefused { refusal: _ } => []
+    CommandRefused { refusal: _ } => empty_demand_population()
     DemandAdmitted { population: p, directive: _ } => p
     WorkStillRequiredAttemptContinues { population: p, remaining: _, attempts: _ } => p
     WorkStillRequiredNothingRunning { population: p, remaining: _ } => p
@@ -219,8 +222,25 @@ fn withdraw(principal: NonEmptyStr, key: DemandKey) -> DemandCommand<NonEmptyStr
   WithdrawDemand { demand: demand_id(principal: principal, key: key), evidence: "withdrawal-1" }
 }
 
-fn both_demands() -> List<Demand<NonEmptyStr>> {
-  [github_demand(), gitlab_demand()]
+// The two-provider registry can only be built by submitting both demands
+// through the core, because a DemandPopulation has no literal. That is the
+// point of the seal: the fixture cannot author a population omitting one
+// provider any more than a provider binding can.
+fn both_demands() -> DemandPopulation<NonEmptyStr> {
+  let first = decide_as(
+    attested: "github",
+    population: empty_demand_population(),
+    grants: [],
+    command: SubmitDemand { demand: github_demand() },
+  )
+  effect_population(
+    e: decide_as(
+      attested: "gitlab",
+      population: effect_population(e: first),
+      grants: [],
+      command: SubmitDemand { demand: gitlab_demand() },
+    ),
+  )
 }
 
 // The ordinary helper attests the principal the command acts as, so every
@@ -231,6 +251,28 @@ fn both_demands() -> List<Demand<NonEmptyStr>> {
 // because a record literal is exactly what the carrier no longer admits. That
 // is not a concession to the wall - it is the whole population of routes to a
 // CommandAttestation, which is what makes the wall worth having.
+fn single_github_registry() -> DemandPopulation<NonEmptyStr> {
+  effect_population(
+    e: decide_as(
+      attested: "github",
+      population: empty_demand_population(),
+      grants: [],
+      command: SubmitDemand { demand: github_demand() },
+    ),
+  )
+}
+
+fn single_gitlab_registry() -> DemandPopulation<NonEmptyStr> {
+  effect_population(
+    e: decide_as(
+      attested: "gitlab",
+      population: empty_demand_population(),
+      grants: [],
+      command: SubmitDemand { demand: gitlab_demand() },
+    ),
+  )
+}
+
 fn attesting(principal: NonEmptyStr) -> CommandAttestation<NonEmptyStr> {
   attest_command_principal(
     principal: principal,
@@ -268,7 +310,7 @@ fn admission_label(a: CommandAdmission<NonEmptyStr>) -> NonEmptyStr {
 // cause rather than inventing a third state for "never reached the fold".
 fn decide_as(
   attested: NonEmptyStr,
-  population: List<Demand<NonEmptyStr>>,
+  population: DemandPopulation<NonEmptyStr>,
   grants: List<ExecutionGrant<NonEmptyStr>>,
   command: DemandCommand<NonEmptyStr>,
 ) -> DemandCommandEffect<NonEmptyStr> {
@@ -282,7 +324,7 @@ fn decide_as(
       }
     Cons { head: c, tail: _ } =>
       decide_demand_command(
-        population: population,
+        registry: population,
         grants: grants,
         terminal: NoTerminalReceipt,
         core: c,
@@ -311,7 +353,7 @@ fn decide(
 test fn withdrawing_one_of_two_demands_leaves_the_work_required() -> Bool {
   let e = decide(population: both_demands(), grants: [running_grant()], command: withdraw(principal: "github", key: "demand-gh"))
   effect_label(e: e) == "still-required-attempt-continues"
-    && effect_population(e: e).length() == 1
+    && population_demands(p: effect_population(e: e)).length() == 1
     && released_reservations(e: e).length() == 0
 }
 
@@ -328,7 +370,7 @@ test fn withdrawing_the_last_demand_releases_the_work_and_stops_the_attempt() ->
     command: withdraw(principal: "gitlab", key: "demand-gl"),
   )
   effect_label(e: e) == "released-attempt-stops"
-    && effect_population(e: e).length() == 0
+    && population_demands(p: effect_population(e: e)).length() == 0
     && released_reservations(e: e).length() == 2
 }
 
@@ -336,7 +378,7 @@ test fn withdrawing_the_last_demand_releases_the_work_and_stops_the_attempt() ->
 // arm, not a release directive naming an attempt that does not exist.
 
 test fn releasing_a_work_with_nothing_running_names_no_attempt() -> Bool {
-  let e = decide(population: [github_demand()], grants: [], command: withdraw(principal: "github", key: "demand-gh"))
+  let e = decide(population: single_github_registry(), grants: [], command: withdraw(principal: "github", key: "demand-gh"))
   effect_label(e: e) == "released-nothing-running"
     && released_reservations(e: e).length() == 0
 }
@@ -377,7 +419,7 @@ fn decide_with_receipt(command: DemandCommand<NonEmptyStr>) -> DemandCommandEffe
     Empty {} => CommandRefused { refusal: UnknownDemand { demand: demand_id(principal: "github", key: "unreachable") } }
     Cons { head: c, tail: _ } =>
       decide_demand_command(
-        population: [],
+        registry: empty_demand_population(),
         grants: [],
         terminal: TerminalReceiptPresent,
         core: c,
@@ -408,9 +450,9 @@ test fn the_new_attempt_answer_alone_decides_attach_versus_fresh_attempt() -> Bo
     admission: terms(),
     satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: true, new_attempt_required: true, step_reuse_permitted: true },
   }
-  effect_label(e: decide(population: [gitlab_demand()], grants: [running_grant()], command: SubmitDemand { demand: attaches }))
+  effect_label(e: decide(population: single_gitlab_registry(), grants: [running_grant()], command: SubmitDemand { demand: attaches }))
     == "attach-to-existing-execution"
-    && effect_label(e: decide(population: [gitlab_demand()], grants: [running_grant()], command: SubmitDemand { demand: reruns }))
+    && effect_label(e: decide(population: single_gitlab_registry(), grants: [running_grant()], command: SubmitDemand { demand: reruns }))
       == "new-attempt-reusing-steps"
 }
 
@@ -422,9 +464,9 @@ test fn the_new_attempt_answer_alone_decides_attach_versus_fresh_attempt() -> Bo
 test fn the_step_reuse_answer_alone_decides_what_the_new_attempt_may_reuse() -> Bool {
   let reusing = demand_of(principal: "github", key: "d-2", work_key: "w-2", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: true, step_reuse_permitted: true })
   let clean = demand_of(principal: "github", key: "d-2", work_key: "w-2", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: true, step_reuse_permitted: false })
-  effect_label(e: decide(population: [], grants: [], command: SubmitDemand { demand: reusing }))
+  effect_label(e: decide(population: empty_demand_population(), grants: [], command: SubmitDemand { demand: reusing }))
     == "new-attempt-reusing-steps"
-    && effect_label(e: decide(population: [], grants: [], command: SubmitDemand { demand: clean }))
+    && effect_label(e: decide(population: empty_demand_population(), grants: [], command: SubmitDemand { demand: clean }))
       == "new-attempt-refusing-step-reuse"
 }
 
@@ -456,7 +498,7 @@ test fn a_supersede_onto_a_different_work_refuses_while_the_matching_one_is_admi
   )
   effect_label(e: refused) == "replacement-work-mismatch"
     && effect_label(e: admitted) == "attach-to-existing-execution"
-    && effect_population(e: admitted).length() == 2
+    && population_demands(p: effect_population(e: admitted)).length() == 2
 }
 
 // A supersede never releases a Work, because it removes one demand and adds
@@ -474,12 +516,12 @@ test fn a_supersede_of_the_only_demand_never_releases_the_work() -> Bool {
     satisfaction: attaching_satisfaction(),
   }
   let e = decide(
-    population: [github_demand()],
+    population: single_github_registry(),
     grants: [running_grant()],
     command: SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: replacement, evidence: "sup-1" },
   )
   effect_label(e: e) == "attach-to-existing-execution"
-    && effect_population(e: e).length() == 1
+    && population_demands(p: effect_population(e: e)).length() == 1
     && released_reservations(e: e).length() == 0
 }
 
@@ -636,4 +678,70 @@ fn continuing_attempts(
     WorkReleasedAttemptStops { population: _, work: _, release_plan: _ } => []
     WorkStillRequiredAttemptContinues { population: _, remaining: _, attempts: a } => a
   }
+}
+
+// THE POPULATION SEAL (review 55310, first finding). The two-provider claim was
+// only as strong as the population argument carrying it: a caller handing in an
+// ordinary List could omit the other provider's demand, and the fold would
+// correctly conclude nothing required the Work and release it. The list was the
+// forgery surface the attestation work had already closed one layer in.
+//
+// This test is the positive half - the registry threaded through the core's own
+// transitions holds both demands, so the withdrawal finds the survivor. The
+// negative half is not a test and cannot be: a DemandPopulation omitting a
+// demand has no literal, so the fixture cannot author one to feed in. That
+// refusal is measured as a compile-time RED probe rather than asserted here,
+// because a runtime test of an unconstructable value would be permanently green.
+
+test fn the_registry_can_only_be_built_by_the_cores_own_transitions() -> Bool {
+  population_demands(p: both_demands()).length() == 2
+    && effect_label(
+      e: decide(
+        population: both_demands(),
+        grants: [running_grant()],
+        command: withdraw(principal: "github", key: "demand-gh"),
+      ),
+    ) == "still-required-attempt-continues"
+}
+
+// THE VERIFIER PROVENANCE REACHES THE RELEASE (review 55310, second finding).
+// verification_authority named who vouched on the attestation and was then
+// dropped when the effect was produced, so the artifact a later reader actually
+// finds - the release - could not answer it. Asserting the receipt alone would
+// have passed against that defect, which is why this reads the authority.
+
+test fn a_release_names_the_authority_that_vouched_for_the_command() -> Bool {
+  let after_first = decide(
+    population: both_demands(),
+    grants: [running_grant()],
+    command: withdraw(principal: "github", key: "demand-gh"),
+  )
+  let released = decide(
+    population: effect_population(e: after_first),
+    grants: [running_grant()],
+    command: withdraw(principal: "gitlab", key: "demand-gl"),
+  )
+  effect_label(e: released) == "released-attempt-stops"
+    && release_authorities(e: released).length() == 1
+}
+
+fn release_authorities(e: DemandCommandEffect<NonEmptyStr>) -> List<DeclarationRef> {
+  match e {
+    CommandRefused { refusal: _ } => []
+    DemandAdmitted { population: _, directive: _ } => []
+    WorkStillRequiredNothingRunning { population: _, remaining: _ } => []
+    WorkStillRequiredAttemptContinues { population: _, remaining: _, attempts: _ } => []
+    WorkReleasedNothingRunning { population: _, work: _ } => []
+    WorkReleasedAttemptStops { population: _, work: _, release_plan: plan } =>
+      plan
+        |> filter(rel => rel.vouched_by == witness_authority())
+        |> map(rel => rel.vouched_by)
+  }
+}
+
+fn witness_authority() -> DeclarationRef {
+  decl_ref(
+    module_path: "test.claim.fabric_demand_effect_witness_test",
+    decl_name: "attesting",
+  )
 }
