@@ -740,11 +740,102 @@ data ci_witness_verdict_note: String = "ONE BIT WAS CARRYING SEVEN STATES (2026-
 // outcome alone cannot express. That correspondence is the point: `ClaimOutcome` is ALREADY a
 // typed coproduct and the console was the only place it got flattened, so this is not a new
 // vocabulary -- it is the existing one surviving as far as the reader.
+// THE CAUSE OF A NON-VERDICT ROW, AND WHY IT IS A COPRODUCT RATHER THAN THE PROSE IT REPLACES.
+// A witness that THROWS reaches no subject and decides nothing, so the only fact its row can
+// carry about the failure is WHY it threw. That fact was already typed one layer up --
+// v1_interpreter.InterpError is a closed 27-arm coproduct -- and the witness boundary flattened
+// it with format!("{other}") into ClaimOutcome::RuntimeError { message }, after which the console
+// printed the identity and the duration and dropped the message entirely. So the cause existed,
+// was known at the moment of routing, and reached no reader. This is the same shape this file
+// already records twice above (ci_witness_verdict_note, and the TimedOut comment in the seed):
+// a typed value collapsed at a seam, then guessed back downstream by substring-matching the
+// prose that collapsing produced.
+//
+// THE MEASURED COST OF THAT COLLAPSE. On main f9963a762 the required floor emitted 142 rows
+// reading `ERROR in <duration>` with no cause, against a corpus whose only other route to the
+// cause is running the floor -- a job that OOMs in a session container. Three sessions grepped
+// that log in one day; one produced an inverted-sign claim (9 identities reported as duplicated
+// when the pattern had MISSED them) that reached a merge-ready PR as a high-priority alarm.
+// Every cause partition over that population is therefore a CLAIM and not a receipt, which is
+// exactly the state DESIGN section 4b calls specification without execution.
+//
+// THE ARMS MIRROR InterpError ONE-FOR-ONE and deliberately mint no vocabulary of their own
+// (DESIGN section 3): the five variants that already have their OWN ClaimOutcome arm --
+// HostToolUnresolved, HermeticHostEffectRefused, EvalBudgetExceeded, WitnessWallBudgetExceeded
+// and the pre-mapped EvaluationBudgetExceeded -- cannot reach this classifier, because
+// map_budget_error_to_witness_refusal and the arms above it consume them first. (The three
+// hermetic grounds -- UnpublishedMockCase, NoMockResponse, FilesystemRemoval -- are arms of
+// HermeticEffectGround NESTED INSIDE HermeticHostEffectRefused, not peers of it, so they are
+// consumed with their parent and are likewise absent here. They were briefly given cause arms
+// of their own; the seed's exhaustiveness check refused it, which is the check doing its job.) They are NOT
+// given cause arms, and the one arm that stands for all five is WitnessCauseMappedOutcomeEscaped:
+// a typed, located, COUNTABLE diagnostic saying the mapper let one through. That is one arm and
+// not five because all five share one remedy -- repair the mapper -- and DESIGN's descend-or-
+// collapse rule turns on shared remedy, not on arm count.
+type CiWitnessRuntimeCause
+  = WitnessCauseNoSuchFunction
+  | WitnessCauseNoSuchVariable
+  | WitnessCauseNoSuchField
+  | WitnessCauseTypeError
+  | WitnessCauseCrossRepresentationEquality
+  | WitnessCauseStringRealizationStraddle
+  | WitnessCausePoolRootContributesNothing
+  | WitnessCausePatternMatchFailure
+  | WitnessCauseDivisionByZero
+  | WitnessCauseIntegerOverflow
+  | WitnessCauseUnimplemented
+  | WitnessCauseEarlyReturn
+  | WitnessCauseAuthDeclaredButUnwired
+  | WitnessCauseServiceConfigUnresolved
+  | WitnessCauseServiceConfigMissing
+  | WitnessCauseArgvExceedsHostArgMax
+  | WitnessCauseHostToolRelativePathAmbiguous
+  | WitnessCauseShellOutputLimitExceeded
+  | WitnessCauseCallContractMismatch
+  | WitnessCauseMappedOutcomeEscaped
+
+// Stable kebab tokens, chosen so a reader extracts identity-and-cause pairs with a pattern that
+// depends on neither column width nor name length -- the failure that produced the inverted-sign
+// claim above. The token is the grep key; the interpreter's prose detail (WHICH name, WHICH
+// type) stays on the seed's failure receipt, which is a different consumer with a different
+// budget for length.
+fn ci_witness_runtime_cause_token(cause: CiWitnessRuntimeCause) -> String {
+  match cause {
+    WitnessCauseNoSuchFunction => "no-such-function"
+    WitnessCauseNoSuchVariable => "no-such-variable"
+    WitnessCauseNoSuchField => "no-such-field"
+    WitnessCauseTypeError => "type-error"
+    WitnessCauseCrossRepresentationEquality => "cross-representation-equality"
+    WitnessCauseStringRealizationStraddle => "string-realization-straddle"
+    WitnessCausePoolRootContributesNothing => "pool-root-contributes-nothing"
+    WitnessCausePatternMatchFailure => "pattern-match-failure"
+    WitnessCauseDivisionByZero => "division-by-zero"
+    WitnessCauseIntegerOverflow => "integer-overflow"
+    WitnessCauseUnimplemented => "unimplemented"
+    WitnessCauseEarlyReturn => "early-return"
+    WitnessCauseAuthDeclaredButUnwired => "auth-declared-but-unwired"
+    WitnessCauseServiceConfigUnresolved => "service-config-unresolved"
+    WitnessCauseServiceConfigMissing => "service-config-missing"
+    WitnessCauseArgvExceedsHostArgMax => "argv-exceeds-host-arg-max"
+    WitnessCauseHostToolRelativePathAmbiguous => "host-tool-relative-path-ambiguous"
+    WitnessCauseShellOutputLimitExceeded => "shell-output-limit-exceeded"
+    WitnessCauseCallContractMismatch => "call-contract-mismatch"
+    WitnessCauseMappedOutcomeEscaped => "mapped-outcome-escaped"
+  }
+}
+
+// THE CAUSE RIDES INSIDE THE VERDICT ARM, not beside it, and that placement is the whole safety
+// argument. A separate `cause` parameter would make two invalid states writable -- a PASSED row
+// carrying a cause, and an ERROR row carrying none -- and both would then need a check. Carried
+// as the arm's payload, neither has a spelling: WitnessRuntimeError cannot be constructed without
+// a cause, and no other arm has a field to put one in. That is DESIGN section 4b's structurally
+// impossible rung rather than its mechanically preventable one, bought here for the price of a
+// field.
 type CiWitnessVerdict
   = WitnessPassed
   | WitnessFailed
   | WitnessNotBool
-  | WitnessRuntimeError
+  | WitnessRuntimeError { cause: CiWitnessRuntimeCause }
   | WitnessBudgetRefused
   | WitnessHostToolUnresolved
   | WitnessKnownRed
@@ -755,7 +846,7 @@ fn ci_witness_outcome_token(verdict: CiWitnessVerdict) -> String {
     WitnessPassed => "PASSED"
     WitnessFailed => "FAILED"
     WitnessNotBool => "NOT-BOOL"
-    WitnessRuntimeError => "ERROR"
+    WitnessRuntimeError { cause: _ } => "ERROR"
     WitnessBudgetRefused => "BUDGET-REFUSED"
     WitnessHostToolUnresolved => "TOOL-UNRESOLVED"
     WitnessKnownRed => "KNOWN-RED"
@@ -763,10 +854,36 @@ fn ci_witness_outcome_token(verdict: CiWitnessVerdict) -> String {
   }
 }
 
+// The cause field is TRAILING and key-tagged for one reason: the identity, the token and the
+// duration are all positional today, and a fourth positional field would make every existing
+// reader's offset wrong. `cause=<token>` is addressable by key, so a reader that wants the pair
+// asks for `//...` and `cause=...` and never counts columns.
+//
+// Every arm is enumerated rather than falling through a wildcard. A wildcard would silently give
+// a future non-verdict arm an empty cause -- the arm most likely to need one -- and DESIGN's
+// total-at-the-level-examined class is exactly a match that compiles, looks complete, and never
+// descends to the distinction that decides the outcome.
+fn ci_witness_cause_field(verdict: CiWitnessVerdict) -> String {
+  match verdict {
+    WitnessPassed => ""
+    WitnessFailed => ""
+    WitnessNotBool => ""
+    WitnessRuntimeError { cause: c } =>
+      concat(" cause=", ci_witness_runtime_cause_token(cause: c))
+    WitnessBudgetRefused => ""
+    WitnessHostToolUnresolved => ""
+    WitnessKnownRed => ""
+    WitnessRouteGap => ""
+  }
+}
+
 fn ci_witness_claim_suffix(verdict: CiWitnessVerdict, wall: Nanosecond) -> String {
   concat(
     ci_witness_outcome_token(verdict: verdict),
-    concat(" in ", ci_human_elapsed(d: wall))
+    concat(
+      " in ",
+      concat(ci_human_elapsed(d: wall), ci_witness_cause_field(verdict: verdict))
+    )
   )
 }
 
