@@ -29,7 +29,7 @@ import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.fabric_witness_run { cited_symbol_run_command, floor_run_command }
+import gunbc.fabric_witness_run { floor_run_command }
 import extdeps.exec.command { shell_command_render }
 import std.types { List, String, Int }
 
@@ -716,137 +716,11 @@ fn witness_floor_job() -> Job {
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
     steps: witness_floor_steps(),
-    needs: [cited_symbol_job_id],
-    env: none,
-    outputs: none,
-    if_condition: none,
-    timeout_minutes: 180,
-    continue_on_error: none,
-    concurrency: none,
-    permissions: none
-  }
-}
-
-// THE CITED-SYMBOL CENSUS IS A SECOND JOB, WHICH IS WHAT MAKES IT A SEPARATELY NAMED CHECK.
-//
-// A GitHub check-run is a JOB, not a step, so a census that is meant to be its own required check
-// cannot be a step inside the witnesses job -- it would report under that job's name and its
-// verdict would be indistinguishable from the floor's on the checks list.
-//
-// WHY IT IS NOT A FOURTH `--required-ci` PHASE. The operator narrowed that mode from eight phases
-// to three on 2026-08-21 (#8791). That ruling is about what one composed entry point is
-// responsible for, and this job does not touch it: `--required-ci` still runs exactly three
-// phases, and its invocation above is unchanged. Routing the same work back in under a different
-// name would be the workaround this repository refuses; a distinct subject with its own check is
-// the shape the ruling points at.
-//
-// WHY IT IS NOT A FLOOR CLAIM. The reason WAS structural and no longer is, which is recorded
-// rather than quietly rewritten: `run_required_floor` used to decline any entry that reads the
-// live tree (`DeclinedLiveTree`), and reading the live corpus IS this census's subject, so
-// relocating the witness moved it from `DeclinedLongModule` to `DeclinedLiveTree` and never to
-// `Planned`. THAT ARM IS DELETED, so the route is now open and the argument that closed it is
-// void. What keeps this a separate job is the OTHER half of the original ruling, which the
-// deletion does not touch: a GitHub check-run is a job rather than a step, so a separately named
-// required check must be a second job, and the operator narrowed `--required-ci` to three phases
-// on 2026-08-21. Whether this census should now ALSO become a floor claim is a live question this
-// change deliberately leaves open -- it is a scope decision, not a consequence of the cut.
-//
-// THE COST OF A SECOND JOB, stated rather than hidden: it re-does checkout, toolchain and build.
-// The build is the same cargo invocation against the same self-hosted runner pool, so it is warm
-// in the ordinary case, and the census itself is ~2 minutes against a floor job of ~30.
-//
-// THIS JOB RUNS FIRST AND THE FLOOR `needs` IT (operator ruling, 2026-08-22), which is a REVERSAL
-// of the independence an earlier revision of this comment claimed, and the reason is a measured
-// race rather than a preference. Both jobs are byte-identical through checkout, toolchain and
-// build, and when they started simultaneously on one self-hosted host both installs wrote the
-// SAME /home/ghrunner/.cargo/bin/rustc: `Text file busy`, ETXTBSY, exit 126, at a measured 1 run
-// in 5. The census step was skipped, so the job reported NO verdict rather than a wrong one --
-// honest, but the wrong thing to leave standing, because a required check that reds one run in
-// five for reasons unrelated to the diff teaches authors to rerun without reading, and reflexive
-// rerunning is how a real failure gets rerun away. A required check must be believable or it is
-// decorative.
-//
-// The ordering edge makes the overlap STRUCTURALLY IMPOSSIBLE rather than rare, which is the §5
-// construction move: the two setups cannot coincide, so there is no window to lose. The rejected
-// alternative was per-job CARGO_HOME/RUSTUP_HOME, which removes the collision by giving each job
-// its own toolchain and registry -- paying a cold build on EVERY run to avoid a collision on one
-// in five, and making the duplicated build more expensive rather than less.
-//
-// THE DIRECTION IS LOAD-BEARING: census FIRST, floor second. The census is minutes and the floor
-// is ~30, so a citation failure surfaces early; the other order reports the same failure half an
-// hour later for no gain.
-//
-// WHAT THE EDGE COSTS, named rather than buried: a red census now leaves the floor SKIPPED, so
-// that run yields no floor verdict. That is a real loss of information on a red census run, and
-// it is accepted deliberately -- the floor still runs on every green, and a red census is a
-// stop-the-line condition rather than a state to keep measuring around.
-
-fn cited_symbol_run_script() -> String {
-  concat(
-    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
-    concat(
-      "cd \"$ROOT\"\n",
-      concat(shell_command_render(command: cited_symbol_run_command()), "\n")
-    )
-  )
-}
-
-fn cited_symbol_run_step() -> Step {
-  RunStep {
-    name: Present { value: "Cited-symbol census (every authored DeclarationRef resolves)" },
-    id: none,
-    run: cited_symbol_run_script(),
-    shell: none,
-    env: none,
-    working_directory: none,
-    if_condition: Present { value: witness_floor_precondition() },
-    continue_on_error: none,
-    timeout_minutes: none
-  }
-}
-
-fn cited_symbol_bound_steps() -> List<WitnessFloorBoundStep> {
-  append(
-    prepared_bound_steps(),
-    items: [
-      WitnessFloorBoundStep {
-        step: cited_symbol_run_step(),
-        role: capability_neutral,
-        step_name: "Cited-symbol census (every authored DeclarationRef resolves)",
-      },
-    ],
-  )
-}
-
-fn cited_symbol_step_annotations() -> List<CapabilityAnnotatedStep> {
-  list_map(
-    xs: cited_symbol_bound_steps(),
-    f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
-  )
-}
-
-fn cited_symbol_capability_closure_holds() -> Bool {
-  capability_closure_is_closed(
-    v: workflow_job_capability_closure(steps: cited_symbol_step_annotations()),
-  )
-}
-
-data cited_symbol_job_id: String = "cited-symbol"
-
-// 30 rather than the floor's 180. The census measured 1m39s-2m13s on a remote runner; a bound is
-// not derived from those, but it is chosen so that a wedged run reports within the same working
-// hour instead of holding a self-hosted runner for three hours to say nothing.
-fn cited_symbol_job() -> Job {
-  Job {
-    id: cited_symbol_job_id,
-    name: none,
-    runner: gunbc_ci_selected_runner_spec(),
-    steps: list_map(xs: cited_symbol_bound_steps(), f: fn(b) { b.step }),
     needs: [],
     env: none,
     outputs: none,
     if_condition: none,
-    timeout_minutes: 30,
+    timeout_minutes: 180,
     continue_on_error: none,
     concurrency: none,
     permissions: none
@@ -891,7 +765,7 @@ data witness_floor_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [cited_symbol_job(), witness_floor_job()]
+  jobs: [witness_floor_job()]
 }
 
 // THE CLOSURE HAS A PRODUCTION CONSUMER, which is the difference between a check and a claim.
