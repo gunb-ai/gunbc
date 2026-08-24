@@ -2,11 +2,10 @@ module v1.compiler.infer_lookup
 
 import std.induction { SubValueRelation }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.primitive_identity {
-  PrimitiveProjectionAnswer, DeclarationProjectsPrimitive, DeclarationProjectsNoPrimitive,
-  DeclarationPrimitiveUndisposed,
+import std.primitive_projection {
+  PrimitiveProjection,
   ProjectionFidelity, HostRealizedSeam, ModeledProjection, DivergentProjection,
-  primitive_projection_for_declaration
+  primitive_projection_row_for_declaration
 }
 
 import v1.std.core {
@@ -175,47 +174,55 @@ fn author_named_visibility(type_env: TypeEnv, name: String) -> AuthorNamedVisibi
 //   DivergentProjection                   -- TWO authorities, and the divergence is the reason.
 //        `v2.std.collection.map_get` returns Outcome<Optional<V>> where the primitive returns
 //        Optional<V>. Both candidates are kept and the call REFUSES. This is row 30's specimen.
-//   DeclarationProjectsNoPrimitive        -- TWO authorities. Nobody has claimed this declaration
-//        projects anything, so a same-named builtin is a genuine rival.
-//   DeclarationPrimitiveUndisposed        -- NOBODY HAS CLASSIFIED THIS YET, which is NOT the
-//        same state as "classified as not a projection" and must not refuse. 196 of 209 census
-//        symbols sit here; treating ignorance as an answer would make the wall strictest exactly
-//        where it knows least, and would scale its strictness INVERSELY with how much of the
-//        census is done. The builtin is dropped and behaviour is today's.
+//   no roster row (`Absent`)              -- SUPPRESS. See the arm note below: at this seam the
+//        two absence states are not distinguishable, and the direction is the safe one.
 //
 // The asymmetry is deliberate: the builtin is RETAINED only when a declared candidate positively
 // says the two are different authorities.
 //
-// THE Undisposed ARM IS A CONSUMER-SIDE POLICY CHOICE, NOT A FACT ABOUT THE PRIMITIVE, and it is
+// THE `Absent` ARM IS A CONSUMER-SIDE POLICY CHOICE, NOT A FACT ABOUT THE PRIMITIVE, and it is
 // written down here rather than left implicit because an unexplained arm reads as an oversight.
 // This seam decides nothing about the taxonomy -- it never inspects a PrimitiveIdentity, compares
-// an authored symbol, or supplements a projection row; it consumes a total answer and maps it onto
-// one local question. What it DOES decide is which way THIS consumer fails under ignorance, and it
-// fails toward today's behaviour. That direction is not a preference: a wall whose strictness rises
-// with how much census work remains undone is not strict, it is broken, and it would refuse the
-// 196 undisposed symbols corpus-wide on the strength of nobody having gotten to them yet.
+// an authored symbol, or supplements a roster row; it asks one exact-declaration question and maps
+// the answer onto one local question. What it DOES decide is which way THIS consumer fails when
+// the roster has no row, and it fails toward today's behaviour.
 //
-// WHICH IS ALSO WHY THE ANSWER HAS THREE ARMS RATHER THAN A BOOLEAN, and the argument is about
-// where a decision LIVES rather than what the states mean. A collapsed suppress-flag would make
-// exactly this choice -- but invisibly, at the producer, for every consumer at once, and no second
-// consumer with a different failure direction could dissent from it or even see that a choice had
-// been made. Three arms force each consumer to choose in the open and own its own failure
-// direction. This one chooses suppress, in public, for the reason above.
+// AND THAT ARM IS A NARROWER WALL THAN THE ONE THIS FILE ORIGINALLY CARRIED, which is stated
+// rather than smoothed over. `std.primitive_identity` answers a TOTAL three-arm question that
+// separates "classified as not a projection" from "nobody has classified this yet" -- and against
+// that answer this seam refused the first and suppressed the second. It cannot consume that answer:
+// the disposed/undisposed split is DERIVED from the five-surface census, whose interpreter roster
+// reaches v2 and so cannot enter the seed's closure (`std.primitive_projection`'s own boundary
+// note records this, and the 31 interpreter-only symbols are why the census cannot simply drop it).
+// The seed-safe leaf answers the EXACT question only -- is there a roster row -- so both absence
+// states arrive here as one `Absent`, and one direction has to cover both.
+//
+// SUPPRESS IS THE DIRECTION, and it is not a preference. 196 of 209 census symbols are undisposed,
+// so refusing on absence would make the wall strictest exactly where it knows least and scale its
+// strictness INVERSELY with how much census work remains done -- measured, that is 608 refusals
+// across 79 files on four names, none of them a genuine two-authority collision. Suppressing costs
+// the NoPrimitive half of the wall: a declared name unrelated to any primitive no longer rivals a
+// same-named builtin. That half was never a regression guard -- it is today's behaviour, which
+// already resolves such a call to the declaration -- and what survives is what row 30 is about:
+// a DivergentProjection still refuses, and two declared candidates still refuse on cardinality.
+//
+// NEXT-RUNG TRIGGER for restoring the NoPrimitive half: a seed-safe carrier for the disposed /
+// undisposed distinction. That is a census-shaped question, not a resolution-shaped one, and it
+// belongs to whoever owns the surface snapshot rather than to this file.
 fn declared_candidate_rivals_the_builtin(candidate: CallableCandidate) -> Bool {
   match candidate.identity {
     BuiltinCallable { primitive_name: _ } => false
     DeclaredCallable { owner_module_path: owner, decl_name: decl } =>
-      match primitive_projection_for_declaration(
+      match primitive_projection_row_for_declaration(
         declaration: decl_ref(module_path: owner, decl_name: decl)
       ) {
-        DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
-          match fidelity {
+        Present { value: row } =>
+          match row.fidelity {
             HostRealizedSeam => false
             ModeledProjection => false
             DivergentProjection { divergence: _ } => true
           }
-        DeclarationProjectsNoPrimitive => true
-        DeclarationPrimitiveUndisposed { authored_symbol: _ } => false
+        Absent => false
       }
   }
 }

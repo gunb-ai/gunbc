@@ -15,8 +15,16 @@ pub use crate::std_algebra::{
 pub use crate::std_algebra::{
     AlgebraFieldTemplate, AlgebraTypeTemplate, CollectionSizeEffect, ContainerSource, CostShape,
 };
+pub use crate::std_decl_ref::decl_ref;
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+pub use crate::std_primitive_projection::primitive_projection_row_for_declaration;
+pub use crate::std_primitive_projection::PrimitiveIdentity;
+use crate::std_primitive_projection::ProjectionFidelity::{
+    DivergentProjection, HostRealizedSeam, ModeledProjection,
+};
+pub use crate::std_primitive_projection::{PrimitiveProjection, ProjectionFidelity};
 pub use crate::std_syntax::BinOp;
 use crate::std_syntax::BinOp::*;
 pub use crate::v1_compiler_infer_emit_info::{
@@ -135,14 +143,49 @@ pub enum AuthorNamedVisibility {
 }
 
 pub fn author_named_visibility(type_env: Rc<TypeEnv>, name: String) -> AuthorNamedVisibility {
-    if v1_rt::map_is_empty(&type_env.source_visible_names.clone()) {
+    if v1_rt::map_is_empty(&type_env.authored_import_names.clone()) {
         AuthorNamedVisibility::VisibilityUnobservable
     } else {
-        if v1_rt::map_has(&type_env.source_visible_names.clone(), name.clone()) {
+        if v1_rt::map_has(&type_env.authored_import_names.clone(), name.clone()) {
             AuthorNamedVisibility::AuthorNamedThisName
         } else {
             AuthorNamedVisibility::AuthorNamedNothingForThisName
         }
+    }
+}
+
+pub fn declared_candidate_rivals_the_builtin(candidate: Rc<CallableCandidate>) -> bool {
+    match (*candidate.identity.clone()).clone() {
+        CallableIdentity::BuiltinCallable {
+            primitive_name: _, ..
+        } => false,
+        CallableIdentity::DeclaredCallable {
+            owner_module_path: owner,
+            decl_name: decl,
+            ..
+        } => {
+            match primitive_projection_row_for_declaration(decl_ref(owner.clone(), decl.clone())) {
+                Some(row) => match (*row.fidelity.clone()).clone() {
+                    ProjectionFidelity::HostRealizedSeam => false,
+                    ProjectionFidelity::ModeledProjection => false,
+                    ProjectionFidelity::DivergentProjection { divergence: _, .. } => true,
+                },
+                None => false,
+            }
+        }
+    }
+}
+
+pub fn builtin_is_a_rival_authority(declared: Rc<Vec<Rc<CallableCandidate>>>) -> bool {
+    {
+        let mut __found = false;
+        for c in declared.iter().cloned() {
+            if declared_candidate_rivals_the_builtin(c.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
     }
 }
 
@@ -155,13 +198,22 @@ pub fn callable_lookup_over_candidates(
         Some(sig) => Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() }),
         None => {
             let declared = parent_closure_callable_candidates(func_env.clone(), name.clone());
-            let admissible = match author_named_visibility(type_env.clone(), name.clone()) {
-                AuthorNamedVisibility::AuthorNamedThisName => declared.clone(),
-                AuthorNamedVisibility::VisibilityUnobservable => declared.clone(),
+            let builtin_admissible = match author_named_visibility(type_env.clone(), name.clone()) {
+                AuthorNamedVisibility::AuthorNamedThisName => Rc::new(vec![]),
+                AuthorNamedVisibility::VisibilityUnobservable => Rc::new(vec![]),
                 AuthorNamedVisibility::AuthorNamedNothingForThisName => {
-                    v1_rt::concat(declared.clone(), builtin_callable_candidates(name.clone()))
+                    if builtin_is_a_rival_authority(declared.clone()) {
+                        builtin_callable_candidates(name.clone())
+                    } else {
+                        if ((declared.clone().len() as i64) == 0) {
+                            builtin_callable_candidates(name.clone())
+                        } else {
+                            Rc::new(vec![])
+                        }
+                    }
                 }
             };
+            let admissible = v1_rt::concat(declared.clone(), builtin_admissible.clone());
             match (*decide_callable_candidates(admissible.clone())).clone() {
                 FuncSigLookup::FuncSigResolved { sig: sig, .. } => {
                     Rc::new(FuncSigLookup::FuncSigResolved { sig: sig.clone() })

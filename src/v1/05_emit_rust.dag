@@ -11849,9 +11849,31 @@ fn emit_capability_method(cap_node: Node, shared_types: Set<String>, env: TypeEn
   concat(items.async_prefix, items.func_keyword, " ", emit_ident(name: authored_name(env: env, node: cap_node), target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
 
+// A CALL IS A REFERENCE TO ANOTHER DECLARATION, SPELLED WITH ARGUMENTS.
+//
+// This predicate answers one question -- does this `data` initializer reference another
+// declaration -- and `emit_data_def` uses it to choose between the JSON serializer (which can
+// render only literals) and `emit_typed_expr` (which can render anything). An `ExprVar` was
+// already answered `true` for exactly the right reason: a bare name is a reference. An
+// `ExprCall` is the same reference with an argument list attached, and it fell through `_` to
+// `false`, sending `data d: R = mk(..)` to a serializer that cannot represent a call. The
+// serializer then refused with `unsupported mock expression`, so the failure surfaced one layer
+// below the judgment that caused it.
+//
+// The match was TOTAL AT THE LEVEL EXAMINED AND BLIND ONE LEVEL DOWN: exhaustive over
+// `expr_data`, no arm missing, nothing for a reviewer or a wildcard-free lens to catch -- the
+// `_` carried the payload. It was wrong by this function's own definition, not incomplete.
+//
+// WHY NOTHING THAT WORKS TODAY MOVES: the JSON branch is guarded by record-shaped-type AND
+// no-cross-refs, and every row currently on it emitted successfully, which by construction means
+// its initializer holds no call. Measured at the time of the repair: 34 rows on the JSON path
+// across the seed, none affected; 9 rows refused, all of them `PrimitiveIdentity` in
+// `std.primitive_projection` -- the first rows in the seed closure's history to satisfy both
+// conditions at once, which is why the defect stood this long unasked.
 fn data_value_has_cross_refs(value: Node) -> Bool {
   match value.expr_data {
     ExprVar { binding_kind: _ } => true
+    ExprCall { call_semantics: _, descent_evidence: _ } => true
     ExprListLit => value.children |> any(c => data_value_has_cross_refs(value: c))
     ExprRecordLit { parent_enum: _ } =>
       value.children |> any(f => data_value_has_cross_refs(value: field_init_node_value(n: f)))

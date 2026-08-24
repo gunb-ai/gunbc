@@ -31515,6 +31515,7 @@ pub fn data_value_has_cross_refs(value: Rc<Node>) -> bool {
             ExprData::ExprVar {
                 binding_kind: _, ..
             } => true,
+            ExprData::ExprCall { .. } => true,
             ExprData::ExprListLit => {
                 let mut __found = false;
                 for c in value.children.clone().iter().cloned() {

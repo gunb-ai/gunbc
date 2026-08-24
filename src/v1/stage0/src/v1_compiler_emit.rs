@@ -580,6 +580,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
             intern_table: empty_intern_table(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+            authored_import_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: empty_symbol_index(),
         }),
         func_env: Rc::new(ResolvedFuncEnv {

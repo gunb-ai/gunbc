@@ -9552,6 +9552,21 @@ fn overlay_direct_import_exports(ancestry_str_bindings: Map<String, TypeBinding>
   )
 }
 
+// THE AUTHORED HALF OF THIS FUNCTION'S VISIBILITY MAPS, KEPT SEPARATE BECAUSE THE UNION DESTROYS IT.
+// `build_type_env` folds BOTH import arms into one `source_visible_names` map: an is_all import
+// contributes every name in the imported module's interface AND every name that module itself
+// acquired through ancestry -- so a bare `import v2.std.collection` puts `map_get` in the map
+// without the author ever writing the word, and the ancestry half contributes names
+// TRANSITIVELY, which is the closure-supply case gap-analysis row 30 is about, arriving through
+// a set whose name suggests the opposite.
+//
+// Membership in source_visible_names is therefore NECESSARY for "the author named this
+// declaration" and NOT SUFFICIENT for it, and the sufficient half cannot be recovered by
+// filtering the result: the union already happened. Only the specific_names arm answers the
+// question `v1.compiler.infer_lookup` level 1a asks, so `authored_import_names` is folded
+// separately here rather than derived from the union. Type parameters are deliberately absent --
+// they are authored, but they are not imports, and that map answers "which declaration did an
+// import name", not "what is in lexical scope".
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex) -> BuildTypeEnvResult {
   let source_indices = fold(map_keys(kernel_type_set), init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
@@ -9700,19 +9715,6 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       fold(imp.specific_names, init: acc, f: (x, n) => map_insert(x, n, true))
     }
   )
-  // THE AUTHORED HALF, KEPT SEPARATE BECAUSE THE UNION ABOVE DESTROYS IT. source_visible_names
-  // folds BOTH import arms into one map: an is_all import contributes every name in the imported
-  // module's interface AND every name that module itself acquired through ancestry -- so a bare
-  // `import v2.std.collection` puts `map_get` in the map without the author ever writing the
-  // word, and the ancestry half contributes names TRANSITIVELY, which is the closure-supply case
-  // gap-analysis row 30 is about arriving through a set whose name suggests the opposite.
-  //
-  // Membership in source_visible_names is therefore NECESSARY for "the author named this
-  // declaration" and NOT SUFFICIENT for it, and the sufficient half cannot be recovered by
-  // filtering the result: the union already happened. Only the specific_names arm answers the
-  // question `v1.compiler.infer_lookup` level 1a asks, so it gets its own authority here.
-  // Type parameters are deliberately absent -- they are authored, but they are not imports, and
-  // this map answers "which declaration did an import name", not "what is in lexical scope".
   let authored_import_names = fold(module.resolved_imports, init: empty_map(), f: (acc, imp) =>
     if imp.is_all {
       acc
