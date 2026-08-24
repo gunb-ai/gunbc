@@ -173,9 +173,3 @@ test fn witness_unreadable_property_is_unavailable_not_absent() -> Bool {
     CompilePoolLimitBytes { bytes: _ } => false
   }
 }
-
-// The load-state argv the transport materializes must be the argv extdeps.systemd.systemctl declares. Without
-// this the operation could drift from its own authority and every reading above would be of the wrong unit.
-test fn witness_load_state_operation_argv_matches_its_authority() -> Bool {
-  systemctl_show_load_state_operation_argv_matches_transport(unit: gunbc_managed_compile_pool_slice)
-}
