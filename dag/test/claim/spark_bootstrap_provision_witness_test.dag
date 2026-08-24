@@ -5,6 +5,7 @@ module test.claim.spark_bootstrap_provision_witness
 // direction (a witness should carry its own edge to its subject), but the transition is abrupt:
 // one import turned every bare reference into "no such function".
 import std.measure { second }
+import std.algebra { length }
 import gunbc.spark.bootstrap_provision {
   SparkCredentialKind, FactoryHotspotCredential, AdministratorCredential,
   SparkCredentialOccurrence, spark_srv5, spark_srv6, spark_credential_occurrence,
