@@ -5,7 +5,7 @@ import v2.std.language_model { LanguageModel }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured, TargetEmitHostRuntimeRow }
 import v2.std.collection {
   List,
-  Set,
+  PointwisePower,
   Map,
   empty_map,
   list_at_optional,
@@ -3371,8 +3371,8 @@ fn dag_grammar() -> ParseGrammar {
   ModeledGrammar { root: dag_grammar_root() }
 }
 
-fn dag_language_model_surface_prelude_atoms() -> Set<Symbol> {
-  Set {
+fn dag_language_model_surface_prelude_atoms() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       sym == ^dag_c3_surface_sugar_service ||
         sym == ^dag_c3_surface_sugar_fn ||
@@ -3383,8 +3383,8 @@ fn dag_language_model_surface_prelude_atoms() -> Set<Symbol> {
   }
 }
 
-fn dag_language_model_empty_canonical_symbol_set() -> Set<Symbol> {
-  Set {
+fn dag_language_model_empty_canonical_symbol_set() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(_) {
       false
     }
@@ -3406,8 +3406,8 @@ fn dag_language_model_binding_canonical(sym: Symbol) -> Bool {
     || sym == ^dag_loop_measure_sym
 }
 
-fn dag_canonical_symbols() -> Set<Symbol> {
-  Set {
+fn dag_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       dag_language_model_surface_prelude_atoms().member(sym) ||
         grammar_carries_symbol(grammar: dag_grammar(), sym: sym) ||
@@ -3446,7 +3446,7 @@ fn dag_language_model_surface_empty_prelude() -> LanguageModel {
   }
 }
 
-fn dag_language_model_canonical_symbols(lm: LanguageModel) -> Set<Symbol> {
+fn dag_language_model_canonical_symbols(lm: LanguageModel) -> PointwisePower<Symbol> {
   lm.canonical_symbols
 }
 

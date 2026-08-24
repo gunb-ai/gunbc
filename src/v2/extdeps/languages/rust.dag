@@ -88,7 +88,7 @@ import v2.std.compilers.lexing {
 import v2.std.collection {
   List,
   Map,
-  Set,
+  PointwisePower,
   empty_map,
   list_at_optional,
   map_insert,
@@ -1765,15 +1765,15 @@ fn rust_hash_set_supplemental_generic_bound_contracts() -> Map<TargetCapabilityK
 
 type RustSupplementalGenericBoundContractCoverageBlocker {
   derive_trait: TargetCapabilityKey
-  requirements: Set<TargetCapabilityRequirement>
+  requirements: PointwisePower<TargetCapabilityRequirement>
   authority: ExternalAuthority
   coverage: RustSupplementalGenericBoundContractCoverageDisposition
 }
 
 fn rust_hash_set_eq_hash_supplemental_generic_bound_requirements(
   representation_parameter: Symbol
-) -> Set<TargetCapabilityRequirement> {
-  Set {
+) -> PointwisePower<TargetCapabilityRequirement> {
+  PointwisePower {
     member: fn(requirement) {
       fold_list(
         xs: [
@@ -3078,8 +3078,8 @@ fn rust_fn_add_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(rules: rust_fn_add_lex_rules(), token_class: sym)
 }
 
-fn rust_language_model_canonical_symbols() -> Set<Symbol> {
-  Set {
+fn rust_language_model_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       rust_catalog_surface_symbol(sym: sym) ||
         rust_fn_add_lex_token_symbol(sym: sym) ||
@@ -4365,8 +4365,8 @@ fn rust_grammar() -> ParseGrammar {
   ModeledGrammar { root: rust_grammar_root() }
 }
 
-fn rust_canonical_symbols() -> Set<Symbol> {
-  Set {
+fn rust_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       rust_catalog_surface_symbol(sym: sym) ||
         lex_rule_set_token_class_member(rules: rust_lex_rules(), token_class: sym) ||
