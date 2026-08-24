@@ -1,0 +1,8 @@
+# sha256 — RAW binary (after gunzip), then the .gz as committed
+
+f09f5d56f41de561b518100d75098bad0bae09bb9c03149c5f7193cd33b010eb  gunbc_branch_vintage_2026-08-23T09-04            (raw)
+ed5e7d8c97f84e5b63b91c3f858293ee140b4a7431fffa5eb4e63cb597b7e05c  gunbc_branch_vintage_2026-08-23T09-04.gz  (committed)
+bd2d6354010ce6132c8de080ab7619d2045fb58d85b49c6dbfacb93e6e5c6d1a  claim_executor_branch_vintage_2026-08-23T06-28            (raw)
+251edcc6509882928ee702a23ef4058a1ad4b7091cf3753ae625f200c6ec76bd  claim_executor_branch_vintage_2026-08-23T06-28.gz  (committed)
+610ca855ba7ab7c706abdcb6911775d5d926daff5ef4768f948a3b9f75dd0810  claim_executor_branch_vintage_2026-08-23T04-18            (raw)
+1d01d28dc4c54a45ae71fdf50a498635829bfb42a80881e389e79b14fc3918d5  claim_executor_branch_vintage_2026-08-23T04-18.gz  (committed)
