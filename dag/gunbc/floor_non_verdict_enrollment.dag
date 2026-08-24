@@ -81,8 +81,7 @@ data floor_non_verdict_measured_total: Int = 142
 // referencing it declares no import that would bring it into the run's loaded index. The refusal is
 // correct; the witness is unimportable. That is why the next-rung trigger below is not "widen the
 // scope".
-data floor_non_verdict_dominant_cause_specimen: DeclarationRef =
-  decl_ref(module_path: "test.claim.design_argument_witness", decl_name: "design_s1_argument_form_is_valid")
+data floor_non_verdict_dominant_cause_specimen: DeclarationRef = decl_ref(module_path: "test.claim.design_argument_witness", decl_name: "design_s1_argument_form_is_valid")
 
 // RUNG. The class sits at MITIGATABLE: every identity is typed, located and counted on the receipt
 // line, and the line does not stop. The ceiling is MECHANICALLY PREVENTABLE -- the gate is one
@@ -95,8 +94,6 @@ data floor_non_verdict_next_rung_trigger: DissolutionCondition = unbound_dissolu
 
 // WHERE THE ARMS AND THE GATE ACTUALLY LIVE. Cited rather than copied: this module must not become
 // a second account of the seed's routing, which is the fork DESIGN section 3 forbids.
-data floor_non_verdict_routing_authority: DeclarationRef =
-  decl_ref(module_path: "v1_compiler.cli_run", decl_name: "run_required_floor")
+data floor_non_verdict_routing_authority: DeclarationRef = decl_ref(module_path: "v1_compiler.cli_run", decl_name: "run_required_floor")
 
-data floor_non_verdict_gate_authority: DeclarationRef =
-  decl_ref(module_path: "v1_compiler.claim_executor", decl_name: "required_floor_outcome_is_clean")
+data floor_non_verdict_gate_authority: DeclarationRef = decl_ref(module_path: "v1_compiler.claim_executor", decl_name: "required_floor_outcome_is_clean")
