@@ -10526,11 +10526,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     // workaround this repository refuses; a distinct concern with its own check is the shape the
     // ruling points at.
     //
-    // WHY IT IS NOT A FLOOR CLAIM EITHER, and this one is structural rather than a preference.
-    // `run_required_floor` declines any entry that reads the live tree (`DeclinedLiveTree`), and
-    // reading the live corpus IS this census's subject -- relocating the witness moves it from
-    // `DeclinedLongModule` to `DeclinedLiveTree` and never to `Planned`. No amount of making it
-    // cheaper opens that door.
+    // This remains a separate mode after the floor's stale live-tree decline was deleted. The
+    // deletion admits ordinary live-tree-reading witnesses; it does not silently widen the
+    // operator-defined three phases of `--required-ci` or turn this distinct corpus census into
+    // a floor claim.
     //
     // WHAT IT REPORTS. Every unresolved reference with the typed arm that refused it, and -- on a
     // green -- the population it checked. An empty refusal list means both "every authored
@@ -11824,18 +11823,17 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     );
     // THE SUBJECT THE ROSTER WAS PROJECTED FROM, STATED BEFORE THE ROSTER.
     // `planned` is the population that SURVIVED site projection; printing it
-    // without `offered` and `declined_long` made the receipt unable to say what it
+    // without `offered` and the declines made the receipt unable to say what it
     // dropped, which is how a roster that narrowed read exactly like one that did
-    // not. The three are printed together so the subtraction is visible rather
+    // not. The categories are printed together so the subtraction is visible rather
     // than inferable.
     eprintln!(
         "required-floor: offered={} routed={} declined_long={} declined_fixture={} \
-         declined_live={} — every discovered site is exactly one of these",
+         — every discovered site is exactly one of these",
         outcome.sites_offered,
         outcome.claims_planned,
         outcome.declined_long_module,
-        outcome.declined_fixture_member,
-        outcome.declined_live_tree
+        outcome.declined_fixture_member
     );
     // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
     // The old field printed `outcome.route_gap.len()` under the bare name `route_gap` — the
@@ -20004,13 +20002,10 @@ fn run_behavioral_receipt_census(source_roots: &[String]) -> Result<ExitCode, Ex
 /// it: on unmodified main the lens was RED with 27 refusing production references while every
 /// required check was green.
 ///
-/// WHY NOT THE FLOOR. `run_required_floor` declines an identity whose entry reads the live tree
-/// (`DeclinedLiveTree`), and reading the live corpus IS this census's subject. Relocating the
-/// witness out of the long home moves it from one decline arm to the other and never to `Planned`.
-/// The route is therefore a MODE, `--required-cited-symbol`, invoked by its own job -- not a claim,
-/// so it sits outside both the per-claim safety deadline and the live-tree arm, and not a phase of
-/// `--required-ci`, which the operator narrowed to three on 2026-08-21 and which this leaves
-/// byte-unchanged.
+/// The route remains a MODE, `--required-cited-symbol`, rather than a phase of `--required-ci`,
+/// which the operator narrowed to three on 2026-08-21. Deleting the floor's stale live-tree
+/// decline admits ordinary live-tree-reading witnesses; it does not change that composed-mode
+/// scope ruling or turn this distinct corpus census into a floor claim.
 ///
 /// Returns the located refusals -- one line per unresolved reference, carrying the typed arm that
 /// refused it -- so the failure names what to fix rather than reporting a count.
