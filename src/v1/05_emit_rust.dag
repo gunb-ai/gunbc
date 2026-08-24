@@ -8801,7 +8801,7 @@ fn emit_typed_collection_lambda(lambda_expr: Node, elem_type_str: String, regist
   }
 }
 
-fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str: String, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str: String, elem_borrowed: Bool, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match lambda_expr.expr_data {
     ExprLambda =>
       let ps = lambda_param_names_at(texpr: lambda_expr, source_indices: scope.type_env.source_indices)
@@ -8812,7 +8812,10 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
       let fallback_types = ps |> enumerate |> map(pair =>
         if pair.first == 0 { safe_acc_type } else { elem_type_str }
       )
-      let param_strs = lambda_param_type_strs(params: ps, param_nodes: pn, fallback_types: fallback_types, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, fold_acc_uses_fallback: true, type_env: scope.type_env)
+      let param_strs_raw = lambda_param_type_strs(params: ps, param_nodes: pn, fallback_types: fallback_types, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, fold_acc_uses_fallback: true, type_env: scope.type_env)
+      let param_strs = if elem_borrowed {
+        param_strs_raw |> enumerate |> map(pair => if pair.first == 1 { "_" } else { pair.second })
+      } else { param_strs_raw }
       let params_str = param_strs |> join(separator: ", ")
       let lambda_scope = lambda_scope_from_children(scope: scope, params: ps, param_nodes: pn)
       let body_str = emit_typed_expr(texpr: bd, registry: registry, scope: lambda_scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -8829,6 +8832,26 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
   }
 }
 
+// FOLD'S UNUSED-ELEMENT OPTIMIZATION CHANGES THE ITEM TYPE, AND THE CLOSURE SIGNATURE WAS NOT TOLD.
+// Dropping `.cloned()` when the fold lambda's element parameter is `_` is a real saving -- the clone is
+// paid per element for a value the body never names. But it also changes the ITEM TYPE the iterator
+// yields, from `T` to `&T`, while the lambda's element parameter kept its by-value annotation: rustc
+// E0631, `expected fn(Rc<_>, &Rc<_>)`, `found fn(Rc<_>, Rc<_>)`, with rustc's own help line reading
+// "consider adjusting the signature so it borrows its argument". One fact, derived in two places, and
+// the second place did not know about the first.
+//
+// emit_typed_fold_lambda's elem_borrowed forces `_` at the element position. THE FIRST ATTEMPT AT THIS
+// CHANGED THE FALLBACK TYPE STRING AND MEASURED NO EFFECT: lambda_param_type_strs prefers the parameter
+// node's own RESOLVED type and only falls back when there is none, so the site still emitted
+// `_: Rc<DependencyView>`. The override has to sit where the parameter string is chosen, not where the
+// fallback is supplied. The element is `_` BY CONSTRUCTION --
+// fold_lambda_element_unused is exactly the test that the parameter is named `_` -- so the annotation
+// carries no information for a reader and only has to be ACCEPTED by rustc. Emitting `_` lets inference
+// supply whichever of `T` / `&T` the iterator actually yields, which keeps the two consequences in
+// agreement without the emitter restating the item type at the second site. Emitting `&{elem_type}`
+// instead would restate it, and would then have to be kept in step with any future change to the strip
+// -- reintroducing the shape of this defect while fixing this instance of it. `_` is also the device
+// already used for elem_render_has_spurious_generic a few bindings earlier.
 fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, type_env: scope.type_env)
@@ -8977,15 +9000,15 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
       }
     Absent => "compile_error!(\"missing fold init argument\")"
   }
-  let fold_fn = match args |> skip(1) |> first {
-    Present { value: a } =>
-      emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: fold_elem_type_str, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
-    Absent => "compile_error!(\"missing fold function argument\")"
-  }
   let sharing = language_spec(target: Rust).sharing
   let elem_unused = match args |> skip(1) |> first {
     Present { value: a } => fold_lambda_element_unused(lambda_expr: arg_value(n: a), source_indices: scope.type_env.source_indices)
     Absent => false
+  }
+  let fold_fn = match args |> skip(1) |> first {
+    Present { value: a } =>
+      emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: fold_elem_type_str, elem_borrowed: elem_unused, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
+    Absent => "compile_error!(\"missing fold function argument\")"
   }
   let iter_template = if elem_unused { replace(sharing.iter_owned, ".cloned()", "") } else { sharing.iter_owned }
   concat(apply_type_template1(template: iter_template, arg0: recv_str), ".fold(", init_str, ", ", fold_fn, ")")
