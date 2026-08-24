@@ -5,10 +5,17 @@ import std.types { List, NonEmptyStr, String }
 
 data primitive_projection_seed_boundary_note: String = "The declaration-to-primitive projection is a seed-consumed substrate authority, so its import closure stops at std.decl_ref/std.types and never reaches a target roster or v2 module. This module is a strict relocation of the projection identity, fidelity, roster, and exact-declaration query formerly declared inside std.primitive_identity. std.primitive_identity consumes this authority for its census and total disposed/undisposed answer; the stage0 resolver consumes the same exact-declaration query. Required regen is the mechanical wall: src/v1 importing the former home reached gunbc.v1_interpreter_primitive_surface and then v2.std.qualified_name, which the src/v1 + dag bootstrap closure correctly refuses. The refusal is the seed-safety boundary working, not build friction."
 
+data primitive_identity_slug_prefix: String = "primitive."
+
 type PrimitiveIdentity { slug: NonEmptyStr }
 
 fn primitive_identity_slug(name: String) -> PrimitiveIdentity {
-  PrimitiveIdentity { slug: concat("primitive.", name) as NonEmptyStr }
+  PrimitiveIdentity { slug: concat(primitive_identity_slug_prefix, name) as NonEmptyStr }
+}
+
+fn primitive_identity_runtime_name(identity: PrimitiveIdentity) -> String {
+  let slug = identity.slug as String
+  substring(s: slug, start: string_length(s: primitive_identity_slug_prefix), end: string_length(s: slug))
 }
 
 data primitive_projection_identity_key_note: String = "The projection is keyed on std.decl_ref DeclarationRef, which is the namespace layer's own identity for a declaration (DESIGN section 3: namespace supplies declaration identity, this carrier supplies semantic primitive identity). No new identity type is minted here. The alternative shape considered and refused was a per-declaration marker row beside each fn: it is a second representation scattered across modules rather than one authority, it keys on a bare name inside a module scope so two same-named declarations collapse into one, and it has no room for a fidelity distinction. Module qualification answers the second; this single carrier answers the first; ProjectionFidelity answers the third."

@@ -22,6 +22,15 @@ pub fn primitive_projection_seed_boundary_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn primitive_identity_slug_prefix() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "primitive.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PrimitiveIdentity {
     pub slug: NonEmptyStr,
@@ -29,8 +38,17 @@ pub struct PrimitiveIdentity {
 
 pub fn primitive_identity_slug(name: String) -> Rc<PrimitiveIdentity> {
     Rc::new(PrimitiveIdentity {
-        slug: v1_rt::concat("primitive.".to_string(), name.clone()),
+        slug: v1_rt::concat(primitive_identity_slug_prefix(), name.clone()),
     })
+}
+
+pub fn primitive_identity_runtime_name(identity: Rc<PrimitiveIdentity>) -> String {
+    let slug = identity.slug.clone();
+    v1_rt::substring(
+        &slug,
+        v1_rt::string_length(&primitive_identity_slug_prefix()),
+        v1_rt::string_length(&slug),
+    )
 }
 
 pub fn primitive_projection_identity_key_note() -> String {

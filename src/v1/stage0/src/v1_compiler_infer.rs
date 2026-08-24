@@ -38,6 +38,7 @@ pub use crate::std_interface_summary::{interface_summary_rollup, signature_contr
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
 pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 pub use crate::std_occurrence_identity::OccurrenceId;
+pub use crate::std_primitive_projection::primitive_identity_runtime_name;
 pub use crate::std_primitive_projection::primitive_projection_row_for_declaration;
 pub use crate::std_primitive_projection::ProjectionFidelity;
 use crate::std_primitive_projection::ProjectionFidelity::{
@@ -9163,12 +9164,12 @@ pub fn resolved_declaration_call_target(
         Some(row) => match (*row.fidelity.clone()).clone() {
             ProjectionFidelity::HostRealizedSeam => {
                 Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
-                    primitive_name: row.primitive.clone().slug.clone(),
+                    primitive_name: primitive_identity_runtime_name(row.primitive.clone()),
                 })
             }
             ProjectionFidelity::ModeledProjection => {
                 Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
-                    primitive_name: row.primitive.clone().slug.clone(),
+                    primitive_name: primitive_identity_runtime_name(row.primitive.clone()),
                 })
             }
             ProjectionFidelity::DivergentProjection { divergence: _, .. } => {
