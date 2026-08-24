@@ -24,7 +24,7 @@ import gunbc.fabric_cell_converge {
   fabric_cell_population_unobserved,
 }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
 import gunbc.fleet_converge_plan {
   TimerRetirementMember,
@@ -809,4 +809,38 @@ test fn witness_fabric_cell_converged_population_plans_nothing() -> Bool {
       observed_fabric_cells: fabric_cells_observed_converged(),
     )
   ) == 0
+}
+
+// A POPULATION FROM ANOTHER HOST IS REFUSED, NOT RECONCILED, and this row is the one that would have
+// caught the hole rather than the ones that did not. Every existing fabric row supplies a population
+// whose host matches the plan host, so all of them pass against a family that never compares the
+// two -- the defect was invisible to the suite by construction of its fixtures, not by luck.
+//
+// The srv4 population below is perfectly valid; it is simply evidence about a different host. Joined
+// to an srv3 plan under the old code it reconciled as srv3 evidence: srv3's three resources read as
+// absent and srv4's three as extras, so the plan was a full install plus a full teardown against a
+// host nobody read, with nothing refused and a refusal count that counted the actions as ordinary
+// work. The count assertion below is what separates "refused" from "planned six things".
+fn fabric_cells_observed_on_srv4() -> FabricCellPopulation {
+  fabric_cell_population(
+    readback: FabricCellHostReadback {
+      host: operator_host_srv4,
+      cell_readbacks: [],
+    }
+  )
+}
+
+test fn witness_fabric_cell_population_from_another_host_is_refused_not_reconciled() -> Bool {
+  let lines = fleet_converge_fabric_cell_lines(
+    host: "srv3" as NonEmptyStr,
+    observed_fabric_cells: fabric_cells_observed_on_srv4(),
+  )
+  let count = fleet_converge_fabric_cell_refusal_count(
+    host: "srv3" as NonEmptyStr,
+    observed_fabric_cells: fabric_cells_observed_on_srv4(),
+  )
+  list_length(items: lines) == 1
+    && count == 1
+    && fabric_fingerprint_with(population: fabric_cells_observed_on_srv4())
+        != fabric_fingerprint_with(population: fabric_cells_observed_empty())
 }

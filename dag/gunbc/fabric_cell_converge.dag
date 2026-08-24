@@ -360,70 +360,72 @@ fn observations_for_address(
   )
 }
 
-fn first_refusal_cause(observations: List<FabricCellAddressObservation>) -> String {
-  fold(
-    observations,
-    init: "",
-    f: (acc, o) =>
-      match o {
-        AddressObservationRefused { slot: _, address: _, cause: c } => if acc == "" { c } else { acc }
-        AddressObserved { member: _ } => acc
-        AddressAbsent { slot: _, address: _ } => acc
-      }
-  )
-}
-
-fn any_refused(observations: List<FabricCellAddressObservation>) -> Bool {
-  fold(observations, init: false, f: (acc, o) =>
-    match o {
-      AddressObservationRefused { slot: _, address: _, cause: _ } => true
-      AddressObserved { member: _ } => acc
-      AddressAbsent { slot: _, address: _ } => acc
-    })
-}
-
-fn any_absent(observations: List<FabricCellAddressObservation>) -> Bool {
-  fold(observations, init: false, f: (acc, o) =>
-    match o {
-      AddressAbsent { slot: _, address: _ } => true
-      AddressObservationRefused { slot: _, address: _, cause: _ } => acc
-      AddressObserved { member: _ } => acc
-    })
-}
-
-// TWO POSITIVE OBSERVATIONS THAT DISAGREE ARE A CONTRADICTION, AND AN EARLIER REVISION OF THIS
-// MODULE GOT THAT WRONG WHILE CLAIMING OTHERWISE IN ITS OWN ANNOTATION.
+// ONE FOLD OVER THE OBSERVATIONS, ONE TYPED RESULT, AND NO PREDICATE WALKING THE COPRODUCT BESIDE
+// IT. This replaces FOUR independent traversals of the same observation list -- any_refused,
+// first_refusal_cause, any_absent and observed_digest_agreement -- three of which projected the
+// coproduct down to a Bool or a String. That is the predicate-dissolution shape: one lossy renaming
+// of a distinction the coproduct already carries, per question asked, each of which has to be kept
+// exhaustive by hand as arms are added, and none of which can see what the others concluded. A new
+// observation arm now fails to compile HERE, once, instead of silently inheriting whatever three
+// separate matches happened to answer (codex review 55419).
 //
-// It took the FIRST observed member and, finding no absence and no refusal, answered AddressPresent
-// with that member's digest -- so two attesters reporting different digests for one address resolved
-// to whichever arrived first. That is precisely the order-dependent fail-open this module was written
-// to not have, sitting underneath a comment asserting that presence requires every observation to
-// agree. The witness did not catch it because its contradiction fixture paired an observation with an
-// ABSENCE; the conflicting-positive case had no row at all, which is the more likely readback of the
-// two -- a stale reader and a fresh one both see the resource, and they disagree about its value.
+// WHAT THE REPLACED CODE GOT WRONG, KEPT BECAUSE THE DEFECT IS INSTRUCTIVE AND THE FIX IS NOW
+// STRUCTURAL. Before the agreement fold existed, this path took the FIRST observed member and,
+// finding no absence and no refusal, answered AddressPresent with that member's digest -- so two
+// attesters reporting different digests for one address resolved to whichever arrived first, under
+// an annotation asserting that presence requires every observation to agree. The witness did not
+// catch it because its contradiction fixture paired an observation with an ABSENCE; the
+// conflicting-positive case had no row at all, and it is the more likely readback of the two: a
+// stale reader and a fresh one both see the resource and disagree about its value. The row that
+// closes it is witness_fabric_cell_conflicting_positive_observations_contradict, which authors the
+// DESIRED member FIRST so a first-match implementation goes green on it.
 //
-// So agreement is computed rather than assumed: the fold carries the members seen so far as a typed
-// standing, and a single disagreement collapses it to Conflict for good.
-type ObservedDigestAgreement
-  = NoneObserved
-  | AllObservedAgree { member: FabricCellMember }
-  | ObservedDigestsConflict
+// THE JOIN IS THE SAFETY PROPERTY, AND IT IS ORDER-FREE BY CONSTRUCTION RATHER THAN BY ARM ORDER.
+// A refusal absorbs every other state whenever it arrives, so an unreadable address can never be
+// reported as present or absent because a favourable reading came first. Conflict likewise absorbs:
+// a positive reading meeting an absence, or meeting a positive reading with a different digest,
+// collapses to Conflict for good. Presence therefore survives only when nothing refused, nothing was
+// absent, at least one observation carried a member, and every observation carrying one agreed.
+type FabricCellAddressEvidence
+  = NoEvidence
+  | EvidenceRefused { cause: String }
+  | EvidenceAbsent
+  | EvidenceObserved { member: FabricCellMember }
+  | EvidenceConflict
 
-fn observed_digest_agreement(observations: List<FabricCellAddressObservation>) -> ObservedDigestAgreement {
-  fold(observations, init: NoneObserved, f: (acc, o) =>
+fn fabric_cell_address_evidence(
+  observations: List<FabricCellAddressObservation>,
+) -> FabricCellAddressEvidence {
+  fold(observations, init: NoEvidence, f: (acc, o) =>
     match o {
-      AddressObservationRefused { slot: _, address: _, cause: _ } => acc
-      AddressAbsent { slot: _, address: _ } => acc
+      AddressObservationRefused { slot: _, address: _, cause: c } =>
+        match acc {
+          EvidenceRefused { cause: first } => EvidenceRefused { cause: first }
+          NoEvidence => EvidenceRefused { cause: c }
+          EvidenceAbsent => EvidenceRefused { cause: c }
+          EvidenceObserved { member: _ } => EvidenceRefused { cause: c }
+          EvidenceConflict => EvidenceRefused { cause: c }
+        }
+      AddressAbsent { slot: _, address: _ } =>
+        match acc {
+          EvidenceRefused { cause: c } => EvidenceRefused { cause: c }
+          NoEvidence => EvidenceAbsent
+          EvidenceAbsent => EvidenceAbsent
+          EvidenceObserved { member: _ } => EvidenceConflict
+          EvidenceConflict => EvidenceConflict
+        }
       AddressObserved { member: m } =>
         match acc {
-          ObservedDigestsConflict => ObservedDigestsConflict
-          NoneObserved => AllObservedAgree { member: m }
-          AllObservedAgree { member: seen } =>
+          EvidenceRefused { cause: c } => EvidenceRefused { cause: c }
+          NoEvidence => EvidenceObserved { member: m }
+          EvidenceAbsent => EvidenceConflict
+          EvidenceObserved { member: seen } =>
             if (seen.state_digest as String) == (m.state_digest as String) {
-              AllObservedAgree { member: seen }
+              EvidenceObserved { member: seen }
             } else {
-              ObservedDigestsConflict
+              EvidenceConflict
             }
+          EvidenceConflict => EvidenceConflict
         }
     })
 }
@@ -439,24 +441,12 @@ fn fabric_cell_address_disposition(
 ) -> FabricCellAddressDisposition {
   let observations = observations_for_address(readback: readback, slot: slot, address: address)
   let ref = FabricCellAddressRef { slot: slot, address: address }
-  if any_refused(observations: observations) {
-    AddressUnreadable { ref: ref, cause: first_refusal_cause(observations: observations) }
-  } else {
-    match observed_digest_agreement(observations: observations) {
-      ObservedDigestsConflict => AddressContradicted { ref: ref }
-      AllObservedAgree { member: m } =>
-        if any_absent(observations: observations) {
-          AddressContradicted { ref: ref }
-        } else {
-          AddressPresent { ref: ref, member: m }
-        }
-      NoneObserved =>
-        if any_absent(observations: observations) {
-          AddressMissingOnHost { ref: ref }
-        } else {
-          AddressUnobserved { ref: ref }
-        }
-    }
+  match fabric_cell_address_evidence(observations: observations) {
+    EvidenceRefused { cause: c } => AddressUnreadable { ref: ref, cause: c }
+    EvidenceConflict => AddressContradicted { ref: ref }
+    EvidenceObserved { member: m } => AddressPresent { ref: ref, member: m }
+    EvidenceAbsent => AddressMissingOnHost { ref: ref }
+    NoEvidence => AddressUnobserved { ref: ref }
   }
 }
 

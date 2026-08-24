@@ -450,10 +450,22 @@ fn fleet_converge_slot_family(
 //
 // DISSOLVE-ON: the fabric cell host-effect realizer. When it lands, this arm's condition becomes
 // unreachable for realizable actions and it narrows to whatever remains genuinely unrealizable.
+// A POPULATION OBSERVED ON ONE HOST IS NOT EVIDENCE ABOUT ANOTHER, AND UNTIL THIS ARM EXISTED IT
+// WAS SILENTLY TREATED AS SUCH. The observed arm's host was discarded (`host: _`) and the desired
+// side was derived from the SEPARATELY SUPPLIED plan host, so a perfectly valid srv4 population
+// paired with srv3 reconciled as srv3 evidence: srv3's three resources read as absent, srv4's three
+// read as extras, and the plan was a full install plus a full teardown, against a host nobody read.
+// Nothing refused, because nothing compared the two names (codex review 55419).
+//
+// It is a typed refusal rather than a silent correction because BOTH readings are wrong and the
+// caller must learn which: preferring the population's host would plan the right host from a
+// mis-supplied argument, and preferring the argument is what produced the hole. The mismatch is a
+// defect in whoever joined them, so the line stops and names both.
 type FleetConvergeFabricCellFamily
   = FabricCellFamilyConvergedNoActions
   | FabricCellFamilyRealizationUnavailable { planned: MembershipPlan<FabricCellMember, String> }
   | FabricCellFamilyObservationRefused { cause: String }
+  | FabricCellFamilyObservationHostMismatch { planned_host: String, observed_host: String }
 
 fn fleet_converge_fabric_cell_family(
   host: NonEmptyStr,
@@ -468,7 +480,13 @@ fn fleet_converge_fabric_cell_family(
           "; the host was not read, so its substrate state is unknown and no membership may be planned against it",
         )
       }
-    FabricCellPopulationObserved { host: _, observed: obs } =>
+    FabricCellPopulationObserved { host: observed_host, observed: obs } =>
+      if (observed_host as String) != (host as String) {
+        FabricCellFamilyObservationHostMismatch {
+          planned_host: host as String,
+          observed_host: observed_host as String,
+        }
+      } else {
       let observed = fabric_cell_observed_members(observed: obs)
       let planned = membership_plan_admitting_outcome(
         outcome: membership_reconcile(
@@ -484,6 +502,7 @@ fn fleet_converge_fabric_cell_family(
         FabricCellFamilyConvergedNoActions
       } else {
         FabricCellFamilyRealizationUnavailable { planned: planned }
+      }
       }
   }
 }
@@ -503,6 +522,12 @@ fn fleet_converge_fabric_cell_lines(
     FabricCellFamilyConvergedNoActions => []
     FabricCellFamilyRealizationUnavailable { planned: p } =>
       map(p.actions, a => concat("REFUSED-REALIZATION ", fabric_cell_action_line(action: a)))
+    FabricCellFamilyObservationHostMismatch { planned_host: ph, observed_host: oh } =>
+      [concat(
+        "REFUSED-HOST-MISMATCH fabric-cell planned_host=", ph,
+        " observed_host=", oh,
+        "; a population observed on one host is not evidence about another",
+      )]
   }
 }
 
@@ -517,6 +542,7 @@ fn fleet_converge_fabric_cell_refusal_count(
     FabricCellFamilyObservationRefused { cause: _ } => 1
     FabricCellFamilyConvergedNoActions => 0
     FabricCellFamilyRealizationUnavailable { planned: p } => list_length(items: p.actions)
+    FabricCellFamilyObservationHostMismatch { planned_host: _, observed_host: _ } => 1
   }
 }
 
@@ -677,12 +703,22 @@ fn fabric_cell_disposition_baseline_row(d: FabricCellAddressDisposition) -> Stri
   }
 }
 
+// THE OBSERVED ARM CARRIES ITS OWN HOST INTO THE BASELINE, and it did not until the host-mismatch
+// row was written. The arm discarded the population's host and serialized members only, so two
+// observed-empty populations on DIFFERENT hosts produced byte-identical rows and hashed identically
+// -- the same collision the refused arm was already fixed for, surviving one arm over. The family
+// now refuses a cross-host join outright, so this is the second wall rather than the only one; both
+// belong, because the fingerprint is what a LATER apply re-checks, and it must not admit against a
+// baseline that could have come from somewhere else.
 fn fabric_cell_baseline_rows(population: FabricCellPopulation) -> List<String> {
   match population {
-    FabricCellPopulationObserved { host: _, observed: obs } =>
-      map(fabric_cell_observed_members(observed: obs), m => concat(
-        "fabric-cell:", fabric_cell_member_key(member: m), "=", m.state_digest as String,
-      ))
+    FabricCellPopulationObserved { host: h, observed: obs } =>
+      concat(
+        [concat("fabric-cell-observed-host:", h as String)],
+        map(fabric_cell_observed_members(observed: obs), m => concat(
+          "fabric-cell:", fabric_cell_member_key(member: m), "=", m.state_digest as String,
+        )),
+      )
     FabricCellPopulationObservationRefused { host: h, blocked: b } =>
       concat(
         [concat("fabric-cell-observation-refused:", h as String)],
