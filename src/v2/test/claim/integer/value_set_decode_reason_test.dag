@@ -1,0 +1,110 @@
+module v2.test.claim.integer.value_set_decode_reason
+
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.integer_value_set {
+  integer_interval_value_set_node,
+  integer_unbounded_value_set_node,
+  integer_value_set_atom,
+  integer_value_set_from_node
+}
+import v2.std.node { Conj, Edge, Named, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn conj_carrier(children: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: children,
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn kind_edge(kind: Symbol) -> Edge {
+  named_edge(name: ^integer_value_set_field_kind, target: integer_value_set_atom(id: kind))
+}
+
+fn decode_reason(value_set: Node) -> Symbol {
+  match integer_value_set_from_node(value_set: value_set) {
+    Accepted { value: _, diagnostics: _ } => ^decode_unexpectedly_accepted
+    Rejected { diagnostics: ds } => ds.head.reason
+  }
+}
+
+fn decode_cause_count(value_set: Node) -> Int {
+  match integer_value_set_from_node(value_set: value_set) {
+    Accepted { value: _, diagnostics: _ } => 9
+    Rejected { diagnostics: ds } => length(xs: ds.tail)
+  }
+}
+
+data carrier_missing_kind_field: Node = conj_carrier(
+  children: [
+    named_edge(
+      name: ^integer_value_set_field_interval,
+      target: integer_value_set_atom(id: ^some_interval)
+    )
+  ]
+)
+
+data carrier_unrecognized_kind: Node = conj_carrier(
+  children: [kind_edge(kind: ^integer_value_set_kind_not_a_real_kind)]
+)
+
+data carrier_interval_field_missing: Node = conj_carrier(
+  children: [
+    kind_edge(kind: ^integer_value_set_kind_interval),
+    named_edge(
+      name: ^integer_value_set_field_misspelled,
+      target: integer_value_set_atom(id: ^some_interval)
+    )
+  ]
+)
+
+data carrier_interval_spec_malformed: Node = integer_interval_value_set_node(
+  interval: integer_value_set_atom(id: ^not_an_interval_spec)
+)
+
+data carrier_unbounded_wrong_arity: Node = conj_carrier(
+  children: [
+    kind_edge(kind: ^integer_value_set_kind_unbounded),
+    named_edge(name: ^integer_value_set_field_extra, target: integer_value_set_atom(id: ^extra))
+  ]
+)
+
+test fn well_formed_unbounded_carrier_still_decodes() -> Bool {
+  match integer_value_set_from_node(value_set: integer_unbounded_value_set_node()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn decode_refusals_carry_distinct_reason_symbols() -> Bool {
+  let missing_kind = decode_reason(value_set: carrier_missing_kind_field)
+  let unrecognized_kind = decode_reason(value_set: carrier_unrecognized_kind)
+  let interval_missing = decode_reason(value_set: carrier_interval_field_missing)
+  let interval_malformed = decode_reason(value_set: carrier_interval_spec_malformed)
+  let unbounded_arity = decode_reason(value_set: carrier_unbounded_wrong_arity)
+  (missing_kind == ^integer_value_set_kind_field_unresolved)
+    && (unrecognized_kind == ^integer_value_set_kind_unrecognized)
+    && (interval_missing == ^integer_value_set_interval_field_unresolved)
+    && (interval_malformed == ^integer_value_set_interval_spec_malformed)
+    && (unbounded_arity == ^integer_value_set_unbounded_field_count_unexpected)
+    && (missing_kind != unrecognized_kind)
+    && (missing_kind != interval_missing)
+    && (interval_missing != interval_malformed)
+    && (interval_malformed != unbounded_arity)
+}
+
+test fn producer_fault_refusals_retain_the_lookup_cause() -> Bool {
+  (decode_cause_count(value_set: carrier_missing_kind_field) == 1)
+    && (decode_cause_count(value_set: carrier_interval_field_missing) == 1)
+    && (decode_cause_count(value_set: carrier_interval_spec_malformed) == 0)
+}
