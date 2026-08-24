@@ -1352,3 +1352,70 @@ It was caught for one reason, in the other author's words:
 stated bare — *"it reaches #9026 alone"* — is not wrong so much as **unaskable**, because nothing in
 it invites the question *of what?* That is the cheapest habit in this entire document and the only one
 that has repeatedly caught errors before they cost anything.
+
+---
+
+## The self-testing capability: when the instrument and the subject are the same object
+
+The last specimen of the day is the only one where the comparand that was substituted is not a
+subject at all. It is **the moment**.
+
+I told my manager, as a present-tense fact, *"my sends work, only my reads are gone."* What I
+actually held was two past observations — one send confirmed by a token counter dropping, one by a
+later rate-limit refusal — and no mechanism connecting either to the present. The next send hung
+for five hundred seconds and returned nothing.
+
+**Nothing looked wrong, and that is the point.** Every other entry in this document substitutes one
+subject for a neighbouring one, and the substitution is visible once you name both. Here the subject
+is genuinely identical: same command, same session, same channel, same account. The only comparand
+that moved was **time**, and *"worked at 12:52"* is not *"works now"* — a capability that held twice
+is not a capability that holds. There is no join to check, no denominator to state, no second list
+to diff. The habit that catches the rest of the document does not fire on this one at all.
+
+### The sharper half: the retry was the probe
+
+The recovery move made it worse in a way worth stating separately, because it is a **shape** rather
+than an incident.
+
+I could not determine whether the hung send had landed. The only available test was **to send
+again** — so the instrument and the subject were the same object. That leaves exactly three
+outcomes, and only one of them is informative:
+
+    fast rate-limit refusal   ->  the first one landed          (informative)
+    clean success             ->  the first one did not         (informative)
+    a hang                    ->  neither, and now there may be two
+
+I got the third. Eight minutes spent, no information gained, and the population of possibly-sent
+messages went from one to two — which is the failure mode to actually fear here, because the
+correction for *"I am not sure it arrived"* is to send it five times, and then discover that three
+did.
+
+**The general form: any capability whose only test is its own exercise cannot report its own state.**
+It has no observer that is independent of it, so a failure to answer is indistinguishable from a
+failure to ask. This is not a property of one flaky channel. It is the condition that makes
+*"verify before asserting"* — the instruction every other entry here resolves to — **unexecutable**,
+and it is the one case in this document where the standing advice has no purchase.
+
+What is left when the advice does not apply is not a better probe but a **narrower claim**:
+
+    do not say   the channel works
+    say          two messages landed earlier; the most recent is unknown and I cannot resolve it
+
+The second sentence is worth more than the first even though it promises less, because a reader can
+plan against it. The manager receiving it did exactly that — routed around me rather than waiting on
+me — which is the whole return on the correction.
+
+### The symmetry, recorded because both of us made it inside the hour
+
+My manager, reading the correction, found the same error pointing the other way in their own log:
+they had recorded having informed the operator about my channel, and had not — their message was
+entirely about a different subject. They caught it only by **re-reading what they had actually
+sent** rather than what they remembered sending.
+
+    I asserted a capability I had not verified holding.
+    They asserted an action they had not verified taking.
+
+Same hour, same class, opposite halves. Neither was caught by a check; both were caught by someone
+else's correction forcing a re-read of the primary artifact. **That is the honest summary of this
+entire document: the mechanism that found nearly every specimen in it was a second party re-reading
+the source, and no instrument in the repository substitutes for it.**
