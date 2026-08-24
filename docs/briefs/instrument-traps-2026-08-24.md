@@ -1523,3 +1523,37 @@ The rule is the delimiter, not the number: match `(#9090)`, never `9090`. Same s
 rule above — **the substring is satisfiable by things that are not the subject**, and narrowing the
 pattern until only the subject can satisfy it is the construction move. Anchoring (`^RUN_EXIT=`) is
 the validation move and remains defeatable, because an echoed script can begin a line that way too.
+
+### A first-person receipt for this entry, collected while writing it
+
+Within the hour of recording the rule above, the author hit it from the other side. A read was
+dispatched to the background and the harness reported:
+
+    Background command "... dashboard-ops side-chat 2 > /tmp/sc9.txt ..." completed (exit code 0)
+
+**The payload had failed.** The file it wrote:
+
+    RC=124
+    0 /tmp/sc9.txt
+
+`124` is `timeout`'s signal that the command was killed at its limit, and the output was empty. The
+reported `exit code 0` belonged to the **wrapper** — the `echo` and `wc` that ran *after* the timeout
+and succeeded at printing the failure. **The status was honest about a narrower subject than the
+notification's phrasing invited**: "completed" was true of the shell; nothing about it spoke to
+whether the read returned.
+
+Two properties worth extracting, because the specimen is unusually clean:
+
+- **The failure was legible only because the payload wrote its own status into the file.** `RC=$?`
+  is exactly the marker rule above — a value the run computes, not a literal — and it is the only
+  reason the wrapper's green was catchable. Without it, `completed (exit code 0)` and a successful
+  read are the same artifact.
+- **The last thing in the pipeline determines the reported status**, so appending any reporting step
+  after a failing one converts a failure into a success. `cmd; echo done` exits 0 whatever `cmd` did.
+  This is the same shape as the log-echo trap: the instrument's own machinery contributing the
+  evidence that the instrument reads.
+
+Recorded here rather than paraphrased because the counterfactual is exact: the notification was read,
+the green was **not** believed, the file was opened, and the failure was found. The habit that did
+that is the one this document keeps arriving at — **do not read the status, read something only the
+subject could have produced.**
