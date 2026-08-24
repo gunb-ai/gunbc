@@ -1920,3 +1920,73 @@ not the claim but the claim plus its unfetched premise: *"the snippet matches �
 what contains it."*
 
 That sentence is longer, weaker, and would have prevented every entry in this document.
+
+---
+
+## The ruling: a measurement identity, and why a structure beat our rule
+
+The bootstrap finding above was escalated, and the ruling that came back is better than the boundary
+two sessions had negotiated. It is recorded here verbatim-where-quoted because it supersedes the
+prose rule, not merely endorses it.
+
+### The scope
+
+> **A stop-the-line correction for cross-binary source attribution, not a blanket invalidation of
+> paired experiments.**
+
+Retired: the source-causal interpretation of the diagnostic census; the symptom partition derived
+from it; and the five mechanism explanations **insofar as their only evidence was that output**. Also
+retired — and this is the part a lane would have missed — **any queue ordering based on those
+families or their apparent sizes.** A retraction that leaves the decisions the retracted evidence
+drove is not a retraction.
+
+### The sentence
+
+> **The explanations can remain as hypotheses only if they have independent controls. Their internal
+> coherence gives them no residual evidentiary weight.**
+
+**That is the sharpest statement of this document's subject produced by anyone.** Five explanations
+survived an afternoon of scrutiny by competent sessions, and every one was internally consistent,
+mechanically plausible, and grounded in real code. **Coherence was doing all the work, and coherence
+is available for free on a false premise.** It is not weak evidence; it is *no* evidence, and the
+instinct to keep a well-argued hypothesis "on the list" after its observations are withdrawn is the
+instinct this sentence forbids.
+
+### The structure, which is the real correction
+
+    M { source_tree, compiler_binary_identity, command_and_configuration,
+        measured_subject, terminal_phase }
+
+    "A SOURCE SHA ALONE IS NOT A MEASUREMENT IDENTITY."
+
+With that shape, the two topologies are not a rule to remember — they are visible in the record:
+
+    CROSS-BINARY DIAGONAL   M(source_A, compiler_A) vs M(source_B, compiler_B)
+                            TWO fields differ. Inadmissible for source causation, by inspection.
+    PAIRED WITHIN A BINARY  M(source_A, compiler_X) vs M(source_B, compiler_X)
+                            ONE field differs. Internally causal.
+
+**We wrote a rule about when a comparison is admissible. They wrote a structure in which the
+inadmissible comparison is legible as two fields moving.** Ours requires a reader to remember and
+apply it at the moment of temptation; theirs makes the defect a property of the record's shape.
+
+**That is construction-over-validation applied to our own epistemics** — the preference this
+repository's design doctrine states as its central move — and two sessions who had spent the day
+citing that doctrine at each other reached for prose when the substrate move was available. **The
+document you are reading is a catalogue of instruments answering narrower questions than they were
+asked; it was written without noticing that its own central finding was being carried in a form that
+could not enforce itself.**
+
+### The postscript that belongs here rather than anywhere else
+
+Within an hour of the section above being written, its author took a sibling session's report of a
+capability failure — a state change the sibling had marked as certain, and which turned out to be a
+byte-count read from a file that was still being written — generalised it from one session to three,
+and delivered it to the one reader whose behaviour it would have changed.
+
+**The checking artifact was not one step away. It arrived unbidden, within minutes, in both
+directions.** Neither session waited for it.
+
+**Knowing the class does not confer immunity to it.** That is not a rueful observation; it is the
+argument for the structural move over the prose one, made by the two people who had just written the
+prose.
