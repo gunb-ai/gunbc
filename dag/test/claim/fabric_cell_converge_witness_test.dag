@@ -172,10 +172,20 @@ test fn witness_fabric_cell_converged_readback_is_provisioned() -> Bool {
   verdict_is_provisioned(v: fabric_cell_substrate_verdict(readback: converged_readback(), slot: srv3_fabric_slot()))
 }
 
-// AN EMPTY READBACK IS UNPROVISIONED, NOT PROVISIONED AND NOT REFUSED. This is the arm that makes the
-// seed honest: a fold seeded at present would report a cell nobody looked at as ready.
-test fn witness_fabric_cell_empty_readback_is_unprovisioned() -> Bool {
-  verdict_is_unprovisioned(
+// A READBACK WITH NO OBSERVATIONS IS REFUSED, NOT PROVISIONED AND NOT UNPROVISIONED.
+//
+// THIS ROW ASSERTED THE WRONG ANSWER UNTIL review 55284's follow-up. It required Unprovisioned, on
+// the reasoning that holding no observations is a statement about our own evidence rather than the
+// host refusing to be read. That distinction is real, and it survives in the DISPOSITION where
+// AddressUnobserved and AddressUnreadable are separate arms with different remedies -- but it does
+// not belong in the verdict, because both are the same answer to the question the verdict asks: the
+// host was not read, so its state is unknown. Unprovisioned is a claim about a host nobody looked at.
+//
+// The consequence is the load-bearing half: an unobserved address now BLOCKS, so an empty readback
+// can no longer reach reconcile as FabricCellPopulationObserved with an empty member list, which
+// would have planned three ADDs against a host nobody read.
+test fn witness_fabric_cell_empty_readback_is_observation_refused() -> Bool {
+  verdict_is_observation_refused(
     v: fabric_cell_substrate_verdict(
       readback: fabric_cell_readback_without_observations(
         cell: fabric_cell_id_for_slot(slot: srv3_fabric_slot())
@@ -187,21 +197,21 @@ test fn witness_fabric_cell_empty_readback_is_unprovisioned() -> Bool {
 
 fn disposition_is_contradicted(d: FabricCellAddressDisposition) -> Bool {
   match d {
-    AddressContradicted { address: _ } => true
-    AddressPresent { address: _, member: _ } => false
-    AddressMissingOnHost { address: _ } => false
-    AddressUnobserved { address: _ } => false
-    AddressUnreadable { address: _, cause: _ } => false
+    AddressContradicted { ref: _ } => true
+    AddressPresent { ref: _, member: _ } => false
+    AddressMissingOnHost { ref: _ } => false
+    AddressUnobserved { ref: _ } => false
+    AddressUnreadable { ref: _, cause: _ } => false
   }
 }
 
 fn disposition_is_present(d: FabricCellAddressDisposition) -> Bool {
   match d {
-    AddressPresent { address: _, member: _ } => true
-    AddressContradicted { address: _ } => false
-    AddressMissingOnHost { address: _ } => false
-    AddressUnobserved { address: _ } => false
-    AddressUnreadable { address: _, cause: _ } => false
+    AddressPresent { ref: _, member: _ } => true
+    AddressContradicted { ref: _ } => false
+    AddressMissingOnHost { ref: _ } => false
+    AddressUnobserved { ref: _ } => false
+    AddressUnreadable { ref: _, cause: _ } => false
   }
 }
 
@@ -272,4 +282,60 @@ test fn witness_fabric_cell_drifted_digest_is_unprovisioned() -> Bool {
   }
   verdict_is_unprovisioned(v: fabric_cell_substrate_verdict(readback: drifted, slot: srv3_fabric_slot()))
     && verdict_is_provisioned(v: fabric_cell_substrate_verdict(readback: converged_readback(), slot: srv3_fabric_slot()))
+}
+
+
+// TWO ATTESTERS THAT DISAGREE ABOUT A DIGEST ARE A CONTRADICTION, NOT A PRESENT ADDRESS.
+//
+// THIS ROW EXISTS BECAUSE ITS ABSENCE HID A REAL DEFECT (review 55284). The contradiction row above
+// pairs an observation with an ABSENCE, and that case was always caught. The conflicting-POSITIVE
+// case had no row, and the fold took the first observed member and answered AddressPresent with its
+// digest -- order-dependent and fail-open, underneath an annotation asserting the opposite. It is
+// also the likelier readback of the two: a stale reader and a fresh one both see the resource and
+// disagree about its value.
+//
+// THE DESIRED MEMBER IS AUTHORED FIRST so that a first-match implementation returns the FAVOURABLE
+// reading and goes green; only a fold that compares every observation can go red here.
+test fn witness_fabric_cell_conflicting_positive_observations_contradict() -> Bool {
+  let conflicting = FabricCellReadback {
+    cell: fabric_cell_id_for_slot(slot: srv3_fabric_slot()),
+    observations: [
+      AddressObserved { member: desired_member(address: FabricCellRootAddress) },
+      AddressObserved {
+        member: FabricCellMember {
+          host: operator_host_srv3,
+          slot: srv3_fabric_slot(),
+          address: FabricCellRootAddress,
+          state_digest: "/opt/fabric-cells/srv3-06-stale-reading" as NonEmptyStr,
+          ownership: Owned,
+        }
+      },
+      AddressObserved { member: desired_member(address: FabricCellAttemptRootAddress) },
+      AddressObserved { member: desired_member(address: FabricCellResourceBoundaryAddress) },
+    ]
+  }
+  disposition_is_contradicted(
+    d: fabric_cell_address_disposition(readback: conflicting, slot: srv3_fabric_slot(), address: FabricCellRootAddress)
+  )
+    && disposition_is_present(
+      d: fabric_cell_address_disposition(readback: conflicting, slot: srv3_fabric_slot(), address: FabricCellAttemptRootAddress)
+    )
+    && verdict_is_observation_refused(v: fabric_cell_substrate_verdict(readback: conflicting, slot: srv3_fabric_slot()))
+}
+
+// AGREEING DUPLICATE OBSERVATIONS ARE NOT A CONTRADICTION. Without this control the fix above could
+// be "any second observation contradicts", which would refuse every readback taken by two attesters
+// that agree -- turning a redundant probe into an outage.
+test fn witness_fabric_cell_agreeing_duplicate_observations_are_present() -> Bool {
+  let duplicated = FabricCellReadback {
+    cell: fabric_cell_id_for_slot(slot: srv3_fabric_slot()),
+    observations: concat(
+      converged_readback().observations,
+      [AddressObserved { member: desired_member(address: FabricCellRootAddress) }]
+    )
+  }
+  disposition_is_present(
+    d: fabric_cell_address_disposition(readback: duplicated, slot: srv3_fabric_slot(), address: FabricCellRootAddress)
+  )
+    && verdict_is_provisioned(v: fabric_cell_substrate_verdict(readback: duplicated, slot: srv3_fabric_slot()))
 }
