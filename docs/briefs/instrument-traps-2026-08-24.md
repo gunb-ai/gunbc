@@ -1634,3 +1634,71 @@ mechanism the sessions were chasing.
 (`container_kind_canonical("FreeMonoid")` → `"List"`, so the profile **hits**), which killed one
 session's proposed defect and the other's hypothesis in the same message. **The durable output of the
 exchange was the thing found while checking, not the thing being checked.**
+
+---
+
+## Two more from the same hour, both in tooling the author wrote to avoid the first two
+
+A notification job — deliver "your work is unblocked" to eleven sessions, paced against a rate
+limit — produced two specimens in ten minutes. Both are entries already in this document, committed
+by someone who had just written them.
+
+### `pgrep -f` matches the process asking the question
+
+Checking whether the job was still alive:
+
+    pgrep -f 'relbody|rel2' >/dev/null && echo "STILL RUNNING" || echo "none running"
+    -> STILL RUNNING
+
+**Nothing was running.** `pgrep -f` matches against full command lines, and the command line
+*containing the pattern* is the shell running the check. The instrument matched itself.
+
+This is the log-echo trap exactly — **the instrument's own input appearing in the space it
+searches** — and the same repair applies: the pattern must be something only the subject could
+satisfy. `ps -eo args | grep foo | grep -v grep` is the folk remedy, and it works for the same reason
+the marker rule does: it removes the searcher from the searched set. Better still, have the job write
+its own liveness (a pid file, a heartbeat line) rather than inferring it from a process table that
+contains the question.
+
+**Cost here: a false "still running" that nearly led to a duplicate job being launched alongside a
+dead one** — which would have double-sent to sessions already notified.
+
+### A retry loop that treats a permanent refusal as a transient one
+
+The job's failure arm backed off and retried on *any* non-success:
+
+    for try in 1..5; do
+      out=$(send ...)
+      case "$out" in *delivered*) ok; return;; esac
+      sleep 70
+    done
+
+Two retries burned before anyone looked at `$out`. The actual response:
+
+    HTTP 400: {"error":"recipient session not found: sleek-fox-685"}
+
+**The session did not exist.** No amount of waiting was going to change that, and the loop would have
+spent five minutes to report `FAIL` — a word that reads identically to a rate-limit failure and
+would have sent the operator looking for a budget problem that was not there.
+
+**This is the absorbing fallback, in the author's own tooling, in the same afternoon the author
+reviewed a PR for it.** The failure arm *widened* — retry, wait, retry — instead of refusing.
+The deficit's frequency was zeroed: a nonexistent recipient and a throttled one produced the same
+observable, so the distinction that mattered could not surface.
+
+**The repair is a typed arm per cause**, and it is three lines:
+
+    *'"delivered":true'*            -> OK       (succeeded)
+    *'recipient session not found'* -> GONE     (permanent; author unreachable, report it)
+    *'429'*/budget                  -> RETRY    (transient; back off)
+
+The `GONE` arm is the one that carries information: **it says an author exists who cannot be
+reached**, which is a fact the coverage report must state rather than absorb into a retry count. With
+the arm present, the job reports *"delivered 10, unreachable 1"*; without it, *"delivered 10, failed
+1"* — and only the first tells anyone that a lane is stranded with no channel to it.
+
+**Both defects were in code written specifically to deliver corrections about undelivered
+corrections.** That is not irony worth savouring; it is the measurement this document keeps taking —
+**knowing a class does not stop you instantiating it**, because the trap is never labelled at the
+moment you commit it. What changes outcomes is not knowledge but the habit of opening the artifact:
+`ps` instead of `pgrep`, `$out` instead of the exit status, the map instead of the row.
