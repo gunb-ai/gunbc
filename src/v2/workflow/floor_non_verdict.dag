@@ -58,9 +58,15 @@ import v2.std.text { String }
 //
 // RUNG ON THAT AXIS: MITIGATABLE. Roster growth is confined by review diligence alone, which is
 // strictly weaker than execution, and this paragraph is the declaration rather than a reader's
-// inference. NEXT-RUNG TRIGGER: the floor reads the roster at the merge base and refuses when the
-// head roster is not a subset of it, established by execution against a discriminating red -- one
-// PR adding a row for an identity the base did not carry, refused.
+// inference.
+//
+// NEXT-RUNG TRIGGER: the floor establishes `H subset-of B` -- the roster in the COMPOSED RESULT is a
+// subset of the roster at that result's CURRENT TARGET-BASE PARENT. NOT the merge base, and the
+// difference is a real admission rather than a spelling: with M = {a} at the merge base, main
+// repairing `a` and deleting its row (B = {}), and a stale branch reintroducing it (H = O = {a}),
+// a subset-of-M rule PASSES and readmits an exemption main already retired. The mirror is a false
+// red on a row main legitimately added after the fork. The cut therefore needs the composed result
+// and its base parent, which a branch-head-only run cannot supply.
 
 // THE ADMISSION AS IMPLEMENTED: the ADDED set is empty.
 //
