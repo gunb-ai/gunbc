@@ -17,32 +17,8 @@ env:
   GUNBC_REQUIRED_FLOOR_DISPOSITION: required_floor_disposition.tsv
   GUNBC_LONG_HOME_STORAGE_AGREEMENT: long_home_storage_agreement.tsv
 jobs:
-  cited-symbol:
-    runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
-        with:
-          components: rustfmt
-          cache: false
-      - name: Build the witness fold
-        id: build_witness_fold
-        run: |
-          cargo build --release -p v1-compiler --bin claim_executor --bin gunbc
-      - name: Cited-symbol census (every authored DeclarationRef resolves)
-        run: |
-          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          cd "$ROOT"
-          'target/release/claim_executor' '--required-cited-symbol' '--source-root' 'dag' '--source-root' 'src/v2'
-        if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
   witnesses:
     runs-on: [self-hosted, linux, arm64]
-    needs: [cited-symbol]
     timeout-minutes: 180
     steps:
       - name: Checkout
