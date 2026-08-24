@@ -38,10 +38,10 @@ pub use crate::std_occurrence_identity::{
     authored_token_ordinal_space_from_allocator, authored_token_ordinal_space_initial,
     occurrence_id_allocator_advance_to,
 };
-pub use crate::std_occurrence_identity::{AuthoredTokenOrdinal, OccurrenceId, OccurrenceRole};
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinalSpace, OccurrenceIdAllocator, OccurrenceTransportRefusal,
 };
+pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceRole};
 pub use crate::std_source_annotation::AnnotationAttachmentRefusal;
 use crate::std_source_annotation::AnnotationAttachmentRefusal::*;
 pub use crate::std_source_annotation::{
@@ -537,6 +537,10 @@ pub enum CompilerDiagnostic {
         candidates: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
+    AmbiguousAnonymousRecordLiteral {
+        candidates: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
     CallArgumentNameUnknown {
         callee: String,
         argument: String,
@@ -687,6 +691,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::AdmitCallersEntryNotDeclRef { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousReference { span: s, .. } => s.clone(),
+        CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallPositionalSurplus { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentDuplicate { span: s, .. } => s.clone(),
@@ -737,6 +742,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::AdmitCallersEntryNotDeclRef { constructor_decl_name: cn, .. } => v1_rt::concat(v1_rt::concat("admit_callers entry on '".to_string(), cn.clone()), "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored".to_string()),
     CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
     CompilerDiagnostic::AmbiguousReference { name: n, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous reference '".to_string(), n.clone()), "': ".to_string()), ((cs.clone().len() as i64)).to_string()), " candidates: ".to_string()), cs.clone().join(&", ".to_string())), " — qualify by containment path, alias, or rename".to_string()),
+    CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous anonymous record literal shape matches ".to_string(), ((cs.clone().len() as i64)).to_string()), " structs: ".to_string()), cs.clone().join(&", ".to_string())), " — add a nominal type".to_string()),
     CompilerDiagnostic::CallArgumentNameUnknown { callee: c, argument: a, declared: ds, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': no parameter named '".to_string()), a.clone()), "' (declared: [".to_string()), ds.clone().join(&", ".to_string())), "])".to_string()),
     CompilerDiagnostic::CallPositionalSurplus { callee: c, supplied: s, capacity: cap, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': too many positional arguments: ".to_string()), (s.clone()).to_string()), " supplied, ".to_string()), (cap.clone()).to_string()), " positional parameter(s) declared".to_string()),
     CompilerDiagnostic::CallArgumentDuplicate { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': argument '".to_string()), a.clone()), "' supplied more than once".to_string()),

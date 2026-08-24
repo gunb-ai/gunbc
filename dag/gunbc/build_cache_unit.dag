@@ -19,6 +19,7 @@ import extdeps.cache.sccache {
   SccacheServerTcpPort, SccacheServerUnixSocket, sccache_installed_binary_path,
   sccache_start_server_env_assignment, sccache_no_daemon_env_assignment,
   sccache_idle_timeout_never_env_assignment,
+  sccache_cache_dir_env_var, sccache_cache_size_env_var,
 }
 
 data build_cache_unit_scope_disposition: Disposition = SingleAuthority
@@ -43,7 +44,7 @@ fn capacity_env_directives(instance: BuildCacheInstance) -> List<SystemdServiceD
     Absent => []
     Present { value: b } => [
       Environment {
-        assignment: concat("SCCACHE_CACHE_SIZE=", to_string(byte_size_count(b: b))) as NonEmptyStr,
+        assignment: concat(concat(sccache_cache_size_env_var as String, "="), to_string(byte_size_count(b: b))) as NonEmptyStr,
       },
     ]
   }
@@ -72,6 +73,20 @@ fn runner_ordering_dropin_lines(instance: BuildCacheInstance) -> List<String> {
   systemd_drop_in_lines(drop_in: runner_ordering_drop_in(instance: instance))
 }
 
+// SLICE= IS RENDERED ONLY WHERE A MANAGED POOL IS DECLARED, AND THAT IS A CONSTRUCTION WALL RATHER
+// THAN A CHECK. This directive used to be spelled unconditionally from a bare-string field that
+// always named the managed slice, while gunbc.host_layout's placement row said the fleet has no
+// managed pool. Applying that unit would have named a Slice= nothing provisions, and systemd
+// creates such a cgroup implicitly WITH NO LIMITS -- the unbounded compile charge wearing the
+// managed topology's name. Now the field carries the placement itself, so the CompilePoolInRunnerSlots
+// arm has no slice name to render and the bad unit cannot be built.
+fn compile_pool_service_directives(placement: CompilePoolPlacement) -> List<SystemdServiceDirective> {
+  match placement {
+    CompilePoolSliceDeclared { slice_unit: u } => [ServiceSlice { name: u as NonEmptyStr }]
+    CompilePoolInRunnerSlots => []
+  }
+}
+
 fn build_cache_unit_file(instance: BuildCacheInstance) -> SystemdUnitFile {
   ServiceUnitFile {
     unit: [
@@ -84,13 +99,14 @@ fn build_cache_unit_file(instance: BuildCacheInstance) -> SystemdUnitFile {
       After { target: "network.target" as NonEmptyStr },
     ],
     service: concat(
+      compile_pool_service_directives(placement: instance.intended_compile_pool),
+      concat(
       [
         ServiceType { mode: "simple" as NonEmptyStr },
         ServiceUser { name: instance.intended_principal },
         ServiceGroup { name: instance.intended_principal },
-        ServiceSlice { name: instance.intended_compile_pool },
         Environment {
-          assignment: concat("SCCACHE_DIR=", instance.intended_storage as String) as NonEmptyStr,
+          assignment: concat(concat(sccache_cache_dir_env_var as String, "="), instance.intended_storage as String) as NonEmptyStr,
         },
         Environment {
           assignment: concat(
@@ -110,6 +126,7 @@ fn build_cache_unit_file(instance: BuildCacheInstance) -> SystemdUnitFile {
           Restart { policy: "on-failure" as NonEmptyStr },
         ],
       ),
+    ),
     ),
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
   }

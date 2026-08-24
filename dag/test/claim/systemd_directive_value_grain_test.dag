@@ -16,7 +16,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // Two of the carrier's three findings are unenforceable by construction, and this file says so
 // rather than faking coverage. The byte-form loss is LATENT -- every producer emits a plain count
-// today, so there is no wrong state to detect. The five unmodeled sccache variable names cannot be
+// today, so there is no wrong state to detect. The three unmodeled sccache variable names cannot be
 // checked without spelling the same literals a second time, which would pass by construction and
 // prove nothing.
 //
@@ -41,7 +41,7 @@ test fn the_roster_carries_both_authorities_at_named_members() -> Bool {
      |> any(v => (v.name as String) == "SCCACHE_START_SERVER"
                    && match v.authority { ModeledUpstream => true SpelledInConsumer => false }))
     && (build_cache_environment_variables
-          |> any(v => (v.name as String) == "SCCACHE_DIR"
+          |> any(v => (v.name as String) == "SCCACHE_ERROR_LOG"
                         && match v.authority { ModeledUpstream => false SpelledInConsumer => true }))
 }
 
