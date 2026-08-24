@@ -372,6 +372,12 @@ fn emit_match_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeV
 // off the same value -- at which point this row's job is done by construction and it becomes a
 // regression control rather than a sampler. That is a change to the witness protocol, not to this
 // module, which is why it is named here instead of attempted here.
+//
+// AND THE TRIGGER IS NOT DEFERRED POLISH, BECAUSE A CLASSIFICATION REQUIRES A SINGLE RECEIPT
+// LINEAGE. Cross-execution comparison may establish INSTABILITY; it can never classify the CAUSE
+// of either execution. emit -> host run -> parse actual -> compare must sit in ONE lineage. So
+// without the typed Verdict carried with its receipt, this row can only ever report stability,
+// never cause -- the current shape cannot answer the question the row's NAME asks.
 
 // TEST-SIDE PROJECTION AT THE ASSERTION BOUNDARY, WHICH IS WHERE THE COLLAPSE IS ALLOWED TO LIVE.
 // A `test fn` must return Bool, so a witness over a coproduct verdict has to collapse it somewhere;
