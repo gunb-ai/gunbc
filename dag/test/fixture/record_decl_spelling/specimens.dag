@@ -1,6 +1,5 @@
 module test.fixture.record_decl_spelling.specimens
 
-import std.types { String }
 
 // The two authored spellings of ONE concept: a named record with two named fields.
 // They are declared side by side so a consumer can ask whether the compiler carries them

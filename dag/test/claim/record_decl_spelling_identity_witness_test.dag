@@ -1,17 +1,5 @@
 module test.claim.record_decl_spelling_identity_witness_test
 
-import test.fixture.record_decl_spelling.witness_support { record_decl_spelling_facts }
-import v2.std.decl_facts_skeleton {
-  DeclFactResolvedAmbiguous,
-  DeclFactResolvedMissing,
-  DeclFactResolvedUnique,
-  resolve_decl_fact_by_qualified_name,
-}
-import v2.std.collection { Absent, Present }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Node, Symbol }
-import v2.std.node_query { find_named_child }
-import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, census_blocking_rows }
 
 data record_decl_spelling_identity_note: String = "TWO SPELLINGS OF ONE DECLARATION MUST CARRY ONE SHAPE. `type X { a: A, b: B }` and `type X = \{ a: A, b: B \}` both declare a named record, and before the parse fix this witness defends they produced two different item shapes: the brace form hoisted the fields onto the declaration (Conj, children = fields), the `=` form left them inside an ANONYMOUS record type-expression and gave the declaration no children at all. Downstream that anonymous 2-child Conj is indistinguishable from a positional pair, which is what the Rust emitter rendered it as -- `pub type TranslateFoldAcc = (Rc<Node>, Rc<Node>)` -- while the SAME emitter kept writing `TranslateFoldAcc \{ source: .., rebuilt: .. \}` at construction and `.source`/`.rebuilt` at every read. Accepted with 0 diagnostics; refused by rustc as E0071 plus six E0609 on the 03_ingest board of 2026-08-23. WHY THIS GRAIN AND NOT AN EMIT CHECK: the defect emits no diagnostic, so `compile_dag_rust_emit_check` (which collapses a compile to a count of hard diagnostics) is green on both arms and cannot see it; and no builtin returns emitted target text. `decl_facts` returns the parsed declaration itself, which is exactly where the fork lived, so the assertion is made at the grain of the fix rather than two stages downstream of it. WHAT MAKES IT DISCRIMINATING: `concept_decl_node` marshals a NoConnective item to a UNIT node, so on the pre-fix parser the `=` arm resolves its fact and then finds no named child `first` -- red -- while the brace arm is green, and the alias control below is red-if-widened. dissolve-on: never -- permanent regression control for the spelling-identity law in type-declaration position."
 
@@ -20,17 +8,17 @@ data qn_equals_spelling: String = "test.fixture.record_decl_spelling.specimens.R
 data qn_leaf_alias: String = "test.fixture.record_decl_spelling.specimens.RecordDeclLeafAlias"
 
 fn record_decl_spelling_node_optional(qn: String) -> Node? {
-  match resolve_decl_fact_by_qualified_name(facts: record_decl_spelling_facts, qn: qn) {
-    DeclFactResolvedUnique { fact: fact } => Present { value: fact.node }
-    DeclFactResolvedMissing { qualified_name: _ } => Absent
-    DeclFactResolvedAmbiguous { qualified_name: _, match_count: _ } => Absent
+  match v2.std.decl_facts_skeleton.resolve_decl_fact_by_qualified_name(facts: test.fixture.record_decl_spelling.witness_support.record_decl_spelling_facts, qn: qn) {
+    v2.std.decl_facts_skeleton.DeclFactResolvedUnique { fact: v2.lens.structural_resolution.fact } => Present { value: v2.lens.structural_resolution.fact.node }
+    v2.std.decl_facts_skeleton.DeclFactResolvedMissing { qualified_name: _ } => Absent
+    v2.std.decl_facts_skeleton.DeclFactResolvedAmbiguous { qualified_name: _, match_count: _ } => Absent
   }
 }
 
 fn record_decl_spelling_has_named_field(qn: String, field: Symbol) -> Bool {
   match record_decl_spelling_node_optional(qn: qn) {
-    Present { value: node } =>
-      match find_named_child(root: node, name: field) {
+    Present { value: test.claim.package_graph_witness_test.node } =>
+      match v2.std.node_query.find_named_child(root: test.claim.package_graph_witness_test.node, name: field) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -40,12 +28,12 @@ fn record_decl_spelling_has_named_field(qn: String, field: Symbol) -> Bool {
 
 test fn brace_spelling_carries_its_named_fields() -> Bool {
   record_decl_spelling_has_named_field(qn: qn_brace_spelling, field: ^first)
-    && record_decl_spelling_has_named_field(qn: qn_brace_spelling, field: ^second)
+    && record_decl_spelling_has_named_field(qn: qn_brace_spelling, field: ^std.measure.second)
 }
 
 test fn equals_spelling_carries_the_same_named_fields() -> Bool {
   record_decl_spelling_has_named_field(qn: qn_equals_spelling, field: ^first)
-    && record_decl_spelling_has_named_field(qn: qn_equals_spelling, field: ^second)
+    && record_decl_spelling_has_named_field(qn: qn_equals_spelling, field: ^std.measure.second)
 }
 
 test fn leaf_alias_is_not_read_as_a_record() -> Bool {
@@ -62,8 +50,8 @@ data qn_sealed_equals_probe_source: String = "module record_decl_sealed_equals_p
 
 fn record_decl_spelling_probe_refuses(source: String) -> Bool {
   match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => count(census_blocking_rows(rows: rows)) > 0
-    CensusNotRunnable { cause: _ } => false
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } => count(gunbc.compile_diagnostic_census.census_blocking_rows(rows: rows)) > 0
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => false
   }
 }
 

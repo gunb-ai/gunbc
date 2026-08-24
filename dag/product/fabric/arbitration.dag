@@ -1,20 +1,5 @@
 module product.fabric.arbitration
 
-import std.types { NonEmptyStr, List }
-import std.decl_ref { DeclarationRef }
-import product.fabric.identity {
-  fabric_identity_eq, FabricIdentity, ExecutionAttemptKey, WorkKey,
-}
-import product.fabric.demand {
-  Demand, DemandCommand, SubmitDemand, WithdrawDemand, SupersedeDemand,
-  DemandRefusal, DemandRegistration, RegistrationAdvanced, RegistrationRefused,
-  CoreCommand, ObservationReceiptRef, DemandPopulation, population_demands,
-  WorkRequirement, WorkStillRequired, WorkNoLongerRequired,
-  SatisfactionDirective, TerminalReceiptAvailability,
-  ExecutionPresence, ExecutionInFlight, NoExecutionInFlight,
-  apply_demand_command, work_requirement, satisfaction_directive,
-}
-import product.fabric.execution { ExecutionGrant, ReservationRef, LeaseIdentity }
 
 // This module is the second half of a command's core effect: it joins the
 // demand-population transition, which product.fabric.demand owns, to the
@@ -54,13 +39,13 @@ import product.fabric.execution { ExecutionGrant, ReservationRef, LeaseIdentity 
 // vouched for the command carrying it - and collapsing them would lose whichever
 // question was not asked first.
 type ReleaseDirective<P> {
-  attempt: FabricIdentity<P, ExecutionAttemptKey>
-  lease: LeaseIdentity
-  money_reservation: ReservationRef
-  resource_reservations: List<ReservationRef>
+  attempt: product.fabric.identity.FabricIdentity<P, product.fabric.identity.ExecutionAttemptKey>
+  lease: product.fabric.execution.LeaseIdentity
+  money_reservation: product.fabric.execution.ReservationRef
+  resource_reservations: List<product.fabric.execution.ReservationRef>
   reason: NonEmptyStr
-  authorized_by: ObservationReceiptRef
-  vouched_by: DeclarationRef
+  authorized_by: product.fabric.demand.ObservationReceiptRef
+  vouched_by: std.decl_ref.DeclarationRef
 }
 
 // Both execution-bearing arms carry a LIST, and the plural is load-bearing
@@ -88,41 +73,41 @@ type ReleaseDirective<P> {
 // ever issued. Collapsing that into the stopping arm would hand the caller a
 // release directive naming an attempt and reservations that do not exist.
 type DemandCommandEffect<P>
-  = CommandRefused { refusal: DemandRefusal<P> }
-  | DemandAdmitted { population: DemandPopulation<P>, directive: SatisfactionDirective }
+  = CommandRefused { refusal: product.fabric.demand.DemandRefusal<P> }
+  | DemandAdmitted { population: product.fabric.demand.DemandPopulation<P>, directive: product.fabric.demand.SatisfactionDirective }
   | WorkStillRequiredAttemptContinues {
-      population: DemandPopulation<P>,
-      remaining: List<Demand<P>>,
-      attempts: List<FabricIdentity<P, ExecutionAttemptKey>>,
+      population: product.fabric.demand.DemandPopulation<P>,
+      remaining: List<product.fabric.demand.Demand<P>>,
+      attempts: List<product.fabric.identity.FabricIdentity<P, product.fabric.identity.ExecutionAttemptKey>>,
     }
   | WorkStillRequiredNothingRunning {
-      population: DemandPopulation<P>,
-      remaining: List<Demand<P>>,
+      population: product.fabric.demand.DemandPopulation<P>,
+      remaining: List<product.fabric.demand.Demand<P>>,
     }
   | WorkReleasedAttemptStops {
-      population: DemandPopulation<P>,
-      work: FabricIdentity<P, WorkKey>,
+      population: product.fabric.demand.DemandPopulation<P>,
+      work: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>,
       release_plan: List<ReleaseDirective<P>>,
     }
   | WorkReleasedNothingRunning {
-      population: DemandPopulation<P>,
-      work: FabricIdentity<P, WorkKey>,
+      population: product.fabric.demand.DemandPopulation<P>,
+      work: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>,
     }
 
 fn grants_for_work<P>(
-  grants: List<ExecutionGrant<P>>,
-  work: FabricIdentity<P, WorkKey>,
-) -> List<ExecutionGrant<P>> {
-  grants |> filter(g => fabric_identity_eq(left: g.context.work, right: work))
+  grants: List<product.fabric.execution.ExecutionGrant<P>>,
+  work: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>,
+) -> List<product.fabric.execution.ExecutionGrant<P>> {
+  grants |> v2.std.algebra.filter(g => product.fabric.identity.fabric_identity_eq(left: g.context.work, right: work))
 }
 
 fn execution_presence<P>(
-  grants: List<ExecutionGrant<P>>,
-  work: FabricIdentity<P, WorkKey>,
-) -> ExecutionPresence {
+  grants: List<product.fabric.execution.ExecutionGrant<P>>,
+  work: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>,
+) -> product.fabric.demand.ExecutionPresence {
   match grants_for_work(grants: grants, work: work) {
-    Empty {} => NoExecutionInFlight
-    Cons { head: _, tail: _ } => ExecutionInFlight
+    Empty {} => product.fabric.demand.NoExecutionInFlight
+    std.algebra.Cons { head: _, tail: _ } => product.fabric.demand.ExecutionInFlight
   }
 }
 
@@ -130,9 +115,9 @@ fn execution_presence<P>(
 // release reason is a second account of why the release happened, free to
 // disagree with the transition that produced it.
 fn release_directive_for<P>(
-  g: ExecutionGrant<P>,
-  authorized_by: ObservationReceiptRef,
-  vouched_by: DeclarationRef,
+  g: product.fabric.execution.ExecutionGrant<P>,
+  authorized_by: product.fabric.demand.ObservationReceiptRef,
+  vouched_by: std.decl_ref.DeclarationRef,
 ) -> ReleaseDirective<P> {
   ReleaseDirective {
     attempt: g.context.attempt,
@@ -151,15 +136,15 @@ fn release_directive_for<P>(
 // consequence first and authorizing afterwards is how an unauthorized
 // withdrawal comes to have already cancelled something.
 fn withdrawal_effect<P>(
-  population: DemandPopulation<P>,
-  grants: List<ExecutionGrant<P>>,
-  work: FabricIdentity<P, WorkKey>,
-  authorized_by: ObservationReceiptRef,
-  vouched_by: DeclarationRef,
+  population: product.fabric.demand.DemandPopulation<P>,
+  grants: List<product.fabric.execution.ExecutionGrant<P>>,
+  work: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>,
+  authorized_by: product.fabric.demand.ObservationReceiptRef,
+  vouched_by: std.decl_ref.DeclarationRef,
 ) -> DemandCommandEffect<P> {
   let live = grants_for_work(grants: grants, work: work)
-  match work_requirement(population: population_demands(p: population), work: work) {
-    WorkStillRequired { remaining: rem } =>
+  match product.fabric.demand.work_requirement(population: product.fabric.demand.population_demands(p: population), work: work) {
+    product.fabric.demand.WorkStillRequired { remaining: rem } =>
       if live.length() == 0 {
         WorkStillRequiredNothingRunning { population: population, remaining: rem }
       } else {
@@ -169,13 +154,13 @@ fn withdrawal_effect<P>(
           attempts: live |> map(g => g.context.attempt),
         }
       }
-    WorkNoLongerRequired { work: w } =>
+    product.fabric.demand.WorkNoLongerRequired { work: test.claim.recorded_observation_envelope_witness.w } =>
       if live.length() == 0 {
-        WorkReleasedNothingRunning { population: population, work: w }
+        WorkReleasedNothingRunning { population: population, work: test.claim.recorded_observation_envelope_witness.w }
       } else {
         WorkReleasedAttemptStops {
           population: population,
-          work: w,
+          work: test.claim.recorded_observation_envelope_witness.w,
           release_plan: live |> map(g =>
             release_directive_for(
               g: g,
@@ -189,39 +174,39 @@ fn withdrawal_effect<P>(
 }
 
 fn decide_demand_command<P>(
-  registry: DemandPopulation<P>,
-  grants: List<ExecutionGrant<P>>,
-  terminal: TerminalReceiptAvailability,
-  core: CoreCommand<P>,
+  registry: product.fabric.demand.DemandPopulation<P>,
+  grants: List<product.fabric.execution.ExecutionGrant<P>>,
+  terminal: product.fabric.demand.TerminalReceiptAvailability,
+  core: product.fabric.demand.CoreCommand<P>,
 ) -> DemandCommandEffect<P> {
-  match apply_demand_command(registry: registry, core: core) {
-    RegistrationRefused { refusal: r } => CommandRefused { refusal: r }
-    RegistrationAdvanced { population: next, subject_work: w } =>
+  match product.fabric.demand.apply_demand_command(registry: registry, core: core) {
+    product.fabric.demand.RegistrationRefused { refusal: r } => CommandRefused { refusal: r }
+    product.fabric.demand.RegistrationAdvanced { population: next, subject_work: test.claim.recorded_observation_envelope_witness.w } =>
       match core.command {
-        SubmitDemand { demand: d } =>
+        product.fabric.demand.SubmitDemand { demand: d } =>
           DemandAdmitted {
             population: next,
-            directive: satisfaction_directive(
+            directive: product.fabric.demand.satisfaction_directive(
               s: d.satisfaction,
               terminal: terminal,
-              execution: execution_presence(grants: grants, work: w),
+              execution: execution_presence(grants: grants, work: test.claim.recorded_observation_envelope_witness.w),
             ),
           }
-        SupersedeDemand { superseded: _, replacement: r, evidence: _ } =>
+        product.fabric.demand.SupersedeDemand { superseded: _, replacement: r, evidence: _ } =>
           DemandAdmitted {
             population: next,
-            directive: satisfaction_directive(
+            directive: product.fabric.demand.satisfaction_directive(
               s: r.satisfaction,
               terminal: terminal,
-              execution: execution_presence(grants: grants, work: w),
+              execution: execution_presence(grants: grants, work: test.claim.recorded_observation_envelope_witness.w),
             ),
           }
-        WithdrawDemand { demand: _, evidence: ev } =>
+        product.fabric.demand.WithdrawDemand { demand: _, evidence: test.claim.fleet_revision_acceptance_witness.ev } =>
           withdrawal_effect(
             population: next,
             grants: grants,
-            work: w,
-            authorized_by: ev,
+            work: test.claim.recorded_observation_envelope_witness.w,
+            authorized_by: test.claim.fleet_revision_acceptance_witness.ev,
             vouched_by: core.attestation.verification_authority,
           )
       }

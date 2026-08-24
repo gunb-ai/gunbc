@@ -218,16 +218,32 @@ fn board_land_pattern_fact_from_obligation(standing: extdeps.cpu_attachment.ilm4
   }
 }
 
+// THE ESTABLISHED ARM WAS WRONG AND UNREACHABLE, AND IT BECAME REACHABLE ON 2026-08-23. It
+// answered CarriageNotApplicable with the reason "no carriage question is modeled separately once
+// a land pattern is established from a cited authority" -- which authority_standing_refusal
+// directly contradicts: EstablishedFactHasInapplicableCarriage exists precisely because AN
+// ESTABLISHED FACT ALWAYS HAS A CARRIAGE ANSWER. The two functions disagreed in this repository
+// for as long as the arm existed, and nothing detected it, because no input could reach the arm
+// while the land pattern was unresolved.
+//
+// This is the reachability-read-as-occupancy class from the other direction. The usual error is
+// deleting a live guard because nothing currently lands in it; here an arm nobody could land in
+// went unexamined and was simply incorrect, and the first input to arrive found it. That is the
+// fail-closed substrate working exactly as intended -- resolving the socket body was the census,
+// and what broke is what was load-bearing -- but it is worth naming that the defect predates the
+// change that surfaced it rather than being introduced by it.
+//
+// NormalizedFactsMayBeCarried is the correct answer and not merely a passing one: the type's own
+// definition says it means the normalized numerical facts are admitted AND the vendor's
+// expression of them is not, which is exactly this layer's state. The extracted pitch, count,
+// diameter and 4,926 positions are carried; the vendor's drawing is not.
 fn carriage_for_board_land_pattern_fact(fact: FactAuthorityStanding) -> RepositoryCarriageStanding {
   match fact {
     FactAccessGated { subject: _, access_route: _ } =>
       CarriageNotApplicable {
         because: "the fact is behind commercial access, so its carriage is governed by the access terms and is not a decision this repository takes separately",
       }
-    FactEstablished { authority: _, subject: _ } =>
-      CarriageNotApplicable {
-        because: "no carriage question is modeled separately once a land pattern is established from a cited authority",
-      }
+    FactEstablished { authority: _, subject: _ } => NormalizedFactsMayBeCarried
     FactUnresolved { what_is_missing: _ } =>
       CarriageNotApplicable {
         because: "no fact is established for this layer, so there is nothing to decide carriage for",

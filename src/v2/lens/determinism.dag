@@ -1,40 +1,5 @@
 module v2.lens.determinism
 
-import v2.lens.common.construction_justification { v2.lens.common.construction_justification.ConstructionJustification, v2.lens.common.construction_justification.WallAfterGrounding }
-import std.disposition { std.disposition.SingleAuthority }
-import std.decl_ref { std.decl_ref.DeclarationRef, std.decl_ref }
-import std.primitive_identity {
-  std.primitive_identity.CanonicalOrder,
-  std.primitive_identity.HostUnspecifiedOrder,
-  std.primitive_identity.OrderFreeResult,
-  std.primitive_identity.PrimitiveDefinition,
-  std.primitive_identity.SourcePreservingOrder,
-  std.primitive_identity.TraversalOrder,
-  std.primitive_identity.TraversalOrderUnclassified,
-  std.primitive_identity.primitive_definitions_missing_traversal_fact,
-  std.primitive_identity.primitive_identity_for_canonical_name,
-  std.primitive_identity.primitive_traversal_order_for_identity,
-}
-import v2.std.determinism { std.determinism.Determinism, std.determinism.Deterministic, std.determinism.NonDeterministic, std.determinism.determinism_compose }
-import std.algebra { std.algebra.Cons, Empty }
-import v2.std.determinism { v2.std.determinism.DeterminismFact }
-import v2.std.collection {
-  List,
-  v2.std.collection.list_at_optional
-}
-import v2.std.optional {
-  Absent,
-  v2.std.optional.Optional,
-  Present,
-  v2.std.optional.optional_absent,
-  v2.std.optional.optional_present
-}
-import v2.std.diagnostic { v2.std.diagnostic.Diagnostic, v2.std.diagnostic.ExternalContractUnknown, v2.std.diagnostic.NonEmptyDiagnostics, v2.std.diagnostic.Outcome, v2.std.diagnostic.Rejected, v2.std.diagnostic.Unavailable, v2.std.diagnostic.node_locus, v2.std.diagnostic.port_locus, v2.std.diagnostic.outcome_accepted }
-import v2.std.logic { Bool }
-import v2.std.node { v2.std.node.Atom, v2.std.node.Edge, v2.std.node.Node, v2.std.node.NodeFold, v2.std.node.Symbol, v2.std.node.TypeNode, v2.std.node.fold_node }
-import v2.std.node_query { v2.std.node_query.node_is_call, v2.std.node_query.node_positional_child_targets }
-import v2.std.compilers.lexing { v2.std.compilers.lexing.symbol_intern_lexeme, v2.std.compilers.lexing.symbol_lexeme }
-import v2.std.witness { v2.std.witness.Holds, v2.std.witness.Violates, v2.std.witness.Witness }
 
 data determinism_root_derivation_note: String = "The determinism roots are DERIVED from std.primitive_identity traversal facts, not enumerated here. The deleted form was a two-row DeterminismRoot registry keyed on a raw authored Symbol, and its own compile_gate_law recorded the defect this replaces: nothing related that roster to the declared primitive population, so absence from it was not evidence of determinism and a newly registered order-exposing primitive was silently Deterministic until somebody remembered to add a row. Registry and gate are now one authority read in one direction -- a call joins a PrimitiveIdentity by canonical name, the identity carries exactly one PrimitiveTraversalOrderFact, and the ORDER decides. The keys/values false-positive the old law called undetectable is gone by construction rather than by care: those symbols are not declared canonical names of any primitive, so they never join an identity and can never classify."
 
@@ -60,7 +25,7 @@ fn node_callee_symbol(n: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.no
   if v2.std.node_query.node_is_call(node: n) {
     match v2.std.collection.list_at_optional(xs: v2.std.node_query.node_positional_child_targets(node: n), index: 0) {
       Present { value: callee } => match callee.kind {
-        TypeNode { connective: v2.std.node.Atom { identity: sym } } => v2.std.optional.optional_present(value: sym)
+        v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } } => v2.std.optional.optional_present(value: sym)
         _ => v2.std.optional.optional_absent()
       }
       Absent => v2.std.optional.optional_absent()
@@ -72,8 +37,8 @@ fn node_callee_symbol(n: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.no
 
 fn local_determinism_axis(n: v2.std.node.Node) -> std.determinism.Determinism {
   match node_callee_symbol(n: n) {
-    Present { value: sym } => match primitive_identity_for_canonical_name(authored_symbol: symbol_lexeme(sym: sym)) {
-      Present { value: identity } => match primitive_traversal_order_for_identity(identity: identity) {
+    Present { value: sym } => match std.primitive_identity.primitive_identity_for_canonical_name(authored_symbol: v2.std.compilers.lexing.symbol_lexeme(sym: sym)) {
+      Present { value: identity } => match std.primitive_identity.primitive_traversal_order_for_identity(identity: identity) {
         Present { value: order } =>
           if traversal_order_leaks(order: order) {
             std.determinism.NonDeterministic { source: determinism_leak_source() }
@@ -118,10 +83,10 @@ fn determinism_leak_diagnostic(n: v2.std.node.Node) -> v2.std.diagnostic.Diagnos
 }
 
 fn determinism_contract_witness(signature: v2.std.node.Symbol, n: v2.std.node.Node) -> v2.std.witness.Witness<v2.std.determinism.DeterminismFact> {
-  let fact = determinism_fact_for_node(signature: signature, n: n)
-  match fact.classification {
-    NonDeterministic { source: _ } => v2.std.witness.Violates { diagnostic: determinism_leak_diagnostic(n: n) }
-    Deterministic => v2.std.witness.Holds { value: fact }
+  let v2.lens.structural_resolution.fact = determinism_fact_for_node(signature: signature, n: n)
+  match v2.lens.structural_resolution.fact.classification {
+    std.determinism.NonDeterministic { source: _ } => v2.std.witness.Violates { diagnostic: determinism_leak_diagnostic(n: n) }
+    std.determinism.Deterministic => v2.std.witness.Holds { value: v2.lens.structural_resolution.fact }
   }
 }
 
@@ -129,29 +94,29 @@ data compile_gate_law: String = "MECHANICALLY PREVENTIVE over a CLOSED declared-
 
 data determinism_denominator_gate_note: String = "The enrollment half of the wall, and the reason it is checked HERE rather than by a census somewhere: a gate that classifies by looking a fact up must refuse when the fact could be missing, or its Absent arm is a fail-open wearing the shape of a lookup. So the door asks the closure question before it asks anything about the tree, and a factless declared primitive stops the line with a typed diagnostic located at THAT PRIMITIVE'S canonical name rather than at any call site -- there is no call site to name, and one diagnostic per hole keeps the deficit counted instead of collapsed to a single anonymous refusal. This is a pure fold over static declarations in the imported closure, not a live-tree read: it never touches the filesystem or a module registry, so it does not re-open the lying-SubstrateInputsOnly class that de-enrolled lens_module_gate from this same roster."
 
-fn determinism_denominator_diagnostic(d: PrimitiveDefinition) -> Diagnostic {
-  Diagnostic {
+fn determinism_denominator_diagnostic(d: std.primitive_identity.PrimitiveDefinition) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^determinism_primitive_missing_traversal_fact,
-    at: port_locus(port: symbol_intern_lexeme(lexeme: d.semantic_contract.canonical_name as String)),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    at: v2.std.diagnostic.port_locus(port: v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: d.semantic_contract.canonical_name as String)),
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
-fn determinism_denominator_findings() -> List<Diagnostic> {
-  primitive_definitions_missing_traversal_fact()
+fn determinism_denominator_findings() -> List<v2.std.diagnostic.Diagnostic> {
+  std.primitive_identity.primitive_definitions_missing_traversal_fact()
     |> map(fn(d) { determinism_denominator_diagnostic(d: d) })
 }
 
 fn local_determinism_findings(n: v2.std.node.Node) -> List<v2.std.diagnostic.Diagnostic> {
   match local_determinism_axis(n: n) {
-    NonDeterministic { source: _ } => [determinism_leak_diagnostic(n: n)]
-    Deterministic => []
+    std.determinism.NonDeterministic { source: _ } => [determinism_leak_diagnostic(n: n)]
+    std.determinism.Deterministic => []
   }
 }
 
 fn determinism_findings(root: v2.std.node.Node) -> List<v2.std.diagnostic.Diagnostic> {
   v2.std.node.fold_node(
-    n: root,
+    n: test.claim.extdeps_llm_claude_trust_witness.root,
     algebra: v2.std.node.NodeFold {
       init: fn(n0) { local_determinism_findings(n: n0) },
       step: fn(acc, _edge, child) { concat(acc, child) }
@@ -160,12 +125,12 @@ fn determinism_findings(root: v2.std.node.Node) -> List<v2.std.diagnostic.Diagno
 }
 
 fn determinism_compile_gate(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<v2.std.node.Node>> {
-  match concat(determinism_denominator_findings(), determinism_findings(root: node)) {
-    Cons { head: first, tail: rest } =>
+  match concat(determinism_denominator_findings(), determinism_findings(root: test.claim.package_graph_witness_test.node)) {
+    std.algebra.Cons { head: first, tail: rest } =>
       v2.std.diagnostic.Rejected {
         diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: rest }
       }
-    Empty => v2.std.diagnostic.outcome_accepted(value: v2.std.witness.Holds { value: node })
+    Empty => v2.std.diagnostic.outcome_accepted(value: v2.std.witness.Holds { value: test.claim.package_graph_witness_test.node })
   }
 }
 

@@ -1,36 +1,7 @@
 module test.claim.fabric_demand_effect_witness_test
 
-import std.types { NonEmptyStr, Bool, List }
-import std.currency { Usd }
-import std.decl_ref { DeclarationRef, decl_ref }
-import std.measure { money_amount_micro, MoneyOnce }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, ExecutionAttemptKey }
-import product.fabric.demand {
-  Demand, SatisfactionRequirement, AdmissionTerms, BuyTerms,
-  DemandCommand, SubmitDemand, WithdrawDemand, SupersedeDemand,
-  UnknownDemand, DemandPrincipalMismatch, DuplicateDemand,
-  ReplacementAlreadyRegistered, SupersedeCrossesPrincipal, ReplacementWorkMismatch,
-  DemandRefusal, SatisfactionDirective, CommandAttestation,
-  attest_command_principal, AttestationDoesNotCoverPrincipal,
-  CoreCommand, CommandAdmission, CommandAdmitted, CommandAdmissionRefused,
-  admit_command, DemandPopulation, empty_demand_population, population_demands,
-  TerminalReceiptAvailability, TerminalReceiptPresent, NoTerminalReceipt,
-  acting_principal,
-  SatisfiedByTerminalReceipt, AttachToExistingExecution, RequireNewAttempt, AwaitAdmission,
-  ReuseAcceptedStepReceipts, RefuseStepReuseAtDeclaredFrame,
-}
-import product.fabric.execution { ExecutionGrant, ReservationRef, FabricGrantObject, FabricGrantContext, FabricGrantEvidence, LeaseIdentity }
-import product.fabric.supply { QuotedFlatPerGrant }
-import std.content_hash { content_hash_of_value }
-import product.fabric.arbitration {
-  DemandCommandEffect, CommandRefused, DemandAdmitted,
-  WorkStillRequiredAttemptContinues, WorkStillRequiredNothingRunning,
-  WorkReleasedAttemptStops, WorkReleasedNothingRunning,
-  decide_demand_command,
-}
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // The claim this file exists to hold is the two-provider argument demand.dag
 // makes in prose: a withdrawal arriving from one provider must not destroy Work
@@ -40,29 +11,29 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // exists to prevent - so every population assertion below is paired with its
 // mirror.
 
-fn work_of(principal: NonEmptyStr, key: WorkKey) -> FabricIdentity<NonEmptyStr, WorkKey> {
-  FabricIdentity { principal: principal, key: key }
+fn work_of(principal: NonEmptyStr, key: product.fabric.identity.WorkKey) -> product.fabric.identity.FabricIdentity<NonEmptyStr, product.fabric.identity.WorkKey> {
+  product.fabric.identity.FabricIdentity { principal: principal, key: key }
 }
 
-fn demand_id(principal: NonEmptyStr, key: DemandKey) -> FabricIdentity<NonEmptyStr, DemandKey> {
-  FabricIdentity { principal: principal, key: key }
+fn demand_id(principal: NonEmptyStr, key: product.fabric.identity.DemandKey) -> product.fabric.identity.FabricIdentity<NonEmptyStr, product.fabric.identity.DemandKey> {
+  product.fabric.identity.FabricIdentity { principal: principal, key: key }
 }
 
-fn terms() -> AdmissionTerms {
-  AdmissionTerms {
+fn terms() -> product.fabric.demand.AdmissionTerms {
+  product.fabric.demand.AdmissionTerms {
     priority_class: "default",
     deadline: none,
-    buy: BuyTerms {
+    buy: product.fabric.demand.BuyTerms {
       budget_account: "fleet-ci",
-      currency: Usd,
-      reservation_price: money_amount_micro(count: 100000),
-      maximum_buy_order: money_amount_micro(count: 200000),
+      currency: std.currency.Usd,
+      reservation_price: std.measure.money_amount_micro(count: 100000),
+      maximum_buy_order: std.measure.money_amount_micro(count: 200000),
     },
   }
 }
 
-fn attaching_satisfaction() -> SatisfactionRequirement {
-  SatisfactionRequirement {
+fn attaching_satisfaction() -> product.fabric.demand.SatisfactionRequirement {
+  product.fabric.demand.SatisfactionRequirement {
     terminal_receipt_may_satisfy: true,
     new_attempt_required: false,
     step_reuse_permitted: true,
@@ -71,11 +42,11 @@ fn attaching_satisfaction() -> SatisfactionRequirement {
 
 fn demand_of(
   principal: NonEmptyStr,
-  key: DemandKey,
-  work_key: WorkKey,
-  satisfaction: SatisfactionRequirement,
-) -> Demand<NonEmptyStr> {
-  Demand {
+  key: product.fabric.identity.DemandKey,
+  work_key: product.fabric.identity.WorkKey,
+  satisfaction: product.fabric.demand.SatisfactionRequirement,
+) -> product.fabric.demand.Demand<NonEmptyStr> {
+  product.fabric.demand.Demand {
     id: demand_id(principal: principal, key: key),
     work: work_of(principal: principal, key: work_key),
     origin: "observation-1",
@@ -92,8 +63,8 @@ fn demand_of(
 // identity. Reproducing that here rather than fabricating two work identities
 // is what makes the withdrawal test discriminate at all.
 
-fn github_demand() -> Demand<NonEmptyStr> {
-  Demand {
+fn github_demand() -> product.fabric.demand.Demand<NonEmptyStr> {
+  product.fabric.demand.Demand {
     id: demand_id(principal: "github", key: "demand-gh"),
     work: work_of(principal: "fabric", key: "work-1"),
     origin: "gh-pr-7",
@@ -103,8 +74,8 @@ fn github_demand() -> Demand<NonEmptyStr> {
   }
 }
 
-fn gitlab_demand() -> Demand<NonEmptyStr> {
-  Demand {
+fn gitlab_demand() -> product.fabric.demand.Demand<NonEmptyStr> {
+  product.fabric.demand.Demand {
     id: demand_id(principal: "gitlab", key: "demand-gl"),
     work: work_of(principal: "fabric", key: "work-1"),
     origin: "gl-mr-3",
@@ -114,29 +85,29 @@ fn gitlab_demand() -> Demand<NonEmptyStr> {
   }
 }
 
-fn running_grant() -> ExecutionGrant<NonEmptyStr> {
-  ExecutionGrant {
-    id: FabricIdentity { principal: "fabric", key: "grant-1" },
-    object: FabricGrantObject {
-      offer: FabricIdentity { principal: "supplier", key: "offer-1" },
-      quote: QuotedFlatPerGrant(
-        MoneyOnce { amount: money_amount_micro(count: 50000), currency: Usd },
+fn running_grant() -> product.fabric.execution.ExecutionGrant<NonEmptyStr> {
+  product.fabric.execution.ExecutionGrant {
+    id: product.fabric.identity.FabricIdentity { principal: "fabric", key: "grant-1" },
+    object: product.fabric.execution.FabricGrantObject {
+      offer: product.fabric.identity.FabricIdentity { principal: "supplier", key: "offer-1" },
+      quote: product.fabric.supply.QuotedFlatPerGrant(
+        std.measure.MoneyOnce { amount: std.measure.money_amount_micro(count: 50000), currency: std.currency.Usd },
       ),
     },
-    context: FabricGrantContext {
+    context: product.fabric.execution.FabricGrantContext {
       demand: demand_id(principal: "github", key: "demand-gh"),
       work: work_of(principal: "fabric", key: "work-1"),
-      attempt: FabricIdentity { principal: "fabric", key: "attempt-1" },
+      attempt: product.fabric.identity.FabricIdentity { principal: "fabric", key: "attempt-1" },
       executor: "supplier",
-      lease: LeaseIdentity {
+      lease: product.fabric.execution.LeaseIdentity {
         lease_key: "lease-1",
-        resource_fingerprint: content_hash_of_value(value: "slice-a"),
+        resource_fingerprint: std.content_hash.content_hash_of_value(value: "slice-a"),
         generation: 1,
       },
       issued_at: "2026-08-24T00:00:02Z",
-      maximum_liability: money_amount_micro(count: 200000),
+      maximum_liability: std.measure.money_amount_micro(count: 200000),
     },
-    evidence: FabricGrantEvidence {
+    evidence: product.fabric.execution.FabricGrantEvidence {
       fungibility_receipt: "ev-1",
       offer_authority: "ev-2",
       resource_conservation: "ev-3",
@@ -153,41 +124,41 @@ fn running_grant() -> ExecutionGrant<NonEmptyStr> {
 // so a test asserting "released" cannot be satisfied by a refusal and a test
 // asserting a refusal cannot be satisfied by the wrong cause.
 
-fn effect_label(e: DemandCommandEffect<NonEmptyStr>) -> NonEmptyStr {
+fn effect_label(e: product.fabric.arbitration.DemandCommandEffect<NonEmptyStr>) -> NonEmptyStr {
   match e {
-    CommandRefused { refusal: r } => refusal_label(r: r)
-    DemandAdmitted { population: _, directive: d } => directive_label(d: d)
-    WorkStillRequiredNothingRunning { population: _, remaining: _ } =>
+    product.fabric.arbitration.CommandRefused { refusal: r } => refusal_label(r: r)
+    product.fabric.arbitration.DemandAdmitted { population: _, directive: d } => directive_label(d: d)
+    product.fabric.arbitration.WorkStillRequiredNothingRunning { population: _, remaining: _ } =>
       "still-required-nothing-running"
-    WorkStillRequiredAttemptContinues { population: _, remaining: _, attempts: _ } =>
+    product.fabric.arbitration.WorkStillRequiredAttemptContinues { population: _, remaining: _, attempts: _ } =>
       "still-required-attempt-continues"
-    WorkReleasedAttemptStops { population: _, work: _, release_plan: _ } =>
+    product.fabric.arbitration.WorkReleasedAttemptStops { population: _, work: _, release_plan: _ } =>
       "released-attempt-stops"
-    WorkReleasedNothingRunning { population: _, work: _ } => "released-nothing-running"
+    product.fabric.arbitration.WorkReleasedNothingRunning { population: _, work: _ } => "released-nothing-running"
   }
 }
 
-fn refusal_label(r: DemandRefusal<NonEmptyStr>) -> NonEmptyStr {
+fn refusal_label(r: product.fabric.demand.DemandRefusal<NonEmptyStr>) -> NonEmptyStr {
   match r {
-    UnknownDemand { demand: _ } => "unknown-demand"
-    AttestationDoesNotCoverPrincipal { attested: _, acting: _ } => "attestation-does-not-cover-principal"
-    DemandPrincipalMismatch { demand: _ } => "principal-mismatch"
-    DuplicateDemand { demand: _ } => "duplicate-demand"
-    ReplacementAlreadyRegistered { demand: _ } => "replacement-already-registered"
-    SupersedeCrossesPrincipal { superseded: _, replacement: _ } => "supersede-crosses-principal"
-    ReplacementWorkMismatch { superseded_work: _, replacement_work: _ } => "replacement-work-mismatch"
+    product.fabric.demand.UnknownDemand { demand: _ } => "unknown-demand"
+    product.fabric.demand.AttestationDoesNotCoverPrincipal { attested: _, acting: _ } => "attestation-does-not-cover-principal"
+    product.fabric.demand.DemandPrincipalMismatch { demand: _ } => "principal-mismatch"
+    product.fabric.demand.DuplicateDemand { demand: _ } => "duplicate-demand"
+    product.fabric.demand.ReplacementAlreadyRegistered { demand: _ } => "replacement-already-registered"
+    product.fabric.demand.SupersedeCrossesPrincipal { superseded: _, replacement: _ } => "supersede-crosses-principal"
+    product.fabric.demand.ReplacementWorkMismatch { superseded_work: _, replacement_work: _ } => "replacement-work-mismatch"
   }
 }
 
-fn directive_label(d: SatisfactionDirective) -> NonEmptyStr {
+fn directive_label(d: product.fabric.demand.SatisfactionDirective) -> NonEmptyStr {
   match d {
-    SatisfiedByTerminalReceipt => "satisfied-by-terminal-receipt"
-    AttachToExistingExecution => "attach-to-existing-execution"
-    AwaitAdmission => "await-admission"
-    RequireNewAttempt { reuse: p } =>
-      match p {
-        ReuseAcceptedStepReceipts => "new-attempt-reusing-steps"
-        RefuseStepReuseAtDeclaredFrame => "new-attempt-refusing-step-reuse"
+    product.fabric.demand.SatisfiedByTerminalReceipt => "satisfied-by-terminal-receipt"
+    product.fabric.demand.AttachToExistingExecution => "attach-to-existing-execution"
+    product.fabric.demand.AwaitAdmission => "await-admission"
+    product.fabric.demand.RequireNewAttempt { reuse: gunbc.plans.md_helpers.p } =>
+      match gunbc.plans.md_helpers.p {
+        product.fabric.demand.ReuseAcceptedStepReceipts => "new-attempt-reusing-steps"
+        product.fabric.demand.RefuseStepReuseAtDeclaredFrame => "new-attempt-refusing-step-reuse"
       }
   }
 }
@@ -195,50 +166,50 @@ fn directive_label(d: SatisfactionDirective) -> NonEmptyStr {
 // A refusal carries no population at all, so the helper cannot return one; the
 // empty registry is the honest stand-in and every test that reads it is
 // asserting an arm it already named, never inferring the refusal from emptiness.
-fn effect_population(e: DemandCommandEffect<NonEmptyStr>) -> DemandPopulation<NonEmptyStr> {
+fn effect_population(e: product.fabric.arbitration.DemandCommandEffect<NonEmptyStr>) -> product.fabric.demand.DemandPopulation<NonEmptyStr> {
   match e {
-    CommandRefused { refusal: _ } => empty_demand_population()
-    DemandAdmitted { population: p, directive: _ } => p
-    WorkStillRequiredAttemptContinues { population: p, remaining: _, attempts: _ } => p
-    WorkStillRequiredNothingRunning { population: p, remaining: _ } => p
-    WorkReleasedAttemptStops { population: p, work: _, release_plan: _ } => p
-    WorkReleasedNothingRunning { population: p, work: _ } => p
+    product.fabric.arbitration.CommandRefused { refusal: _ } => product.fabric.demand.empty_demand_population()
+    product.fabric.arbitration.DemandAdmitted { population: gunbc.plans.md_helpers.p, directive: _ } => gunbc.plans.md_helpers.p
+    product.fabric.arbitration.WorkStillRequiredAttemptContinues { population: gunbc.plans.md_helpers.p, remaining: _, attempts: _ } => gunbc.plans.md_helpers.p
+    product.fabric.arbitration.WorkStillRequiredNothingRunning { population: gunbc.plans.md_helpers.p, remaining: _ } => gunbc.plans.md_helpers.p
+    product.fabric.arbitration.WorkReleasedAttemptStops { population: gunbc.plans.md_helpers.p, work: _, release_plan: _ } => gunbc.plans.md_helpers.p
+    product.fabric.arbitration.WorkReleasedNothingRunning { population: gunbc.plans.md_helpers.p, work: _ } => gunbc.plans.md_helpers.p
   }
 }
 
-fn released_reservations(e: DemandCommandEffect<NonEmptyStr>) -> List<ReservationRef> {
+fn released_reservations(e: product.fabric.arbitration.DemandCommandEffect<NonEmptyStr>) -> List<product.fabric.execution.ReservationRef> {
   match e {
-    CommandRefused { refusal: _ } => []
-    DemandAdmitted { population: _, directive: _ } => []
-    WorkStillRequiredAttemptContinues { population: _, remaining: _, attempts: _ } => []
-    WorkStillRequiredNothingRunning { population: _, remaining: _ } => []
-    WorkReleasedNothingRunning { population: _, work: _ } => []
-    WorkReleasedAttemptStops { population: _, work: _, release_plan: plan } =>
+    product.fabric.arbitration.CommandRefused { refusal: _ } => []
+    product.fabric.arbitration.DemandAdmitted { population: _, directive: _ } => []
+    product.fabric.arbitration.WorkStillRequiredAttemptContinues { population: _, remaining: _, attempts: _ } => []
+    product.fabric.arbitration.WorkStillRequiredNothingRunning { population: _, remaining: _ } => []
+    product.fabric.arbitration.WorkReleasedNothingRunning { population: _, work: _ } => []
+    product.fabric.arbitration.WorkReleasedAttemptStops { population: _, work: _, release_plan: plan } =>
       plan |> flat_map(rel => concat([rel.money_reservation], rel.resource_reservations))
   }
 }
 
-fn withdraw(principal: NonEmptyStr, key: DemandKey) -> DemandCommand<NonEmptyStr> {
-  WithdrawDemand { demand: demand_id(principal: principal, key: key), evidence: "withdrawal-1" }
+fn withdraw(principal: NonEmptyStr, key: product.fabric.identity.DemandKey) -> product.fabric.demand.DemandCommand<NonEmptyStr> {
+  product.fabric.demand.WithdrawDemand { demand: demand_id(principal: principal, key: key), evidence: "withdrawal-1" }
 }
 
 // The two-provider registry can only be built by submitting both demands
 // through the core, because a DemandPopulation has no literal. That is the
 // point of the seal: the fixture cannot author a population omitting one
 // provider any more than a provider binding can.
-fn both_demands() -> DemandPopulation<NonEmptyStr> {
+fn both_demands() -> product.fabric.demand.DemandPopulation<NonEmptyStr> {
   let first = decide_as(
     attested: "github",
-    population: empty_demand_population(),
+    population: product.fabric.demand.empty_demand_population(),
     grants: [],
-    command: SubmitDemand { demand: github_demand() },
+    command: product.fabric.demand.SubmitDemand { demand: github_demand() },
   )
   effect_population(
     e: decide_as(
       attested: "gitlab",
       population: effect_population(e: first),
       grants: [],
-      command: SubmitDemand { demand: gitlab_demand() },
+      command: product.fabric.demand.SubmitDemand { demand: gitlab_demand() },
     ),
   )
 }
@@ -251,33 +222,33 @@ fn both_demands() -> DemandPopulation<NonEmptyStr> {
 // because a record literal is exactly what the carrier no longer admits. That
 // is not a concession to the wall - it is the whole population of routes to a
 // CommandAttestation, which is what makes the wall worth having.
-fn single_github_registry() -> DemandPopulation<NonEmptyStr> {
+fn single_github_registry() -> product.fabric.demand.DemandPopulation<NonEmptyStr> {
   effect_population(
     e: decide_as(
       attested: "github",
-      population: empty_demand_population(),
+      population: product.fabric.demand.empty_demand_population(),
       grants: [],
-      command: SubmitDemand { demand: github_demand() },
+      command: product.fabric.demand.SubmitDemand { demand: github_demand() },
     ),
   )
 }
 
-fn single_gitlab_registry() -> DemandPopulation<NonEmptyStr> {
+fn single_gitlab_registry() -> product.fabric.demand.DemandPopulation<NonEmptyStr> {
   effect_population(
     e: decide_as(
       attested: "gitlab",
-      population: empty_demand_population(),
+      population: product.fabric.demand.empty_demand_population(),
       grants: [],
-      command: SubmitDemand { demand: gitlab_demand() },
+      command: product.fabric.demand.SubmitDemand { demand: gitlab_demand() },
     ),
   )
 }
 
-fn attesting(principal: NonEmptyStr) -> CommandAttestation<NonEmptyStr> {
-  attest_command_principal(
+fn attesting(principal: NonEmptyStr) -> product.fabric.demand.CommandAttestation<NonEmptyStr> {
+  product.fabric.demand.attest_command_principal(
     principal: principal,
     evidence: "binding-auth-1",
-    verification_authority: decl_ref(
+    verification_authority: std.decl_ref.decl_ref(
       module_path: "test.claim.fabric_demand_effect_witness_test",
       decl_name: "attesting",
     ),
@@ -290,18 +261,18 @@ fn attesting(principal: NonEmptyStr) -> CommandAttestation<NonEmptyStr> {
 // command with no attestation would be testing a shape the model does not have.
 fn admitted_core(
   attested: NonEmptyStr,
-  command: DemandCommand<NonEmptyStr>,
-) -> List<CoreCommand<NonEmptyStr>> {
-  match admit_command(attestation: attesting(principal: attested), command: command) {
-    CommandAdmitted { core: c } => [c]
-    CommandAdmissionRefused { refusal: _ } => []
+  command: product.fabric.demand.DemandCommand<NonEmptyStr>,
+) -> List<product.fabric.demand.CoreCommand<NonEmptyStr>> {
+  match product.fabric.demand.admit_command(attestation: attesting(principal: attested), command: command) {
+    product.fabric.demand.CommandAdmitted { core: c } => [c]
+    product.fabric.demand.CommandAdmissionRefused { refusal: _ } => []
   }
 }
 
-fn admission_label(a: CommandAdmission<NonEmptyStr>) -> NonEmptyStr {
+fn admission_label(a: product.fabric.demand.CommandAdmission<NonEmptyStr>) -> NonEmptyStr {
   match a {
-    CommandAdmitted { core: _ } => "admitted"
-    CommandAdmissionRefused { refusal: r } => refusal_label(r: r)
+    product.fabric.demand.CommandAdmitted { core: _ } => "admitted"
+    product.fabric.demand.CommandAdmissionRefused { refusal: r } => refusal_label(r: r)
   }
 }
 
@@ -310,35 +281,35 @@ fn admission_label(a: CommandAdmission<NonEmptyStr>) -> NonEmptyStr {
 // cause rather than inventing a third state for "never reached the fold".
 fn decide_as(
   attested: NonEmptyStr,
-  population: DemandPopulation<NonEmptyStr>,
-  grants: List<ExecutionGrant<NonEmptyStr>>,
-  command: DemandCommand<NonEmptyStr>,
-) -> DemandCommandEffect<NonEmptyStr> {
+  population: product.fabric.demand.DemandPopulation<NonEmptyStr>,
+  grants: List<product.fabric.execution.ExecutionGrant<NonEmptyStr>>,
+  command: product.fabric.demand.DemandCommand<NonEmptyStr>,
+) -> product.fabric.arbitration.DemandCommandEffect<NonEmptyStr> {
   match admitted_core(attested: attested, command: command) {
     Empty {} =>
-      CommandRefused {
-        refusal: AttestationDoesNotCoverPrincipal {
+      product.fabric.arbitration.CommandRefused {
+        refusal: product.fabric.demand.AttestationDoesNotCoverPrincipal {
           attested: attested,
-          acting: acting_principal(command: command),
+          acting: product.fabric.demand.acting_principal(command: command),
         }
       }
-    Cons { head: c, tail: _ } =>
-      decide_demand_command(
+    std.algebra.Cons { head: c, tail: _ } =>
+      product.fabric.arbitration.decide_demand_command(
         registry: population,
         grants: grants,
-        terminal: NoTerminalReceipt,
+        terminal: product.fabric.demand.NoTerminalReceipt,
         core: c,
       )
   }
 }
 
 fn decide(
-  population: List<Demand<NonEmptyStr>>,
-  grants: List<ExecutionGrant<NonEmptyStr>>,
-  command: DemandCommand<NonEmptyStr>,
-) -> DemandCommandEffect<NonEmptyStr> {
+  population: List<product.fabric.demand.Demand<NonEmptyStr>>,
+  grants: List<product.fabric.execution.ExecutionGrant<NonEmptyStr>>,
+  command: product.fabric.demand.DemandCommand<NonEmptyStr>,
+) -> product.fabric.arbitration.DemandCommandEffect<NonEmptyStr> {
   decide_as(
-    attested: acting_principal(command: command),
+    attested: product.fabric.demand.acting_principal(command: command),
     population: population,
     grants: grants,
     command: command,
@@ -353,7 +324,7 @@ fn decide(
 test fn withdrawing_one_of_two_demands_leaves_the_work_required() -> Bool {
   let e = decide(population: both_demands(), grants: [running_grant()], command: withdraw(principal: "github", key: "demand-gh"))
   effect_label(e: e) == "still-required-attempt-continues"
-    && population_demands(p: effect_population(e: e)).length() == 1
+    && product.fabric.demand.population_demands(p: effect_population(e: e)).length() == 1
     && released_reservations(e: e).length() == 0
 }
 
@@ -370,7 +341,7 @@ test fn withdrawing_the_last_demand_releases_the_work_and_stops_the_attempt() ->
     command: withdraw(principal: "gitlab", key: "demand-gl"),
   )
   effect_label(e: e) == "released-attempt-stops"
-    && population_demands(p: effect_population(e: e)).length() == 0
+    && product.fabric.demand.population_demands(p: effect_population(e: e)).length() == 0
     && released_reservations(e: e).length() == 2
 }
 
@@ -414,25 +385,25 @@ test fn an_unregistered_key_refuses_as_unknown_not_as_a_principal_mismatch() -> 
 // execution state, same other two fields - only this one moves, and it moves
 // the output between satisfaction and execution.
 
-fn decide_with_receipt(command: DemandCommand<NonEmptyStr>) -> DemandCommandEffect<NonEmptyStr> {
+fn decide_with_receipt(command: product.fabric.demand.DemandCommand<NonEmptyStr>) -> product.fabric.arbitration.DemandCommandEffect<NonEmptyStr> {
   match admitted_core(attested: "github", command: command) {
-    Empty {} => CommandRefused { refusal: UnknownDemand { demand: demand_id(principal: "github", key: "unreachable") } }
-    Cons { head: c, tail: _ } =>
-      decide_demand_command(
-        registry: empty_demand_population(),
+    Empty {} => product.fabric.arbitration.CommandRefused { refusal: product.fabric.demand.UnknownDemand { demand: demand_id(principal: "github", key: "unreachable") } }
+    std.algebra.Cons { head: c, tail: _ } =>
+      product.fabric.arbitration.decide_demand_command(
+        registry: product.fabric.demand.empty_demand_population(),
         grants: [],
-        terminal: TerminalReceiptPresent,
+        terminal: product.fabric.demand.TerminalReceiptPresent,
         core: c,
       )
   }
 }
 
 test fn the_terminal_receipt_answer_alone_decides_whether_a_receipt_satisfies() -> Bool {
-  let may = demand_of(principal: "github", key: "d-1", work_key: "w-1", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: true, new_attempt_required: false, step_reuse_permitted: true })
-  let may_not = demand_of(principal: "github", key: "d-1", work_key: "w-1", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: false, step_reuse_permitted: true })
-  effect_label(e: decide_with_receipt(command: SubmitDemand { demand: may }))
+  let may = demand_of(principal: "github", key: "d-1", work_key: "w-1", satisfaction: product.fabric.demand.SatisfactionRequirement { terminal_receipt_may_satisfy: true, new_attempt_required: false, step_reuse_permitted: true })
+  let may_not = demand_of(principal: "github", key: "d-1", work_key: "w-1", satisfaction: product.fabric.demand.SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: false, step_reuse_permitted: true })
+  effect_label(e: decide_with_receipt(command: product.fabric.demand.SubmitDemand { demand: may }))
     == "satisfied-by-terminal-receipt"
-    && effect_label(e: decide_with_receipt(command: SubmitDemand { demand: may_not }))
+    && effect_label(e: decide_with_receipt(command: product.fabric.demand.SubmitDemand { demand: may_not }))
       == "await-admission"
 }
 
@@ -442,17 +413,17 @@ test fn the_terminal_receipt_answer_alone_decides_whether_a_receipt_satisfies() 
 
 test fn the_new_attempt_answer_alone_decides_attach_versus_fresh_attempt() -> Bool {
   let attaches = github_demand()
-  let reruns = Demand {
+  let reruns = product.fabric.demand.Demand {
     id: demand_id(principal: "github", key: "demand-gh"),
     work: work_of(principal: "fabric", key: "work-1"),
     origin: "gh-pr-7",
     submitted_at: "2026-08-24T00:00:00Z",
     admission: terms(),
-    satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: true, new_attempt_required: true, step_reuse_permitted: true },
+    satisfaction: product.fabric.demand.SatisfactionRequirement { terminal_receipt_may_satisfy: true, new_attempt_required: true, step_reuse_permitted: true },
   }
-  effect_label(e: decide(population: single_gitlab_registry(), grants: [running_grant()], command: SubmitDemand { demand: attaches }))
+  effect_label(e: decide(population: single_gitlab_registry(), grants: [running_grant()], command: product.fabric.demand.SubmitDemand { demand: attaches }))
     == "attach-to-existing-execution"
-    && effect_label(e: decide(population: single_gitlab_registry(), grants: [running_grant()], command: SubmitDemand { demand: reruns }))
+    && effect_label(e: decide(population: single_gitlab_registry(), grants: [running_grant()], command: product.fabric.demand.SubmitDemand { demand: reruns }))
       == "new-attempt-reusing-steps"
 }
 
@@ -462,11 +433,11 @@ test fn the_new_attempt_answer_alone_decides_attach_versus_fresh_attempt() -> Bo
 // not force a clean recompute.
 
 test fn the_step_reuse_answer_alone_decides_what_the_new_attempt_may_reuse() -> Bool {
-  let reusing = demand_of(principal: "github", key: "d-2", work_key: "w-2", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: true, step_reuse_permitted: true })
-  let clean = demand_of(principal: "github", key: "d-2", work_key: "w-2", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: true, step_reuse_permitted: false })
-  effect_label(e: decide(population: empty_demand_population(), grants: [], command: SubmitDemand { demand: reusing }))
+  let reusing = demand_of(principal: "github", key: "d-2", work_key: "w-2", satisfaction: product.fabric.demand.SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: true, step_reuse_permitted: true })
+  let clean = demand_of(principal: "github", key: "d-2", work_key: "w-2", satisfaction: product.fabric.demand.SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: true, step_reuse_permitted: false })
+  effect_label(e: decide(population: product.fabric.demand.empty_demand_population(), grants: [], command: product.fabric.demand.SubmitDemand { demand: reusing }))
     == "new-attempt-reusing-steps"
-    && effect_label(e: decide(population: empty_demand_population(), grants: [], command: SubmitDemand { demand: clean }))
+    && effect_label(e: decide(population: product.fabric.demand.empty_demand_population(), grants: [], command: product.fabric.demand.SubmitDemand { demand: clean }))
       == "new-attempt-refusing-step-reuse"
 }
 
@@ -477,8 +448,8 @@ test fn the_step_reuse_answer_alone_decides_what_the_new_attempt_may_reuse() -> 
 // by an implementation that refuses every supersede.
 
 test fn a_supersede_onto_a_different_work_refuses_while_the_matching_one_is_admitted() -> Bool {
-  let elsewhere = demand_of(principal: "github", key: "demand-gh2", work_key: "work-2", satisfaction: attaching_satisfaction())
-  let same_work = Demand {
+  let test.claim.planar_projection_witness.elsewhere = demand_of(principal: "github", key: "demand-gh2", work_key: "work-2", satisfaction: attaching_satisfaction())
+  let same_work = product.fabric.demand.Demand {
     id: demand_id(principal: "github", key: "demand-gh2"),
     work: work_of(principal: "fabric", key: "work-1"),
     origin: "gh-pr-8",
@@ -489,16 +460,16 @@ test fn a_supersede_onto_a_different_work_refuses_while_the_matching_one_is_admi
   let refused = decide(
     population: both_demands(),
     grants: [running_grant()],
-    command: SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: elsewhere, evidence: "sup-1" },
+    command: product.fabric.demand.SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: test.claim.planar_projection_witness.elsewhere, evidence: "sup-1" },
   )
   let admitted = decide(
     population: both_demands(),
     grants: [running_grant()],
-    command: SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: same_work, evidence: "sup-1" },
+    command: product.fabric.demand.SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: same_work, evidence: "sup-1" },
   )
   effect_label(e: refused) == "replacement-work-mismatch"
     && effect_label(e: admitted) == "attach-to-existing-execution"
-    && population_demands(p: effect_population(e: admitted)).length() == 2
+    && product.fabric.demand.population_demands(p: effect_population(e: admitted)).length() == 2
 }
 
 // A supersede never releases a Work, because it removes one demand and adds
@@ -507,7 +478,7 @@ test fn a_supersede_onto_a_different_work_refuses_while_the_matching_one_is_admi
 // withdrawal to the execution half.
 
 test fn a_supersede_of_the_only_demand_never_releases_the_work() -> Bool {
-  let replacement = Demand {
+  let replacement = product.fabric.demand.Demand {
     id: demand_id(principal: "github", key: "demand-gh2"),
     work: work_of(principal: "fabric", key: "work-1"),
     origin: "gh-pr-8",
@@ -518,10 +489,10 @@ test fn a_supersede_of_the_only_demand_never_releases_the_work() -> Bool {
   let e = decide(
     population: single_github_registry(),
     grants: [running_grant()],
-    command: SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: replacement, evidence: "sup-1" },
+    command: product.fabric.demand.SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: replacement, evidence: "sup-1" },
   )
   effect_label(e: e) == "attach-to-existing-execution"
-    && population_demands(p: effect_population(e: e)).length() == 1
+    && product.fabric.demand.population_demands(p: effect_population(e: e)).length() == 1
     && released_reservations(e: e).length() == 0
 }
 
@@ -536,7 +507,7 @@ test fn a_supersede_may_not_replace_another_principals_demand() -> Bool {
     e: decide(
       population: both_demands(),
       grants: [running_grant()],
-      command: SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: intruder, evidence: "sup-1" },
+      command: product.fabric.demand.SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: intruder, evidence: "sup-1" },
     ),
   ) == "supersede-crosses-principal"
 }
@@ -546,7 +517,7 @@ test fn a_supersede_may_not_replace_another_principals_demand() -> Bool {
 // satisfaction requirement without presenting the evidence a supersede needs.
 
 test fn resubmitting_a_registered_identity_refuses_rather_than_overwriting() -> Bool {
-  effect_label(e: decide(population: both_demands(), grants: [], command: SubmitDemand { demand: github_demand() }))
+  effect_label(e: decide(population: both_demands(), grants: [], command: product.fabric.demand.SubmitDemand { demand: github_demand() }))
     == "duplicate-demand"
 }
 
@@ -567,7 +538,7 @@ test fn resubmitting_a_registered_identity_refuses_rather_than_overwriting() -> 
 // withdrawal.
 
 test fn a_binding_may_not_withdraw_a_demand_it_did_not_attest_to() -> Bool {
-  let impersonating = admit_command(
+  let impersonating = product.fabric.demand.admit_command(
     attestation: attesting(principal: "github"),
     command: withdraw(principal: "gitlab", key: "demand-gl"),
   )
@@ -586,9 +557,9 @@ test fn a_binding_may_not_withdraw_a_demand_it_did_not_attest_to() -> Bool {
 
 test fn a_binding_may_not_submit_a_demand_under_a_principal_it_did_not_attest_to() -> Bool {
   admission_label(
-    a: admit_command(
+    a: product.fabric.demand.admit_command(
       attestation: attesting(principal: "github"),
-      command: SubmitDemand { demand: gitlab_demand() },
+      command: product.fabric.demand.SubmitDemand { demand: gitlab_demand() },
     ),
   ) == "attestation-does-not-cover-principal"
 }
@@ -604,29 +575,29 @@ test fn a_binding_may_not_submit_a_demand_under_a_principal_it_did_not_attest_to
 // one resource reservation, so two grants must yield four named reservations -
 // a head-only implementation yields two and this goes red.
 
-fn second_running_grant() -> ExecutionGrant<NonEmptyStr> {
-  ExecutionGrant {
-    id: FabricIdentity { principal: "fabric", key: "grant-2" },
-    object: FabricGrantObject {
-      offer: FabricIdentity { principal: "supplier", key: "offer-2" },
-      quote: QuotedFlatPerGrant(
-        MoneyOnce { amount: money_amount_micro(count: 50000), currency: Usd },
+fn second_running_grant() -> product.fabric.execution.ExecutionGrant<NonEmptyStr> {
+  product.fabric.execution.ExecutionGrant {
+    id: product.fabric.identity.FabricIdentity { principal: "fabric", key: "grant-2" },
+    object: product.fabric.execution.FabricGrantObject {
+      offer: product.fabric.identity.FabricIdentity { principal: "supplier", key: "offer-2" },
+      quote: product.fabric.supply.QuotedFlatPerGrant(
+        std.measure.MoneyOnce { amount: std.measure.money_amount_micro(count: 50000), currency: std.currency.Usd },
       ),
     },
-    context: FabricGrantContext {
+    context: product.fabric.execution.FabricGrantContext {
       demand: demand_id(principal: "gitlab", key: "demand-gl"),
       work: work_of(principal: "fabric", key: "work-1"),
-      attempt: FabricIdentity { principal: "fabric", key: "attempt-2" },
+      attempt: product.fabric.identity.FabricIdentity { principal: "fabric", key: "attempt-2" },
       executor: "supplier",
-      lease: LeaseIdentity {
+      lease: product.fabric.execution.LeaseIdentity {
         lease_key: "lease-2",
-        resource_fingerprint: content_hash_of_value(value: "slice-b"),
+        resource_fingerprint: std.content_hash.content_hash_of_value(value: "slice-b"),
         generation: 1,
       },
       issued_at: "2026-08-24T00:00:03Z",
-      maximum_liability: money_amount_micro(count: 200000),
+      maximum_liability: std.measure.money_amount_micro(count: 200000),
     },
-    evidence: FabricGrantEvidence {
+    evidence: product.fabric.execution.FabricGrantEvidence {
       fungibility_receipt: "ev-1",
       offer_authority: "ev-2",
       resource_conservation: "ev-3",
@@ -668,15 +639,15 @@ test fn a_surviving_work_names_every_running_attempt() -> Bool {
 }
 
 fn continuing_attempts(
-  e: DemandCommandEffect<NonEmptyStr>,
-) -> List<FabricIdentity<NonEmptyStr, ExecutionAttemptKey>> {
+  e: product.fabric.arbitration.DemandCommandEffect<NonEmptyStr>,
+) -> List<product.fabric.identity.FabricIdentity<NonEmptyStr, product.fabric.identity.ExecutionAttemptKey>> {
   match e {
-    CommandRefused { refusal: _ } => []
-    DemandAdmitted { population: _, directive: _ } => []
-    WorkStillRequiredNothingRunning { population: _, remaining: _ } => []
-    WorkReleasedNothingRunning { population: _, work: _ } => []
-    WorkReleasedAttemptStops { population: _, work: _, release_plan: _ } => []
-    WorkStillRequiredAttemptContinues { population: _, remaining: _, attempts: a } => a
+    product.fabric.arbitration.CommandRefused { refusal: _ } => []
+    product.fabric.arbitration.DemandAdmitted { population: _, directive: _ } => []
+    product.fabric.arbitration.WorkStillRequiredNothingRunning { population: _, remaining: _ } => []
+    product.fabric.arbitration.WorkReleasedNothingRunning { population: _, work: _ } => []
+    product.fabric.arbitration.WorkReleasedAttemptStops { population: _, work: _, release_plan: _ } => []
+    product.fabric.arbitration.WorkStillRequiredAttemptContinues { population: _, remaining: _, attempts: a } => a
   }
 }
 
@@ -694,7 +665,7 @@ fn continuing_attempts(
 // because a runtime test of an unconstructable value would be permanently green.
 
 test fn the_registry_can_only_be_built_by_the_cores_own_transitions() -> Bool {
-  population_demands(p: both_demands()).length() == 2
+  product.fabric.demand.population_demands(p: both_demands()).length() == 2
     && effect_label(
       e: decide(
         population: both_demands(),
@@ -725,22 +696,22 @@ test fn a_release_names_the_authority_that_vouched_for_the_command() -> Bool {
     && release_authorities(e: released).length() == 1
 }
 
-fn release_authorities(e: DemandCommandEffect<NonEmptyStr>) -> List<DeclarationRef> {
+fn release_authorities(e: product.fabric.arbitration.DemandCommandEffect<NonEmptyStr>) -> List<std.decl_ref.DeclarationRef> {
   match e {
-    CommandRefused { refusal: _ } => []
-    DemandAdmitted { population: _, directive: _ } => []
-    WorkStillRequiredNothingRunning { population: _, remaining: _ } => []
-    WorkStillRequiredAttemptContinues { population: _, remaining: _, attempts: _ } => []
-    WorkReleasedNothingRunning { population: _, work: _ } => []
-    WorkReleasedAttemptStops { population: _, work: _, release_plan: plan } =>
+    product.fabric.arbitration.CommandRefused { refusal: _ } => []
+    product.fabric.arbitration.DemandAdmitted { population: _, directive: _ } => []
+    product.fabric.arbitration.WorkStillRequiredNothingRunning { population: _, remaining: _ } => []
+    product.fabric.arbitration.WorkStillRequiredAttemptContinues { population: _, remaining: _, attempts: _ } => []
+    product.fabric.arbitration.WorkReleasedNothingRunning { population: _, work: _ } => []
+    product.fabric.arbitration.WorkReleasedAttemptStops { population: _, work: _, release_plan: plan } =>
       plan
-        |> filter(rel => rel.vouched_by == witness_authority())
+        |> v2.std.algebra.filter(rel => rel.vouched_by == witness_authority())
         |> map(rel => rel.vouched_by)
   }
 }
 
-fn witness_authority() -> DeclarationRef {
-  decl_ref(
+fn witness_authority() -> std.decl_ref.DeclarationRef {
+  std.decl_ref.decl_ref(
     module_path: "test.claim.fabric_demand_effect_witness_test",
     decl_name: "attesting",
   )

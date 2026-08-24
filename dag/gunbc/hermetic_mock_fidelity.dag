@@ -3,9 +3,6 @@ module gunbc.hermetic_mock_fidelity
 // A DISCOVERED ERROR CLASS, FILED AS DESIGN section 4b REQUIRES: an operation whose hermetic
 // mock_response answers with ONE unconditional value, so every hermetic caller receives a
 // success the operation never performed.
-import std.types { String, List, Bool, Int }
-import gunbc.guarantee_rung_drop { gunbc.guarantee_rung_drop.GuaranteeRung, gunbc.guarantee_rung_drop.Mitigatable, gunbc.guarantee_rung_drop.StructurallyGuaranteed }
-import v2.std.algebra { v2.std.algebra.fold_list }
 
 // A DISCOVERED ERROR CLASS, FILED AS DESIGN section 4b REQUIRES, AND SINCE REPAIRED: an
 // operation whose hermetic mock_response answered with ONE unconditional value, so every
@@ -113,8 +110,8 @@ type HermeticMockRow {
   operation: String
   discrimination: MockArmDiscrimination
   fabricates: List<FabricatedFact>
-  rung: GuaranteeRung
-  ceiling: GuaranteeRung
+  rung: gunbc.guarantee_rung_drop.GuaranteeRung
+  ceiling: gunbc.guarantee_rung_drop.GuaranteeRung
 }
 
 // THE TRIGGER IS A PROPERTY OF THE FACT, NOT OF THE ROW, and moving it here is what makes an
@@ -146,22 +143,22 @@ fn hermetic_mock_fidelity_rows() -> List<HermeticMockRow> {
       operation: "shell.Exec.Run",
       discrimination: NoMockArm {},
       fabricates: [],
-      rung: Mitigatable {},
-      ceiling: StructurallyGuaranteed {}
+      rung: gunbc.guarantee_rung_drop.Mitigatable {},
+      ceiling: gunbc.guarantee_rung_drop.StructurallyGuaranteed {}
     },
     HermeticMockRow {
       operation: "shell.Exec.RunArgv",
       discrimination: NoMockArm {},
       fabricates: [],
-      rung: Mitigatable {},
-      ceiling: StructurallyGuaranteed {}
+      rung: gunbc.guarantee_rung_drop.Mitigatable {},
+      ceiling: gunbc.guarantee_rung_drop.StructurallyGuaranteed {}
     },
     HermeticMockRow {
       operation: "shell.Exec.Check",
       discrimination: NoMockArm {},
       fabricates: [],
-      rung: Mitigatable {},
-      ceiling: StructurallyGuaranteed {}
+      rung: gunbc.guarantee_rung_drop.Mitigatable {},
+      ceiling: gunbc.guarantee_rung_drop.StructurallyGuaranteed {}
     }
   ]
 }
@@ -181,7 +178,7 @@ fn mock_arm_is_fabricating(d: MockArmDiscrimination) -> Bool {
 // this class look like ten exit-1 witnesses, and with the triggers now hanging off the facts it
 // is also the reading that would silently drop the reachability remedy.
 fn hermetic_mock_row_names_what_it_fabricates(r: HermeticMockRow) -> Bool {
-  !mock_arm_is_fabricating(d: r.discrimination) || fold_list(
+  !mock_arm_is_fabricating(d: r.discrimination) || v2.std.algebra.fold_list(
     xs: r.fabricates,
     empty: false,
     cons: fn(acc, f) { true }
@@ -189,7 +186,7 @@ fn hermetic_mock_row_names_what_it_fabricates(r: HermeticMockRow) -> Bool {
 }
 
 fn hermetic_mock_fidelity_all_diagnosed() -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: hermetic_mock_fidelity_rows(),
     empty: true,
     cons: fn(acc, r) { acc && hermetic_mock_row_names_what_it_fabricates(r: r) }
@@ -197,7 +194,7 @@ fn hermetic_mock_fidelity_all_diagnosed() -> Bool {
 }
 
 fn hermetic_mock_fabricating_count() -> Int {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: hermetic_mock_fidelity_rows(),
     empty: 0,
     cons: fn(acc, r) { if mock_arm_is_fabricating(d: r.discrimination) { acc + 1 } else { acc } }

@@ -34,6 +34,14 @@ fn systemctl_enable_command(unit: NonEmptyStr, privileged: Bool) -> String {
   }
 }
 
+fn systemctl_start_command(unit: NonEmptyStr, privileged: Bool) -> String {
+  if privileged {
+    shell_privileged_command_text_of_argv(argv: systemctl_start_argv(unit: unit))
+  } else {
+    shell_command_text_of_argv(argv: systemctl_start_argv(unit: unit))
+  }
+}
+
 fn systemctl_restart_command(unit: NonEmptyStr, privileged: Bool) -> String {
   if privileged {
     shell_privileged_command_text_of_argv(argv: systemctl_restart_argv(unit: unit))

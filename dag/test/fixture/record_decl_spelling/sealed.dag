@@ -1,6 +1,5 @@
 module test.fixture.record_decl_spelling.sealed
 
-import std.types { Int }
 
 // The construction wall, declared in both spellings of the same declaration.
 // A `sole_constructor` type refuses a record literal written outside its declaring module, so a

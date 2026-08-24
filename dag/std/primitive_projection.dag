@@ -1,7 +1,5 @@
 module std.primitive_projection
 
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
-import std.types { List, NonEmptyStr, String }
 
 data primitive_projection_seed_boundary_note: String = "The declaration-to-primitive projection is a seed-consumed substrate authority, so its import closure stops at std.decl_ref/std.types and never reaches a target roster or v2 module. This module is a strict relocation of the projection identity, fidelity, roster, and exact-declaration query formerly declared inside std.primitive_identity. std.primitive_identity consumes this authority for its census and total disposed/undisposed answer; the stage0 resolver consumes the same exact-declaration query. Required regen is the mechanical wall: src/v1 importing the former home reached gunbc.v1_interpreter_primitive_surface and then v2.std.qualified_name, which the src/v1 + dag bootstrap closure correctly refuses. The refusal is the seed-safety boundary working, not build friction."
 
@@ -22,7 +20,7 @@ type ProjectionFidelity
 
 type PrimitiveProjection {
   primitive: PrimitiveIdentity
-  declaration: DeclarationRef
+  declaration: std.decl_ref.DeclarationRef
   fidelity: ProjectionFidelity
 }
 
@@ -47,7 +45,7 @@ data primitive_concept_decl_facts_live: PrimitiveIdentity = primitive_identity_s
 data primitive_projection_roster_note: String = "One row per declaration that is the modeled surface of a declared primitive. Every row was established by READING THE DECLARATION, not by matching its name: the HostRealizedSeam rows are declarations whose whole body is a self-call, and the ModeledProjection rows are declarations with a real body that the builtin arm intercepts ahead of. The single DivergentProjection row is v2.std.collection map_get, whose declared return type is Outcome<Optional<V>> against the primitive's Optional<V>; it is carried rather than omitted because omission and divergence are different answers -- omission means nobody has looked, divergence means someone looked and found two authorities. A consumer collecting call candidates must suppress the builtin co-candidate for the first two fidelities and must keep refusing on the third."
 
 fn primitive_projection_row(primitive: PrimitiveIdentity, module_path: String, decl_name: String, fidelity: ProjectionFidelity) -> PrimitiveProjection {
-  PrimitiveProjection { primitive: primitive, declaration: decl_ref(module_path: module_path, decl_name: decl_name), fidelity: fidelity }
+  PrimitiveProjection { primitive: primitive, declaration: std.decl_ref(module_path: test.claim.observation_seed_scoped_run_witness.module_path, decl_name: decl_name), fidelity: fidelity }
 }
 
 fn primitive_projection_roster() -> List<PrimitiveProjection> {
@@ -65,12 +63,12 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
   ]
 }
 
-fn primitive_projection_row_for_declaration(declaration: DeclarationRef) -> PrimitiveProjection? {
+fn primitive_projection_row_for_declaration(declaration: std.decl_ref.DeclarationRef) -> PrimitiveProjection? {
   primitive_projection_roster()
     |> fold(init: none, f: fn(acc, row) {
       match acc {
         Present { value: _ } => acc
-        Absent => if declaration_ref_eq(a: row.declaration, b: declaration) { Present { value: row } } else { acc }
+        Absent => if std.decl_ref.declaration_ref_eq(a: row.declaration, b: declaration) { Present { value: row } } else { acc }
       }
     })
 }

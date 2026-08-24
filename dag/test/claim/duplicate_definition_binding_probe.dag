@@ -1,16 +1,7 @@
 module test.claim.duplicate_definition_binding_probe
 
-import gunbc.compile_diagnostic_census {
-  CompileDiagnosticCensus,
-  CensusObserved,
-  CensusNotRunnable,
-  census_blocking_rows,
-  census_total_count
-}
-import std.types { String, Bool, Int }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 // WHAT THIS PROBE MEASURES, and why its RED is the point rather than a defect in the probe.
 // A module that defines one name TWICE is accepted by the source -> .dag acceptance path with
@@ -59,7 +50,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // `test fn` collides with a plain `fn` of the same name. Each is its own row when someone
 // measures it; none is claimed by this one.
 
-fn census_of(source: String) -> CompileDiagnosticCensus {
+fn census_of(source: String) -> gunbc.compile_diagnostic_census.CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
 }
 
@@ -67,8 +58,8 @@ fn census_of(source: String) -> CompileDiagnosticCensus {
 // (DESIGN section 5: bottom-as-answer must never be readable as bottom-as-ignorance).
 fn blocking_count(source: String) -> Int {
   match census_of(source: source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
-    CensusNotRunnable { cause: _ } => 0 - 1
+    gunbc.compile_diagnostic_census.CensusObserved { rows: rows } => gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_blocking_rows(rows: rows))
+    gunbc.compile_diagnostic_census.CensusNotRunnable { cause: _ } => 0 - 1
   }
 }
 

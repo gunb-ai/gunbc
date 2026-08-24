@@ -1,35 +1,5 @@
 module gunbc.host_operation_exec
 
-import std.types { String, NonEmptyStr, List, Bool }
-import extdeps.systemd.systemctl
-import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
-import extdeps.tools.hostname
-import gunbc.host_effect {
-  HostEffectTransport,
-  LocalShell,
-  SshShell,
-  FleetSsh,
-  EmitArtifactThenThinRun,
-}
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.typed_argv_exec {
-  typed_argv_exec_over_fleet_ssh,
-  typed_argv_exec_over_ssh,
-  TypedArgvExecOutcome,
-  TypedArgvExecConverged,
-  TypedArgvExecRefused,
-}
-import v2.std.operation_argv {
-  ArgvMaterialization,
-  ArgvMaterialized,
-  ArgvMaterializationRefused,
-  BoundOperationInvocation,
-  OperationRef,
-  bind_operation_invocation,
-  operation_argv_bind_text,
-  operation_argv_cause_label,
-  operation_ref_label,
-}
 
 // THE DEFECT THIS MODULE EXISTS TO REMOVE, stated once here rather than repeated at each caller.
 //
@@ -105,7 +75,7 @@ type HostOperation =
     SystemctlIsActive { unit: NonEmptyStr }
   | SystemctlStatus { unit: NonEmptyStr }
   | SystemctlStop { unit: NonEmptyStr }
-  | SystemctlShowProperty { unit: NonEmptyStr, property: SystemdUnitProperty }
+  | SystemctlShowProperty { unit: NonEmptyStr, property: extdeps.systemd.SystemdUnitProperty }
   | HostnameReadShort
 
 // THE OUTCOME IS DELIBERATELY NOT SshSessionExecResult. Three of the four legs produce one, but
@@ -126,32 +96,32 @@ type HostOperationOutcome =
 // legs incapable of disagreeing. `BoundOperationInvocation` is not re-minted here:
 // v2.std.operation_argv already declares it as an OperationRef paired with declaration-owned
 // bindings, and shell_materialize_operation_argv already consumes it.
-fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocation {
+fn host_operation_invocation(operation: HostOperation) -> v2.std.operation_argv.BoundOperationInvocation {
   match operation {
-    SystemctlIsActive { unit: u } => bind_operation_invocation(
+    SystemctlIsActive { unit: u } => v2.std.operation_argv.bind_operation_invocation(
       at: systemctl_operation_ref(operation: "IsActive"),
-      bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
+      bindings: [v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: u as String)],
     )
-    SystemctlStatus { unit: u } => bind_operation_invocation(
+    SystemctlStatus { unit: u } => v2.std.operation_argv.bind_operation_invocation(
       at: systemctl_operation_ref(operation: "Status"),
-      bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
+      bindings: [v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: u as String)],
     )
-    SystemctlStop { unit: u } => bind_operation_invocation(
+    SystemctlStop { unit: u } => v2.std.operation_argv.bind_operation_invocation(
       at: systemctl_operation_ref(operation: "Stop"),
-      bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
+      bindings: [v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: u as String)],
     )
-    SystemctlShowProperty { unit: u, property: p } => bind_operation_invocation(
+    SystemctlShowProperty { unit: u, property: gunbc.plans.md_helpers.p } => v2.std.operation_argv.bind_operation_invocation(
       at: systemctl_operation_ref(operation: "ShowProperty"),
       bindings: [
-        operation_argv_bind_text(name: "unit", text: u as String),
-        operation_argv_bind_text(
+        v2.std.operation_argv.operation_argv_bind_text(name: "unit", text: u as String),
+        v2.std.operation_argv.operation_argv_bind_text(
           name: "property",
-          text: systemd_unit_property_wire(property: p) as String,
+          text: extdeps.systemd.systemd_unit_property_wire(property: gunbc.plans.md_helpers.p) as String,
         ),
       ],
     )
-    HostnameReadShort => bind_operation_invocation(
-      at: OperationRef {
+    HostnameReadShort => v2.std.operation_argv.bind_operation_invocation(
+      at: v2.std.operation_argv.OperationRef {
         path: hostname_operation_path,
         service: hostname_operation_service,
         operation: "ReadShort",
@@ -162,42 +132,42 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
 }
 
 fn host_operation_label(operation: HostOperation) -> String {
-  operation_ref_label(at: host_operation_invocation(operation: operation).at)
+  v2.std.operation_argv.operation_ref_label(at: host_operation_invocation(operation: operation).at)
 }
 
-fn host_operation_materialize_argv(operation: HostOperation) -> ArgvMaterialization {
-  let invocation = host_operation_invocation(operation: operation)
+fn host_operation_materialize_argv(operation: HostOperation) -> v2.std.operation_argv.ArgvMaterialization {
+  let v2.test.claim.effect_plan_bash_materialize_test.invocation = host_operation_invocation(operation: operation)
   shell_materialize_operation_argv(
-    invocation.at.path,
-    invocation.at.service,
-    invocation.at.operation,
-    invocation.bindings,
+    v2.test.claim.effect_plan_bash_materialize_test.invocation.at.path,
+    v2.test.claim.effect_plan_bash_materialize_test.invocation.at.service,
+    v2.test.claim.effect_plan_bash_materialize_test.invocation.at.operation,
+    v2.test.claim.effect_plan_bash_materialize_test.invocation.bindings,
   )
 }
 
 fn host_operation_outcome_from_exec(
   operation: HostOperation,
-  outcome: TypedArgvExecOutcome,
+  outcome: gunbc.typed_argv_exec.TypedArgvExecOutcome,
 ) -> HostOperationOutcome {
   match outcome {
-    TypedArgvExecConverged { result: r } =>
+    gunbc.typed_argv_exec.TypedArgvExecConverged { result: r } =>
       HostOperationObserved { stdout: r.stdout, success: r.success, stderr: r.stderr }
-    TypedArgvExecRefused { reason: why } =>
+    gunbc.typed_argv_exec.TypedArgvExecRefused { reason: why } =>
       HostOperationRefused { operation: host_operation_label(operation: operation), reason: why }
   }
 }
 
-fn host_operation_argv_refusal(operation: HostOperation, m: ArgvMaterialization) -> HostOperationOutcome {
+fn host_operation_argv_refusal(operation: HostOperation, m: v2.std.operation_argv.ArgvMaterialization) -> HostOperationOutcome {
   match m {
-    ArgvMaterialized { argv: _ } =>
+    v2.std.operation_argv.ArgvMaterialized { argv: _ } =>
       HostOperationRefused {
         operation: host_operation_label(operation: operation),
         reason: "host_operation_argv_refusal called on a materialized argv",
       }
-    ArgvMaterializationRefused { at: _, cause: c } =>
+    v2.std.operation_argv.ArgvMaterializationRefused { at: _, cause: c } =>
       HostOperationRefused {
         operation: host_operation_label(operation: operation),
-        reason: operation_argv_cause_label(cause: c),
+        reason: v2.std.operation_argv.operation_argv_cause_label(cause: c),
       }
   }
 }
@@ -220,8 +190,8 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
       let result = systemd.Systemctl.Stop(unit: u)
       HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
     }
-    SystemctlShowProperty { unit: u, property: p } => {
-      let result = systemd.Systemctl.ShowProperty(unit: u, property: p)
+    SystemctlShowProperty { unit: u, property: gunbc.plans.md_helpers.p } => {
+      let result = systemd.Systemctl.ShowProperty(unit: u, property: gunbc.plans.md_helpers.p)
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
     HostnameReadShort => {
@@ -239,29 +209,29 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
 fn host_operation_exec_ssh(operation: HostOperation, host: NonEmptyStr) -> HostOperationOutcome {
   let m = host_operation_materialize_argv(operation: operation)
   match m {
-    ArgvMaterialized { argv: argv } =>
+    v2.std.operation_argv.ArgvMaterialized { argv: argv } =>
       host_operation_outcome_from_exec(
         operation: operation,
-        outcome: typed_argv_exec_over_ssh(host: host, argv: argv),
+        outcome: gunbc.typed_argv_exec.typed_argv_exec_over_ssh(host: host, argv: argv),
       )
-    ArgvMaterializationRefused { at: _, cause: _ } =>
+    v2.std.operation_argv.ArgvMaterializationRefused { at: _, cause: _ } =>
       host_operation_argv_refusal(operation: operation, m: m)
   }
 }
 
 fn host_operation_exec_fleet_ssh(
   operation: HostOperation,
-  target: SshTarget,
-  context: FleetSshExecutionContext,
+  target: gunbc.fleet_known_hosts_anchor.SshTarget,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
 ) -> HostOperationOutcome {
   let m = host_operation_materialize_argv(operation: operation)
   match m {
-    ArgvMaterialized { argv: argv } =>
+    v2.std.operation_argv.ArgvMaterialized { argv: argv } =>
       host_operation_outcome_from_exec(
         operation: operation,
-        outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv),
+        outcome: gunbc.typed_argv_exec.typed_argv_exec_over_fleet_ssh(target: target, context: test.claim.tool_readiness_witness.context, argv: argv),
       )
-    ArgvMaterializationRefused { at: _, cause: _ } =>
+    v2.std.operation_argv.ArgvMaterializationRefused { at: _, cause: _ } =>
       host_operation_argv_refusal(operation: operation, m: m)
   }
 }
@@ -272,13 +242,13 @@ fn host_operation_exec_fleet_ssh(
 // identity and not merely bindings. A generic "refused" here would have erased which operation was
 // refused -- a correctness distinction the six per-op copies each carried, and losing it would have
 // made this a smaller replacement rather than a complete one.
-fn host_operation_exec(transport: HostEffectTransport, operation: HostOperation) -> HostOperationOutcome {
+fn host_operation_exec(transport: gunbc.host_effect.HostEffectTransport, operation: HostOperation) -> HostOperationOutcome {
   match transport {
-    LocalShell => host_operation_exec_local(operation: operation)
-    SshShell { ssh_host: h } => host_operation_exec_ssh(operation: operation, host: h)
-    FleetSsh { target: t, context: c } =>
-      host_operation_exec_fleet_ssh(operation: operation, target: t, context: c)
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+    gunbc.host_effect.LocalShell => host_operation_exec_local(operation: operation)
+    gunbc.host_effect.SshShell { ssh_host: h } => host_operation_exec_ssh(operation: operation, host: h)
+    gunbc.host_effect.FleetSsh { target: test.claim.pcb_footprint_witness.t, context: c } =>
+      host_operation_exec_fleet_ssh(operation: operation, target: test.claim.pcb_footprint_witness.t, context: c)
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HostOperationRefused {
         operation: host_operation_label(operation: operation),
         reason: concat(
@@ -296,8 +266,8 @@ data systemctl_operation_service: String = "systemd.Systemctl"
 data hostname_operation_path: String = "dag/extdeps/tools/hostname.dag"
 data hostname_operation_service: String = "os.Hostname"
 
-fn systemctl_operation_ref(operation: String) -> OperationRef {
-  OperationRef {
+fn systemctl_operation_ref(operation: String) -> v2.std.operation_argv.OperationRef {
+  v2.std.operation_argv.OperationRef {
     path: systemctl_operation_path,
     service: systemctl_operation_service,
     operation: operation,

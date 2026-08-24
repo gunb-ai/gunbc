@@ -28,13 +28,50 @@ test fn witness_the_generated_unit_reproduces_the_captured_environment() -> Bool
   let u = ci_unit()
   unit_declares_line(lines: u, needle: "User=ghrunner")
     && unit_declares_line(lines: u, needle: "Group=ghrunner")
-    && unit_declares_line(lines: u, needle: "Slice=gunbc-compile-pool.slice")
     && unit_declares_line(lines: u, needle: "Environment=SCCACHE_DIR=/var/lib/ctrl/sccache-ci")
     && unit_declares_line(lines: u, needle: "Environment=SCCACHE_SERVER_UDS=/var/lib/ctrl/sccache-ci/server.sock")
     && unit_declares_line(lines: u, needle: "Environment=SCCACHE_IDLE_TIMEOUT=0")
     && unit_declares_line(lines: u, needle: "Environment=SCCACHE_START_SERVER=1")
     && unit_declares_line(lines: u, needle: "Environment=SCCACHE_NO_DAEMON=1")
     && unit_declares_line(lines: u, needle: "Environment=SCCACHE_ERROR_LOG=/var/lib/ctrl/sccache-ci/sccache-server.log")
+}
+
+// THE Slice= LINE LEFT THIS WITNESS BECAUSE IT WAS NEVER PART OF THE CAPTURE. This witness is named for
+// what the 2026-08-01 srv1 capture contained, and that capture was an ENVIRONMENT: SCCACHE_DIR,
+// SCCACHE_ERROR_LOG, SCCACHE_IDLE_TIMEOUT, SCCACHE_SERVER_UDS, SCCACHE_START_SERVER and a
+// SCCACHE_STARTUP_NOTIFY temp path whose presence is the tell that NO UNIT EXISTED on that host at all.
+// A Slice= assertion was therefore never reproducing a captured line -- it was pinning our own declared
+// intent inside a fidelity witness, which is why it broke the moment that intent correctly became
+// conditional on the topology.
+//
+// It is not deleted, it is moved to the both-arms form beside it, mirroring the capacity idiom this file
+// already uses: an assertion that only ever checks one arm cannot see a render that emits the line
+// unconditionally, which is exactly the defect the placement carrier was introduced to make unwritable.
+test fn witness_the_slice_line_follows_the_declared_placement_both_ways() -> Bool {
+  let undeclared = render_build_cache_unit(
+    instance: instance_with_pool(base: ci(), placement: CompilePoolInRunnerSlots),
+  )
+  let declared = render_build_cache_unit(
+    instance: instance_with_pool(
+      base: ci(),
+      placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
+    ),
+  )
+  (unit_mentions_prefix(lines: undeclared, prefix: "Slice=") == false)
+    && unit_declares_line(lines: declared, needle: "Slice=gunbc-compile-pool.slice")
+}
+
+fn instance_with_pool(base: BuildCacheInstance, placement: CompilePoolPlacement) -> BuildCacheInstance {
+  BuildCacheInstance {
+    identity: base.identity,
+    implementation: base.implementation,
+    endpoint: base.endpoint,
+    intended_unit: base.intended_unit,
+    intended_principal: base.intended_principal,
+    intended_storage: base.intended_storage,
+    intended_capacity: base.intended_capacity,
+    intended_compile_pool: placement,
+  }
 }
 
 data absent_capacity_doc: String = "THE LOAD-BEARING PAIR. CI's intended_capacity is Absent and the live capture confirms why: srv1's running CI server carries NO SCCACHE_CACHE_SIZE at all, so its 10 GiB is sccache's built-in default rather than a decision. Rendering a default here would fabricate a decision nobody made AND freeze it -- once written into a generated unit it is indistinguishable from an intended value, and the tracked gap closes silently. Both halves are asserted: Absent must omit the line, Present must emit it, because a render that omitted it unconditionally would pass the first assertion while silently dropping the session instance's real 50G cap."

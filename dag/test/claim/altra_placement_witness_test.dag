@@ -560,3 +560,90 @@ test fn w_the_board_frame_registry_is_established_not_silently_empty() -> Bool {
     FrameRegistryRefused { cause: _ } => false
   }
 }
+
+
+// ================= INTENT GATES THE ROLE SET, NOT ONLY THE CHANNEL COUNT =================
+
+// THE THREE PRODUCTION FEATURES DROP OUT OF A BRING-UP BOARD, and nothing else does. This is the
+// claim the change exists to make: a fixture is not obliged to carry a host PHY, an out-of-band
+// management path or an NVMe endpoint, none of which is on any path required to bring the
+// processor out of reset. The count is asserted BOTH ways rather than only for bring-up, because
+// a gate that dropped roles under every intent would satisfy a one-sided check while quietly
+// removing them from the production board too.
+test fn w_bring_up_drops_exactly_the_three_production_features() -> Bool {
+  let prod = altra_1p_minimum
+  let fixture = AltraMinimalMotherboard {
+    intent: EngineeringBringUp,
+    memory: prod.memory,
+    pcie_lanes_broken_out: prod.pcie_lanes_broken_out,
+  }
+  let prod_roles = list_length(items: required_roles(d: prod))
+  let fixture_roles = list_length(items: required_roles(d: fixture))
+  prod_roles - fixture_roles == 3
+    && role_is_required_under(r: HostNetworkPhy, intent: Production)
+    && !role_is_required_under(r: HostNetworkPhy, intent: EngineeringBringUp)
+    && role_is_required_under(r: ManagementNetworkPath, intent: Production)
+    && !role_is_required_under(r: ManagementNetworkPath, intent: EngineeringBringUp)
+    && role_is_required_under(r: StorageEndpoint, intent: Production)
+    && !role_is_required_under(r: StorageEndpoint, intent: EngineeringBringUp)
+}
+
+// THE BOOT PATH IS NOT NEGOTIABLE BY INTENT. Power sequencing, supervision, reset, firmware and
+// the socket itself are required under BOTH intents, and this asserts it over the whole role
+// coproduct rather than over a list someone remembered to write: every role that is not one of the
+// three features above must survive the bring-up gate. A future edit that makes the power-good
+// supervisor bring-up-only -- the kind of "minimisation" that produces a board which cannot tell a
+// rail that came up from one that did not -- fails here without anyone having to name that role.
+test fn w_every_role_but_the_three_features_survives_the_bring_up_gate() -> Bool {
+  fold(every_non_slot_role(), init: true, f: fn(acc, r) {
+    let is_feature = roles_equal(a: r, b: HostNetworkPhy)
+      || roles_equal(a: r, b: ManagementNetworkPath)
+      || roles_equal(a: r, b: StorageEndpoint)
+    if is_feature {
+      acc && !role_is_required_under(r: r, intent: EngineeringBringUp)
+    } else {
+      acc && role_is_required_under(r: r, intent: EngineeringBringUp)
+        && role_is_required_under(r: r, intent: Production)
+    }
+  })
+}
+
+// REACHABILITY CONTROL FOR THE ARM NO ROLE CURRENTLY OCCUPIES. RequiredOnlyUnderBringUp is carried
+// by the type and by requirement_applies_under, and after the DebugConnector row was corrected to
+// RequiredUnderEveryIntent no role uses it. That makes it a QUIET arm, not a dead one, and the
+// distinction is decidable rather than a matter of opinion: the state is authorable here, so the
+// arm can be driven and its behaviour observed. An arm whose red could not be produced anywhere a
+// check can run would be a decoration -- permanently green by construction and worse than absent,
+// because it would be cited as coverage.
+test fn w_red_the_bring_up_only_arm_is_reachable_and_discriminates() -> Bool {
+  let planted = RequiredOnlyUnderBringUp {
+    basis: RepositoryDesignPolicy { because: "planted: no production role currently claims this arm" },
+  }
+  let every = RequiredUnderEveryIntent {
+    basis: RepositoryDesignPolicy { because: "planted control" },
+  }
+  let prod_only = RequiredOnlyUnderProduction {
+    basis: RepositoryDesignPolicy { because: "planted control" },
+  }
+  requirement_applies_under(req: planted, intent: EngineeringBringUp)
+    && !requirement_applies_under(req: planted, intent: Production)
+    && requirement_applies_under(req: every, intent: EngineeringBringUp)
+    && requirement_applies_under(req: every, intent: Production)
+    && !requirement_applies_under(req: prod_only, intent: EngineeringBringUp)
+    && requirement_applies_under(req: prod_only, intent: Production)
+}
+
+// MEMORY SLOTS FOLLOW THE TOPOLOGY, NOT THE GATE. The slot roles are already selected against
+// intent one layer up, where minimal_design refuses a debug-only channel count under production
+// intent. This asserts the two mechanisms compose rather than double-count: changing intent alone,
+// with the topology held fixed, must not add or remove a single memory slot.
+test fn w_the_role_gate_does_not_touch_the_memory_slots() -> Bool {
+  let prod = altra_1p_minimum
+  let fixture = AltraMinimalMotherboard {
+    intent: EngineeringBringUp,
+    memory: prod.memory,
+    pcie_lanes_broken_out: prod.pcie_lanes_broken_out,
+  }
+  memory_role_count(d: prod) == memory_role_count(d: fixture)
+    && memory_role_count(d: prod) == 4
+}

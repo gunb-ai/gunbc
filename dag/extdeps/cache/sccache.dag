@@ -113,6 +113,12 @@ data sccache_installed_binary_path_note: String = "Single authority for WHERE th
 
 data sccache_installed_binary_path: String = "/usr/local/bin/sccache"
 
+// These names are part of sccache's cited configuration interface, not facts invented by the
+// systemd renderer or by the readiness observer. Keeping the names here lets both consumers compose
+// assignments and reads from one authority.
+data sccache_cache_dir_env_var: NonEmptyStr = "SCCACHE_DIR" as NonEmptyStr
+data sccache_cache_size_env_var: NonEmptyStr = "SCCACHE_CACHE_SIZE" as NonEmptyStr
+
 fn sccache_install_script(rel: SccacheBinaryRelease, arch: NonEmptyStr, digest: Digest) -> String {
   let dir = join(["sccache-", rel.version as String, "-", arch as String, "-unknown-linux-musl"], "")
   let url = join(["https://github.com/mozilla/sccache/releases/download/", rel.version as String, "/", dir, ".tar.gz"], "")

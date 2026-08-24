@@ -222,7 +222,13 @@ data lotes_azif0222_catalogue_note: String = "Lotes catalogue page for ARM P/N A
 // THE SOCKET BODY IS A SEPARATE, UNNAMED PART, and this row exists so that resolving the
 // retention assembly cannot be mistaken for resolving the attachment. It is the layer that
 // carries the board land pattern.
-data socket_body_part_is_unnamed_note: String = "No consulted source names an orderable socket-body part for LGA4926. Lotes AZIF0222 is the ILM and backplate assembly; the socket body that receives the processor and solders to the board is a different item. Resolving it is what would make the board land pattern obtainable."
+// RESOLVED 2026-08-23, AND THE SENTENCE THIS REPLACES IS DELETED RATHER THAN ANNOTATED. It read
+// that no consulted source names an orderable socket-body part; that became false the moment the
+// drawing arrived, and a knowingly-false claim standing beside its own correction is two accounts
+// of one fact. What the old row got RIGHT is preserved: the socket body is a different item from
+// AZIF0222, and resolving it is what made the land pattern obtainable. That is exactly what
+// happened, by exactly the route lga4926_land_pattern_public_route predicted.
+data socket_body_part_resolution_note: String = "Lotes supplied AZIFA072-P001CCS, drawing GAP-AZIFA072 rev 2, in direct response to the request recorded in lga4926_land_pattern_public_route: the socket-body part that mates with AZIF0222, with its customer drawing and the board land pattern. The part, its geometry and its remaining gaps are modelled in extdeps.cpu_attachment.lotes_azifa072. The public route resolved and the access-gated route was never taken, so the geometry is carriable rather than merely known."
 
 // THE MECHANICAL DRAWING THE SAME THREAD CARRIES, AND WHAT IT IS NOT. A dimensioned plan view of
 // the retention frame was posted alongside the part numbers: a bezel with a central opening, a cam
@@ -333,11 +339,49 @@ fn attachment_socket_body_is_identified(a: AttachmentStanding) -> Bool {
 }
 
 // A FOOTPRINT MAY NOT EMIT WHILE THE SOCKET BODY IS UNIDENTIFIED. The land pattern belongs to a
-// part, so a released footprint whose part is unknown is a drawing of nothing -- this is the
-// predicate a footprint emitter consults, not a comment asking it to be careful.
+// part, so a released footprint whose part is unknown is a drawing of nothing.
+//
+// THE RUNG, STATED RATHER THAN IMPLIED (corrected 2026-08-23): an earlier revision of this comment
+// called this "the predicate a footprint emitter consults, not a comment asking it to be careful".
+// No footprint emitter exists in the tree -- measured, not assumed: the only consumers of this
+// function are the witnesses. So the sentence claimed enforcement the corpus does not have, which
+// is the specification-without-execution failure wearing the vocabulary of a wall. The predicate
+// itself is real and executes correctly; what is absent is anything that must ask it.
+// NEXT-RUNG TRIGGER: the first caller in product.pcb.footprint that turns a land pattern into pads.
+//
+// THE THIRD CONJUNCT WAS ADDED BECAUSE THE FIRST TWO WENT TRUE AND THE FOOTPRINT STILL WAS NOT
+// RELEASABLE (2026-08-23). When the Lotes drawing resolved the socket body, this gate flipped
+// from refusing to permitting on the same run that added it -- measured, not reasoned about --
+// while the stencil aperture was unread, the Pin 1 corner unlocated and the mask opening
+// unidentified. That is the gate failing open at the exact moment it was supposed to start
+// working, and the mechanism is worth naming: ESTABLISHED IS NOT COMPLETE. The board land
+// pattern IS established -- count, pitch, diameter and every position are cited to a publisher
+// of record -- so no honest edit to the standing rows would have caught this. Establishment is
+// a property of a FACT's grounding; releasability is a property of a DELIVERABLE's completeness,
+// and a gate that reads only the first will always permit as soon as the last citation lands.
+//
+// The conjunct names the LGA4926 socket body specifically, which is correct rather than a leak:
+// this module is the LGA4926 designation, not a generic attachment shape, so the part that
+// carries this designation's land pattern is the same subject and not a foreign one.
 fn attachment_footprint_may_emit(a: AttachmentStanding) -> Bool {
   attachment_socket_body_is_identified(a: a)
     && standing_is_established(s: attachment_board_land_pattern(a: a))
+}
+
+// THE RELEASE GATE FOR THIS ACTUAL PART, WHICH IS A DIFFERENT QUESTION AND THEREFORE A DIFFERENT
+// FUNCTION. An earlier revision of this diff conjoined the socket body's open gaps directly into
+// attachment_footprint_may_emit above, and running the witnesses is what showed why that is
+// wrong: the gaps are a fact about ONE part, so folding them into a predicate over an arbitrary
+// AttachmentStanding made that predicate false for EVERY input including its own synthetic
+// positive control. A gate no input can turn green is not a strict gate, it is a decoration --
+// permanently red by construction, carrying no information (DESIGN section 4b).
+//
+// So the two questions are separated: does a standing describe an identified socket body with an
+// established land pattern (above, flippable, and its RED and GREEN controls stay authorable),
+// and may the LGA4926 footprint be released today (here, and it may not).
+fn lga4926_footprint_may_release() -> Bool {
+  attachment_footprint_may_emit(a: ilm4926_attachment_standing)
+    && azifa072_footprint_may_emit()
 }
 
 fn attachment_unresolved_constituent_count(a: AttachmentStanding) -> Int {
@@ -386,17 +430,17 @@ fn route_yields_a_carriable_fact(r: LandPatternRoute) -> Bool {
 
 data ilm4926_attachment_standing: AttachmentStanding = AttachmentStanding {
   socket_body: SocketBodyStanding {
-    vendor_identity: DesignationFactUnresolved {
-      reason: "no publisher of record attributes the socket body to a manufacturer. Ampere and OCP name the designator ILM4926 only, and Lotes publishes the retention assembly without naming what it mates with. Lotes is the strongest lead precisely because it manufactures the retention assembly for this designation and manufactures LGA socket bodies generally, including for AMD Socket AM5 -- but manufacturing one constituent is not attribution of another.",
-      next_authority_to_consult: Present { value: lotes_azif0222_product_authority },
+    vendor_identity: DesignationFactEstablished {
+      value: "Lotes Co., Ltd",
+      authority: azifa072_drawing_authority,
     },
-    orderable_part_number: DesignationFactUnresolved {
-      reason: "no source names an orderable socket-body part for LGA4926. AZIF0222 is the retention assembly and is recorded there; it is not the item that receives the processor and solders to the board. Public retail search found no socket-body listing either, which is an observation about distribution rather than evidence the part has no number -- a low-volume server socket sold direct to board makers would not appear in retail regardless.",
-      next_authority_to_consult: Present { value: lotes_azif0222_product_authority },
+    orderable_part_number: DesignationFactEstablished {
+      value: "AZIFA072-P001CCS, drawing GAP-AZIFA072 rev 2, title LGA4926 SOCKET -- the socket body that receives the processor and solders to the board, distinct from the AZIF0222 retention assembly",
+      authority: azifa072_drawing_authority,
     },
-    board_land_pattern: DesignationFactUnresolved {
-      reason: "the board-side land pattern is stated in no public document consulted. The Altra Platform Hardware Design Specification does name a document titled Altra PCB Layout Guidelines on Ampere Customer Connect, at sections 4.2.2 and 4.3.2 — but both of those sections are titled Reference Layout and sit under 4.2 VRD Implementation using Texas Instruments Devices and 4.3 VRD Implementation using Infineon Devices, so what they route to is voltage-regulator layout. That the named document ALSO carries the processor socket land pattern is unverified: its title is general enough to permit it, its contents are access-gated, and a pointer read out of a voltage-regulator section establishes what a document is named, never what it holds. A SECOND and independent route exists and is carried separately in lga4926_land_pattern_public_route, because one next-authority field cannot hold two routes whose carriage consequences differ.",
-      next_authority_to_consult: Present { value: ampere_customer_reference_boards_authority },
+    board_land_pattern: DesignationFactEstablished {
+      value: "4926 pads, Ø0.46 +/-0.05 mm, staggered lattice at 1.000 mm column pitch and 0.870 mm row pitch, array extent 63.449 x 75.470 mm; positions and outline carried in extdeps.cpu_attachment.lotes_azifa072. NOT a complete footprint release: that module's azifa072_open_gaps still carries the stencil aperture, the Pin 1 corner and the mask opening, and azifa072_footprint_may_emit refuses while they stand.",
+      authority: azifa072_drawing_authority,
     },
   },
   retention_assembly: ConstituentStanding {

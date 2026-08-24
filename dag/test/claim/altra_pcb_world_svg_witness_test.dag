@@ -362,6 +362,12 @@ test fn w_every_world_component_identity_appears_in_the_scene() -> Bool {
   }
 }
 
+// THE BOARD LAND PATTERN DROPPED OUT OF THIS LIST ON 2026-08-23 AND THAT IS THE CORRECT OUTCOME.
+// The label is emitted per OPEN obligation, so a resolved layer has no label to find; asserting
+// its presence would now be asserting that a solved problem is still unsolved. The two layers that
+// remain open keep their assertions, and the count conjunct is what stops this from silently
+// becoming weaker: it ties the number of emitted labels to the obligation population rather than
+// to a list someone remembered to update, so a layer resolving or regressing moves both together.
 test fn w_mounting_and_socket_attachment_obligations_appear() -> Bool {
   match world_or_empty() {
     Absent => false
@@ -369,30 +375,32 @@ test fn w_mounting_and_socket_attachment_obligations_appear() -> Bool {
       match scene_or_empty() {
         Absent => false
         Present { value: s } =>
-          string_contains(s: s, pattern: "attachment: mounting") && string_contains(s: s, pattern: "attachment: socket") && string_contains(s: s, pattern: "attachment: board land pattern") && count_substring(haystack: s, needle: "class=\"pcb-label-attachment-obligation\"") == pcb_attachment_obligation_count(p: pcb_world_physical(w: w))
+          string_contains(s: s, pattern: "attachment: mounting") && string_contains(s: s, pattern: "attachment: socket") && !string_contains(s: s, pattern: "attachment: board land pattern") && count_substring(haystack: s, needle: "class=\"pcb-label-attachment-obligation\"") == pcb_attachment_obligation_count(p: pcb_world_physical(w: w))
       }
   }
 }
 
-// THE BOARD LAND PATTERN IS BEHIND A COMMERCIAL GATE. The standing is projected from
-// extdeps.cpu_attachment.ilm4926 ilm4926_resolution_obligations.board_land_pattern, which names
-// Altra PCB Layout Guidelines on Customer Connect as the authority (platform spec §4.2.2/4.3.2).
-test fn w_the_board_land_pattern_is_behind_a_commercial_gate() -> Bool {
+// THE BOARD LAND PATTERN IS NO LONGER AN OPEN OBLIGATION, AND THE WITNESS INVERTED RATHER THAN
+// WEAKENED. It asserted the layer sat behind a commercial gate, because its only route ran through
+// Ampere Customer Connect. The socket vendor supplied the geometry on 2026-08-23, so the layer is
+// established, its carriage is decided, subject_blocker returns Absent for it, and it drops out of
+// the obligation list entirely.
+//
+// ASSERTING ITS ABSENCE ALONE WOULD BE A WEAKER TEST THAN THE ONE IT REPLACES, so the second half
+// is what keeps it honest: obligations still EXIST for other layers, and the fold that produced
+// this one still discriminates causes. Without that conjunct this witness would also pass if
+// attachment_obligations were empty for a reason having nothing to do with the land pattern --
+// an empty-observation narrow, which is the failure mode DESIGN names as strictly worse than the
+// widen it forbids, because a widen is merely expensive and a narrow is silently uncovered.
+test fn w_the_board_land_pattern_is_no_longer_an_open_obligation() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
-      fold(pcb_world_physical(w: w).attachment_obligations, init: false, f: fn(acc, a) {
-        acc || match a.cause {
-          CommercialAccess { subject: sub } =>
-            (a.layer as String) == "board land pattern" && (sub as String) != ""
-          DrawingMustBeRead { figure: _, what_is_drawn: _ } => false
-          MissingDocument { what_is_missing: _ } => false
-          LegalCarriage { reason: _ } => false
-          UnselectedPart { because: _ } => false
-          StandingIsSelfContradictory { what_is_wrong: _ } => false
-          NamedAttachmentTypePartUnresolved { designation: _, missing: _ } => false
-        }
+      let obligations = pcb_world_physical(w: w).attachment_obligations
+      let land_still_open = fold(obligations, init: false, f: fn(acc, a) {
+        acc || (a.layer as String) == "board land pattern"
       })
+      !land_still_open && list_length(items: obligations) > 0
   }
 }
 

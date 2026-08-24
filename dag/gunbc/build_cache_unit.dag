@@ -23,7 +23,7 @@ fn capacity_env_directives(instance: gunbc.build_cache_instance.BuildCacheInstan
     Absent => []
     Present { value: b } => [
       Environment {
-        assignment: concat("SCCACHE_CACHE_SIZE=", to_string(byte_size_count(b: b))) as NonEmptyStr,
+        assignment: concat(concat(sccache_cache_size_env_var as String, "="), to_string(byte_size_count(b: b))) as NonEmptyStr,
       },
     ]
   }
@@ -52,7 +52,21 @@ fn runner_ordering_dropin_lines(instance: gunbc.build_cache_instance.BuildCacheI
   systemd_drop_in_lines(drop_in: runner_ordering_drop_in(instance: instance))
 }
 
-fn build_cache_unit_file(instance: gunbc.build_cache_instance.BuildCacheInstance) -> SystemdUnitFile {
+// SLICE= IS RENDERED ONLY WHERE A MANAGED POOL IS DECLARED, AND THAT IS A CONSTRUCTION WALL RATHER
+// THAN A CHECK. This directive used to be spelled unconditionally from a bare-string field that
+// always named the managed slice, while gunbc.host_layout's placement row said the fleet has no
+// managed pool. Applying that unit would have named a Slice= nothing provisions, and systemd
+// creates such a cgroup implicitly WITH NO LIMITS -- the unbounded compile charge wearing the
+// managed topology's name. Now the field carries the placement itself, so the CompilePoolInRunnerSlots
+// arm has no slice name to render and the bad unit cannot be built.
+fn compile_pool_service_directives(placement: gunbc.fleet_host_budget.CompilePoolPlacement) -> List<extdeps.systemd.unit_file.SystemdServiceDirective> {
+  match test.claim.compute_board_physical_witness.placement {
+    gunbc.fleet_host_budget.CompilePoolSliceDeclared { slice_unit: u } => [extdeps.systemd.unit_file.ServiceSlice { name: u as std.types.NonEmptyStr }]
+    gunbc.fleet_host_budget.CompilePoolInRunnerSlots => []
+  }
+}
+
+fn build_cache_unit_file(instance: gunbc.build_cache_instance.BuildCacheInstance) -> extdeps.systemd.unit_file.SystemdUnitFile {
   ServiceUnitFile {
     unit: [
       Description {
@@ -64,13 +78,14 @@ fn build_cache_unit_file(instance: gunbc.build_cache_instance.BuildCacheInstance
       After { target: "network.target" as NonEmptyStr },
     ],
     service: concat(
+      compile_pool_service_directives(placement: instance.intended_compile_pool),
+      concat(
       [
         ServiceType { mode: "simple" as NonEmptyStr },
         ServiceUser { name: instance.intended_principal },
         ServiceGroup { name: instance.intended_principal },
-        ServiceSlice { name: instance.intended_compile_pool },
         Environment {
-          assignment: concat("SCCACHE_DIR=", instance.intended_storage as String) as NonEmptyStr,
+          assignment: concat(concat(sccache_cache_dir_env_var as String, "="), instance.intended_storage as String) as NonEmptyStr,
         },
         Environment {
           assignment: concat(
@@ -90,6 +105,7 @@ fn build_cache_unit_file(instance: gunbc.build_cache_instance.BuildCacheInstance
           Restart { policy: "on-failure" as NonEmptyStr },
         ],
       ),
+    ),
     ),
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
   }

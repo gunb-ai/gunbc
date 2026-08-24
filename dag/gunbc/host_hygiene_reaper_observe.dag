@@ -1,27 +1,5 @@
 module gunbc.host_hygiene_reaper_observe
 
-import std.types { String, std.types.NonEmptyStr, Bool, List, std.types.FilePath }
-import gunbc.host_effect { gunbc.host_effect.LocalShell }
-import std.disposition { std.disposition.Disposition, std.disposition.Terminal }
-import std.realization_reconcile { std.realization_reconcile.ShowEffectiveRead, std.realization_reconcile.ReadObserved, std.realization_reconcile.ReadAbsent, std.realization_reconcile.Reconciliation }
-import extdeps.systemd { extdeps.systemd.SystemdUnitActiveState, extdeps.systemd.ActiveState, extdeps.systemd.ControlGroup, extdeps.systemd.parse_systemd_unit_active_state }
-import extdeps.shell
-import gunbc.host_converge { gunbc.host_converge.gunbc_runner_all_slots_unit_glob }
-import gunbc.systemctl_show_read {
-  gunbc.systemctl_show_read.systemctl_show_property_read,
-  gunbc.systemctl_show_read.SystemdPropertyCaptured,
-  gunbc.systemctl_show_read.SystemdPropertyCaptureRefused,
-}
-import gunbc.systemctl_list_units { gunbc.systemctl_list_units.systemctl_list_units_all_states }
-import gunbc.host_hygiene_reaper {
-  gunbc.host_hygiene_reaper.CgroupOccupant,
-  gunbc.host_hygiene_reaper.CgroupEmpty,
-  gunbc.host_hygiene_reaper.CgroupOrdinaryProcesses,
-  gunbc.host_hygiene_reaper.CgroupBuildCacheServerOccupant,
-  gunbc.host_hygiene_reaper.ResidualSlotObservation,
-  gunbc.host_hygiene_reaper.ResidualReapEvidence,
-  gunbc.host_hygiene_reaper.reconcile_residual_reap,
-}
 
 data gunbc_host_hygiene_reaper_observe_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "The OBSERVE half of the reaper vertical (brief: split observe from mutate — a reaper that mutates on a misread IS the harm, so observation must land first and be provable independent of gunbc.host_hygiene_reaper_remediate). Runs LocalShell only, mirroring the only other on-host cgroupfs reader in this tree (gunbc.srv1_tasks_preapply_observation): systemctl reads for ActiveState/ControlGroup go through the typed gunbc.systemctl_show_read seam (ActiveState added to extdeps.systemd.SystemdUnitProperty rather than minting a second read op — the wire value systemctl show -p ActiveState --value already emits is the exact wire shape parse_systemd_unit_active_state already decodes), and the cgroupfs/procfs reads are the direct filesystem_read builtin at the path SYSTEMD reports, never a hand-escaped slice path. CgroupBuildCacheServerOccupant classification stays the crude cmdline-substring scan the deleted host_hygiene_reaper_script.dag carried — refining it against BuildCacheServerPlacement is gunbc_host_hygiene_reaper_build_cache_placement_scaffold's separate, already-declared scope, not this migration's."
@@ -36,21 +14,21 @@ data host_hygiene_build_cache_cmdline_marker: String = "sccache"
 fn host_hygiene_read_active_state(unit: std.types.NonEmptyStr) -> extdeps.systemd.SystemdUnitActiveState? {
   match gunbc.systemctl_show_read.systemctl_show_property_read(transport: gunbc.host_effect.LocalShell, unit: unit, property: extdeps.systemd.ActiveState) {
     gunbc.systemctl_show_read.SystemdPropertyCaptured { value: raw } => extdeps.systemd.parse_systemd_unit_active_state(raw: raw)
-    SystemdPropertyCaptureRefused { reason: _ } => none
+    gunbc.systemctl_show_read.SystemdPropertyCaptureRefused { reason: _ } => none
   }
 }
 
 fn host_hygiene_read_control_group(unit: std.types.NonEmptyStr) -> String? {
   match gunbc.systemctl_show_read.systemctl_show_property_read(transport: gunbc.host_effect.LocalShell, unit: unit, property: extdeps.systemd.ControlGroup) {
-    SystemdPropertyCaptured { value: cg } => if cg == "" { none } else { Present { value: cg } }
-    SystemdPropertyCaptureRefused { reason: _ } => none
+    gunbc.systemctl_show_read.SystemdPropertyCaptured { value: cg } => if cg == "" { none } else { Present { value: cg } }
+    gunbc.systemctl_show_read.SystemdPropertyCaptureRefused { reason: _ } => none
   }
 }
 
 fn host_hygiene_read_procs(control_group: String) -> List<std.types.NonEmptyStr> {
   let raw = filesystem_read(path: join([host_hygiene_cgroupfs_root, control_group, "/cgroup.procs"], "")).content
-  let nonempty_lines = filter(map(split(s: trim(raw), delimiter: "\n"), s => trim(s)), s => s != "")
-  map(nonempty_lines, p => p as std.types.NonEmptyStr)
+  let tools.dag_compile_clean_shard_totality.nonempty_lines = v2.std.algebra.filter(map(split(s: std.algebra.trim(raw), delimiter: "\n"), s => std.algebra.trim(s)), s => s != "")
+  map(tools.dag_compile_clean_shard_totality.nonempty_lines, gunbc.plans.md_helpers.p => gunbc.plans.md_helpers.p as std.types.NonEmptyStr)
 }
 
 fn host_hygiene_pid_cmdline_is_build_cache(pid: std.types.NonEmptyStr) -> Bool {
@@ -61,10 +39,10 @@ fn host_hygiene_pid_cmdline_is_build_cache(pid: std.types.NonEmptyStr) -> Bool {
 }
 
 fn host_hygiene_classify_occupant(pids: List<std.types.NonEmptyStr>) -> gunbc.host_hygiene_reaper.CgroupOccupant {
-  if length(pids) == 0 {
+  if v2.std.algebra.length(pids) == 0 {
     gunbc.host_hygiene_reaper.CgroupEmpty
   } else {
-    if length(filter(pids, host_hygiene_pid_cmdline_is_build_cache)) > 0 {
+    if v2.std.algebra.length(v2.std.algebra.filter(pids, host_hygiene_pid_cmdline_is_build_cache)) > 0 {
       gunbc.host_hygiene_reaper.CgroupBuildCacheServerOccupant
     } else {
       gunbc.host_hygiene_reaper.CgroupOrdinaryProcesses
@@ -115,7 +93,7 @@ fn observe_all_residual_slots() -> ResidualFleetObserveReceipt {
   match gunbc.systemctl_list_units.systemctl_list_units_all_states(instance_glob: host_hygiene_reap_instance_glob) {
     Absent => ResidualFleetObserveRefused { cause: "unit enumeration refused (systemctl list-units transport)" }
     Present { value: units } =>
-      if length(units) == 0 {
+      if v2.std.algebra.length(units) == 0 {
         ResidualFleetObserveRefused { cause: "unit enumeration returned zero actions-runner@* units — refusing an empty observation rather than reporting a vacuous receipt" }
       } else {
         ResidualFleetObserved { outcomes: map(units, u => observe_residual_slot(unit: u)) }
@@ -142,8 +120,8 @@ fn residual_fleet_observed_slots(outcomes: List<ResidualSlotObserveOutcome>) -> 
       Absent => acc
     }
   })
-  let refused = filter(outcomes, o => match residual_slot_observe_outcome_slot(o: o) { Absent => true, Present { value: _ } => false })
-  if length(refused) > 0 { none } else { Present { value: slots } }
+  let refused = v2.std.algebra.filter(outcomes, o => match residual_slot_observe_outcome_slot(o: o) { Absent => true, Present { value: _ } => false })
+  if v2.std.algebra.length(refused) > 0 { none } else { Present { value: slots } }
 }
 
 fn gunbc_host_hygiene_reaper_live_show_effective_read() -> std.realization_reconcile.ShowEffectiveRead<List<gunbc.host_hygiene_reaper.ResidualSlotObservation>> {

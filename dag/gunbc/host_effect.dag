@@ -7,6 +7,7 @@ type HostEffect =
   | OsInstallActuatorToolchainEnsure {}
   | EnsureBuildCacheInstance { desired: gunbc.build_cache_instance.BuildCacheInstance }
   | ProvisionCodexRuntime {}
+  | EnsureCompilePoolSlice {}
   | SetHostnameCas { hostnamectl_path: std.types.NonEmptyStr, base: extdeps.dns.domain_name.DnsLabel, desired: extdeps.dns.domain_name.DnsLabel }
   | ReadEffectivePosixPrincipal { read: extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbe { probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdExecuteProbeShape }

@@ -82,9 +82,9 @@ data build_cache_environment_variables: List<BuildCacheEnvironmentVariable> = [
   BuildCacheEnvironmentVariable { name: "SCCACHE_START_SERVER" as NonEmptyStr, authority: ModeledUpstream },
   BuildCacheEnvironmentVariable { name: "SCCACHE_NO_DAEMON" as NonEmptyStr, authority: ModeledUpstream },
   BuildCacheEnvironmentVariable { name: "SCCACHE_IDLE_TIMEOUT" as NonEmptyStr, authority: ModeledUpstream },
-  BuildCacheEnvironmentVariable { name: "SCCACHE_DIR" as NonEmptyStr, authority: SpelledInConsumer },
+  BuildCacheEnvironmentVariable { name: "SCCACHE_DIR" as NonEmptyStr, authority: ModeledUpstream },
   BuildCacheEnvironmentVariable { name: "SCCACHE_ERROR_LOG" as NonEmptyStr, authority: SpelledInConsumer },
-  BuildCacheEnvironmentVariable { name: "SCCACHE_CACHE_SIZE" as NonEmptyStr, authority: SpelledInConsumer },
+  BuildCacheEnvironmentVariable { name: "SCCACHE_CACHE_SIZE" as NonEmptyStr, authority: ModeledUpstream },
   BuildCacheEnvironmentVariable { name: "SCCACHE_SERVER_UDS" as NonEmptyStr, authority: SpelledInConsumer },
   BuildCacheEnvironmentVariable { name: "SCCACHE_SERVER_PORT" as NonEmptyStr, authority: SpelledInConsumer },
 ]
@@ -104,8 +104,8 @@ data build_cache_environment_variables: List<BuildCacheEnvironmentVariable> = [
 // measure() == measure(). The correct reading of the green is not that the modeled half is verified
 // but that it needs no verification: composing a value from its authority IS the construction, and
 // a check restating it is the second representation section 5 says to prefer construction over. The
-// three modeled variables are therefore at structurally guaranteed and have nothing to assert; the
-// five unmodeled ones are the entire residue, and they cannot be asserted at all without respelling
+// five modeled variables are therefore at structurally guaranteed and have nothing to assert; the
+// three unmodeled ones are the entire residue, and they cannot be asserted at all without respelling
 // their literals, which would pass by construction for the same reason.
 //
 // So the claim is about the SPLIT rather than about either side of it: both authorities inhabited,
@@ -127,5 +127,5 @@ fn environment_name_authority_is_split() -> Bool {
 // arriving by the back door, so the row states its condition in prose and is honest that no
 // mechanism watches it.
 data systemd_directive_value_grain_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "the systemd directive vocabulary decomposes its values: SliceMemoryMax and SliceMemoryHigh take a modeled magnitude that can express the byte count, the suffixed form and the percentage form systemd.resource-control(5) admits, and Environment takes a variable name and a value as two fields rather than one fused assignment -- at which point the five sccache variable names gunbc spells as literals move to extdeps.cache.sccache beside the three that already have rows, because a two-field directive gives them somewhere to be. This row deletes when all three land together; landing only the name move would leave five rows whose consumer still concatenates them by hand." as NonEmptyStr,
+  description: "the systemd directive vocabulary decomposes its values: SliceMemoryMax and SliceMemoryHigh take a modeled magnitude that can express the byte count, the suffixed form and the percentage form systemd.resource-control(5) admits, and Environment takes a variable name and a value as two fields rather than one fused assignment -- at which point the remaining three sccache variable names gunbc spells as literals move to extdeps.cache.sccache beside the five modeled rows. SCCACHE_DIR and SCCACHE_CACHE_SIZE moved early because the readiness producer now reads those exact upstream names as well as the renderer writing them; leaving either literal in both consumers would have grown the fork this roster exists to count. This row deletes when the value-grain work and the remaining name move land together." as NonEmptyStr,
 )
