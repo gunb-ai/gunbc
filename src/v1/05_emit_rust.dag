@@ -11930,6 +11930,7 @@ fn emit_capability_method(cap_node: Node, shared_types: Set<String>, env: TypeEn
 fn data_value_has_cross_refs(value: Node) -> Bool {
   match value.expr_data {
     ExprVar { binding_kind: _ } => true
+    ExprCall { call_semantics: _, descent_evidence: _ } => true
     ExprListLit => value.children |> any(c => data_value_has_cross_refs(value: c))
     ExprRecordLit { parent_enum: _ } =>
       value.children |> any(f => data_value_has_cross_refs(value: field_init_node_value(n: f)))

@@ -50,3 +50,12 @@ fn w_unrelated_same_named_declaration_never_becomes_runtime_primitive() -> Bool 
     ["v1_rt::contains("]
   )
 }
+
+fn w_product_data_call_initializer_reaches_typed_call_emission() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.product_data_call_probe\nimport std.types { String }\ntype ProbeIdentity { slug: String }\nfn make_probe_identity() -> ProbeIdentity { ProbeIdentity { slug: \"probe\" } }\ndata probe_identity: ProbeIdentity = make_probe_identity()\n",
+    "src/test_claim_product_data_call_probe.rs",
+    ["make_probe_identity()"],
+    ["unsupported mock expression"]
+  )
+}
