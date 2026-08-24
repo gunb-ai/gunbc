@@ -221,6 +221,8 @@ type SeedRetentionCensus {
   compared_collisions: List<SeedRetentionCensusRow>
 }
 
+data seed_retention_mutation_receipt_note: String = "MUTATION RECEIPT, executed 2026-08-24 on a linux/amd64 runner at branch head, claim_batch over v2.test.claim.self_host.seed_retention_frontier_test. Baseline: all eight witnesses PASS. Treatment: path_in's predicate rewritten from 'candidate == path' to 'candidate == candidate', which makes every membership question answer true and so collapses all three joins at once. Result: the five join probes go FAIL — control totality, control classification, and each of the three planted refusals — while the three roster-only probes (uniqueness, reason split, both populations non-empty) stay PASS, which is correct because none of them reaches path_in. So the refusals are load-bearing rather than green by construction, and the split tells which probe covers which mechanism. The receipt is a per-arm one and not a whole-file one on purpose: a mutation that reds EVERY probe proves only that the file was consulted."
+
 fn path_in(path: String, paths: List<String>) -> Bool {
   any(xs: paths, predicate: fn(candidate) { candidate == path })
 }
