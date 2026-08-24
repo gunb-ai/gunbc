@@ -96,6 +96,39 @@ hits**", and the two known blockers were simply the two that happened to be loud
 the cut *is*, not merely what it currently fails at — and it is decidable today, before the cut
 lands, by one counter.
 
+## 4b. A scoped hit does not mean an authorized edge
+
+**The most likely misreading of this document is that the scoped arm is the good arm.** It is not,
+and the distinction decides how a fallback count should be read once someone has it.
+
+`census` is built **per source root**. So a scoped-unique hit means *this name is unique within its
+own tree* — it does **not** mean anyone declared an edge to it. After the cut, essentially all
+resolution is name-derived, and a scoped/fallback split is therefore **same-tree coincidence versus
+cross-tree coincidence: both coincidence, differing only in radius.**
+
+Concretely: crisp-crab-430's baseline of 37389 scoped versus 733 pool-fallback is a 97.9 / 2.1 split,
+and **97.9% is not a proportion of edges that were authorized.** Left implicit, that number reads as
+reassurance and would be cited as such. The count being asked for in §4 sizes the *cross-tree* half;
+sizing the authorized half is a different measurement that nobody has proposed, because on the
+current mechanism the answer may simply be zero.
+
+## 4c. The same census produces a second finding with a different owner
+
+crisp-crab-430 has split the 733 by direction:
+
+    510   src/v1 -> dag
+    223   dag    -> src/v1
+
+**The second half is not a resolution defect at all.** The substrate has **zero** `to_string`
+declarations under `dag/` or `src/v2`; the only one in the tree is a hand-written decimal loop in the
+v1 seed's emit-support module; all 721 uses are call-position; and **194 substrate files depend on
+it.** That is a *missing authority* in the substrate, not a bad resolution — the pool is answering
+correctly for a definer that has no substrate home.
+
+No guard fixes it, and it would survive every repair proposed in §4. It is recorded here because one
+census produced two findings whose owners differ, and separating them is what stops the smaller one
+being swept into the larger.
+
 ## 5. What is not claimed
 
 - **No fallback count on the cut corpus is asserted here.** That is the measurement being asked for;
@@ -106,6 +139,13 @@ lands, by one counter.
 - **This is not a finding that the cut is wrong.** It is a finding that a property everyone has been
   assuming — that a name-derived loader resolves by *derivation* — is not what the code does, and
   that the instrument which would have surfaced the difference measures a neighbouring property.
+- **The 14.24s `pool_parse` this arm forces is not multiplied by the fallback count.**
+  `pool_bare_census` memoizes behind a borrow-check, so the whole-corpus parse is forced **once per
+  process**. The honest forecast is a *step function to certainty*, not a multiplication: today a
+  process whose scoped census always hits pays zero; after the cut every process that resolves
+  anything pays it, once, and earlier in the run. The §5 cost shape is unchanged — denominated in
+  the corpus rather than in the change — but the quantity is different, and the multiplication
+  framing fails exactly when a reviewer checks the memo.
 - The rung is **mitigatable**: the fallback is silent and uncounted, so nothing refuses and nothing
   ranks it. The next-rung trigger is the counter in §4; the rung after that is a typed refusal when
   a name resolves only through the pool, at which point an unauthorized edge becomes unwritable
