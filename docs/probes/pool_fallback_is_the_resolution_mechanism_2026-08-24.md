@@ -431,18 +431,73 @@ Measured, it would not.
 
 ### What survives
 
-    Root B / this mechanism      CONFIRMED. std.types DECLARES type List = FreeMonoid, and a
-                                 cross-root bare name reaching it genuinely receives FreeMonoid.
-    lanes on it                  two: this probe, and the stripped-header finding (gunbc#9083)
+    the mechanism                CONFIRMED, and by READING THE LOADER rather than from any
+                                 diagnostic population. std.types DECLARES
+                                 `type List<element> = FreeMonoid<element>`, and a cross-root
+                                 bare name reaching it genuinely receives FreeMonoid.
+    lanes on it                  one: this probe. The stripped-header finding (gunbc#9083) is
+                                 its own measurement and is unaffected, but it is a different
+                                 mechanism, not a second lane on this one.
     #8282's blocker              NOT an instance. A refuted hypothesis about the same file.
-    the no-definer symptom family  NOT this mechanism, and not the signature fallback either
-                                 (algebra method templates are gated out by explicit law), and
-                                 not the profile lookup (which HITS — see §5d's correction).
-                                 Mechanism unknown; three candidates eliminated.
+    the symptom families         WITHDRAWN AS EVIDENCE — see §5f. The diagnostic population
+                                 this document treated as corroboration was produced by a
+                                 contaminated seed binary and does not survive a clean build.
 
 **Three candidates eliminated and none confirmed is the honest state**, and it is worth more than the
 unification this document briefly carried — which would have sent repair work at a cause two of its
 three cited lanes had already ruled out.
+
+## 5f. The corroborating diagnostics were a bootstrap artifact, and are withdrawn
+
+**Everything in §5d and §5e that leans on a diagnostic population from gunbc#9075 is withdrawn as
+evidence for this document's claim.** The reason is not that the diagnostics were misread. It is
+that they had no source cause at all.
+
+### The measurement
+
+One dispatch settled it. `claim_executor` was built from the exact merge-base `bd84f6696`, the
+*same* merged sources were checked out, and required-regen was re-run:
+
+    seeded from the branch's own earlier binary   71 hard diagnostics
+    seeded from a merge-base-built binary          ZERO hard diagnostics
+
+**Same sources. Different compiler. The refusals vanish.** They were emitted by a compiler built
+from an earlier state of that branch, which regenerated a mirror carrying the defect forward.
+
+### Why this document was fooled, and the error is instructive rather than embarrassing
+
+This document's author argued the attribution was *settled*: main was green at the branch's exact
+merge-base, the branch was that merge-base plus one delta, therefore the delta caused the
+diagnostics. **The syllogism is valid and the premise was incomplete.** Two trees were compared
+while a second variable moved silently:
+
+    main's CI      seeds its compiler from main
+    the branch     seeded its compiler from ITSELF
+
+**In a self-hosted compiler the binary is not a constant across a source comparison.** Treating the
+source as the only variable is exactly the assumption that cannot hold in a repository whose
+compiler is its own output — and it was made in a document about instruments answering narrower
+questions than they are asked.
+
+### What this does NOT touch
+
+**The mechanism this probe describes was established by reading `bare_reference_pull_paths_for_source`
+and `dag/std/types.dag`, not by observing any failure.** The scoped census, the whole-tree fallback,
+the per-root scoping, the 733 population, and the `List = FreeMonoid` declaration are all
+source-level facts, independently verifiable, and unaffected by any binary. **They stand.**
+
+What is gone is the claim that a particular observed diagnostic population *demonstrated* the
+mechanism biting in production. **This probe describes a real hazard with no confirmed live victim**,
+which is a weaker and more honest claim than the one §5d and §5e were drifting toward.
+
+### The generalisable rule, which is worth more than the retraction
+
+**In a self-hosted repository, "I changed the compiler and the compiler broke" has two readings, and
+nothing in the source distinguishes them.** The discriminator is one dispatch — rebuild the tool from
+a known-good commit, keep the sources fixed, re-run — and it should precede any mechanism analysis
+whose subject is a compiler diagnostic. **Four lanes spent an afternoon authoring mechanism theories
+for output that had no source cause**, and every one of those theories was internally coherent. Being
+coherent was never evidence.
 
 ## 6. Provenance
 
