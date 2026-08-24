@@ -549,15 +549,61 @@ mod bare_reference_scanner_tests {
         }
     }
 
-    // KNOWN GAP, deliberately not asserted: a type ALIAS target is collected as though
-    // it were a variant — `type List<element> = FreeMonoid<element>` in `std.types` puts
-    // `FreeMonoid` in this set, which suppresses the closure edge to whichever module
-    // declares it. That is an UNDER-pull, the dangerous direction, and it is pre-existing
-    // in this guard rather than introduced here. It is left alone because the obvious
-    // repair — treat a single unalternated item with no record payload as an alias —
-    // was implemented, measured, and made the branch arm WORSE (94 sources -> 126, 2
-    // blocking -> 3), so the alias distinction interacts with something not yet
-    // understood. Fixing it needs its own arms, not a rider on this one.
+    // A type ALIAS does not declare its target. `type List<element> = FreeMonoid<element>`
+    // declares `List`; `FreeMonoid` is a REFERENCE OUT, and collecting it here suppressed
+    // the closure edge to whichever module declares it — an UNDER-pull, the dangerous
+    // direction. Review 55399 called this correctly. An earlier revision carried it as a
+    // marked known gap; a marked gap records how debt ENDS, it does not authorize creating
+    // it, and this one pointed the wrong way.
+    //
+    // The discriminator is the right-hand side's own shape: a coproduct alternates (`|`) or
+    // carries a record payload (`{`), an alias does neither.
+    //
+    // THE ARM THAT SHAPE CANNOT DECIDE, named rather than left to be found: `type X = Foo`
+    // with a bare capitalized RHS is an alias under this rule, but the same bytes are how a
+    // single-alternative coproduct would spell itself if the grammar admits one — same text,
+    // opposite correct answers. Censused across `dag` + `src/v2` + `src/v1` rather than
+    // assumed: 60 occurrences, and every one decides ALIAS. 47 name a type declared in
+    // ANOTHER module (unambiguous alias — the suppressed edge was real, so this class is 47
+    // instances wide, not one). The other 13 name a type declared in the SAME FILE, each
+    // hand-checked: `type FileEntry {` under `type FileClassification = FileEntry`,
+    // `type ParseTableRealization {` under `type ParseTable`, and eleven more of that shape.
+    // Those 13 are inert either way — a same-file `type` head is already in this set via the
+    // declaration-head arm, so the resolve loop skips the name before the pool is consulted.
+    // ZERO of the 60 is a single-alternative coproduct.
+    //
+    // What is NOT claimed: that the ambiguity is impossible. `type X = Foo` where `Foo` is
+    // declared nowhere is undecidable from the RHS alone, and someone can author one
+    // tomorrow. The residual failure would be an OVER-pull, not an under-pull.
+    #[test]
+    fn an_alias_target_is_a_reference_out_not_a_declared_variant() {
+        let names = module_self_declared_names(
+            "type List<element> = FreeMonoid<element>\ntype Bit = Bool\n",
+        );
+        assert!(names.contains("List"), "the alias itself is declared here");
+        assert!(
+            names.contains("element"),
+            "its type parameter is bound here"
+        );
+        assert!(
+            !names.contains("FreeMonoid"),
+            "an alias TARGET is a reference out — collecting it suppresses a real closure edge"
+        );
+        assert!(
+            !names.contains("Bool"),
+            "same for a non-generic alias target"
+        );
+    }
+
+    #[test]
+    fn a_single_variant_coproduct_with_a_payload_is_still_a_declaration() {
+        let names =
+            module_self_declared_names("type FrameExtent = ExtentInFrame { length: Int }\n");
+        assert!(
+            names.contains("ExtentInFrame"),
+            "a record payload marks a variant, not an alias — the brace is the discriminator"
+        );
+    }
 
     /// A record body's field labels are not declarations the module exports.
     #[test]
@@ -7983,9 +8029,20 @@ fn module_self_declared_names(content: &str) -> BTreeSet<String> {
             in_coproduct = is_type_head;
             if is_type_head {
                 if let Some((_, body)) = l.split_once('=') {
-                    for part in body.split('|') {
-                        if let Some(name) = ident_head(part) {
-                            out.insert(name);
+                    // An ALIAS is not a declaration of its target. `type List<element> =
+                    // FreeMonoid<element>` declares `List`; `FreeMonoid` is a REFERENCE
+                    // OUT, and collecting it here suppresses the closure edge to whoever
+                    // declares it — an under-pull, the dangerous direction (review 55399).
+                    // The discriminator is the RHS's own shape: a coproduct alternates
+                    // (`|`) or carries a record payload (`{`); an alias does neither.
+                    let is_alias = !body.contains('|') && !body.contains('{');
+                    if is_alias {
+                        in_coproduct = false;
+                    } else {
+                        for part in body.split('|') {
+                            if let Some(name) = ident_head(part) {
+                                out.insert(name);
+                            }
                         }
                     }
                 }
