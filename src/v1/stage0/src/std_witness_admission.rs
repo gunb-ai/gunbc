@@ -174,32 +174,28 @@ pub fn witness_consumer_cadence_content_hash_structural(
 ) -> Rc<Fnv1a64Structural> {
     match cadence.clone() {
         WitnessConsumerCadence::DiscoverySelection => {
-            crate::std_content_hash::content_hash_atom("DiscoverySelection".to_string())
+            content_hash_atom("DiscoverySelection".to_string())
         }
         WitnessConsumerCadence::FalsifierSelfHostWet => {
-            crate::std_content_hash::content_hash_atom("FalsifierSelfHostWet".to_string())
+            content_hash_atom("FalsifierSelfHostWet".to_string())
         }
         WitnessConsumerCadence::FalsifierRehomedBinWet => {
-            crate::std_content_hash::content_hash_atom("FalsifierRehomedBinWet".to_string())
+            content_hash_atom("FalsifierRehomedBinWet".to_string())
         }
         WitnessConsumerCadence::FalsifierSubstrateLongLane => {
-            crate::std_content_hash::content_hash_atom("FalsifierSubstrateLongLane".to_string())
+            content_hash_atom("FalsifierSubstrateLongLane".to_string())
         }
-        WitnessConsumerCadence::BinWitnessWet => {
-            crate::std_content_hash::content_hash_atom("BinWitnessWet".to_string())
-        }
+        WitnessConsumerCadence::BinWitnessWet => content_hash_atom("BinWitnessWet".to_string()),
         WitnessConsumerCadence::QuarantineProbeExpectRed => {
-            crate::std_content_hash::content_hash_atom("QuarantineProbeExpectRed".to_string())
+            content_hash_atom("QuarantineProbeExpectRed".to_string())
         }
         WitnessConsumerCadence::OfflineLocalRecipe => {
-            crate::std_content_hash::content_hash_atom("OfflineLocalRecipe".to_string())
+            content_hash_atom("OfflineLocalRecipe".to_string())
         }
         WitnessConsumerCadence::FixtureExplicitRoster => {
-            crate::std_content_hash::content_hash_atom("FixtureExplicitRoster".to_string())
+            content_hash_atom("FixtureExplicitRoster".to_string())
         }
-        WitnessConsumerCadence::NoConsumer => {
-            crate::std_content_hash::content_hash_atom("NoConsumer".to_string())
-        }
+        WitnessConsumerCadence::NoConsumer => content_hash_atom("NoConsumer".to_string()),
     }
 }
 

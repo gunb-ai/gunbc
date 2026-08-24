@@ -53,7 +53,7 @@ pub struct SemVerVersion {
 }
 
 pub fn semver_compare_non_negative_int(a: NonNegativeInt, b: NonNegativeInt) -> Ordering {
-    crate::std_nat::nat_compare(a.clone(), b.clone())
+    nat_compare(a.clone(), b.clone())
 }
 
 pub fn semver_compare_identifier(a: Rc<SemVerIdentifier>, b: Rc<SemVerIdentifier>) -> Ordering {
