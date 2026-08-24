@@ -349,6 +349,20 @@ fn emit_match_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeV
   }
 }
 
+// TEST-SIDE PROJECTION AT THE ASSERTION BOUNDARY, WHICH IS WHERE THE COLLAPSE IS ALLOWED TO LIVE.
+// A `test fn` must return Bool, so a witness over a coproduct verdict has to collapse it somewhere;
+// the predicate-dissolution rule forbids the AUTHORITY exposing an is_* Bool over its own coproduct,
+// not the witness performing the collapse it is obliged to perform. v2.std.verdict exposes no such
+// predicate and this change adds none to it. The precedent is recorded in
+// test.claim.self_host_promotion_admission `pa_admitted`, whose annotation states the boundary in
+// as many words after review 51217.
+//
+// AND THE CANONICAL QUERY SURFACE CANNOT ANSWER THIS QUESTION, WHICH IS THE WHOLE POINT OF THE ROW.
+// v2.std.verdict verdict_tally_add is the fold over Verdict, and it counts SemanticMismatch,
+// BuildFailed and RunFailed all as `fail`. That is the exact collapse this witness exists to
+// undo: routing through it would classify "the compiler disagreed with itself" and "rustc was
+// killed" into one bucket again, one layer further from the assertion. A tally is the right
+// surface for counting outcomes and the wrong one for distinguishing two of them.
 fn emit_match_eval_verdict_reached_semantics(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
   match run.verdict {
     Pass => true
