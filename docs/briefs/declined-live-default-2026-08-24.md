@@ -1,3 +1,50 @@
+# RETRACTED IN PART, 2026-08-24 — the auto-discovery half is FALSE. Read this first.
+
+**The required floor does not consult `reads_live_tree_effective` at all, and an undeclared module
+EXECUTES rather than being declined.** The mechanism this brief was written about gates *deferred
+discovery*, not the required floor. Traced by `deep-ant-102`, verified here link by link:
+
+```
+run_required_floor        : let files = &prepared.witness_files;
+                            if file.reads_live_tree { live_declined += 1; DeclinedLiveTree }
+InventoryWitnessFile      : .reads_live_tree is set in witness_file_from_source by
+                            content.lines().any(|line| line.starts_with("data ")
+                                && line.contains("LiveTreeDisposition")
+                                && line.contains("ReadsLiveTree"))
+reads_live_tree_effective : both call sites are inside collect_deferred_discovery_rows
+```
+
+The floor's scan is an `any` for a **positive** `ReadsLiveTree` declaration. No declaration is no
+match is `false` is **not declined**.
+
+**What is therefore withdrawn:**
+
+- *An undeclared module is silently declined.* **False for the floor.** It executes.
+- *The 830 in `DeclinedLiveTree` are defaulted.* **False.** They are files that positively declare
+  `ReadsLiveTree`, declined per their own declaration — correct behaviour, not a default.
+- *gunbc#9058's evidence does not execute because it declares nothing.* **False, and I corrected
+  that PR wrongly.** Its rows execute. (gunbc#9075 is unaffected: that file declares
+  `ReadsLiveTree` positively, so it is genuinely declined, as DESIGN §4b independently records.)
+
+**And the in-repo authority we dismissed was correct.** The `quarantine_probe` note says the floor
+consults the syntactic column-zero scan and does **not** consult `reads_live_tree_effective`. Both
+of us read it as stale. It was precise; our reading was stale. The call-site grep that misled us
+found the two call sites and never asked which function contained them — a positional read
+answering a narrower question than we put to it, which is the class this whole document is about,
+committed twice by its authors while writing it.
+
+**What survives, and is now sharper than what was retracted** — see *the escape route* below: the
+U3 explicit-enrolment path DOES read the destroyed bool. So for one and the same undeclared file,
+**auto-discovery executes it and deliberate enrolment declines it.** The two routes disagree, and
+the deliberate one is the one that fails. That is a worse defect than the one this brief set out to
+describe, and it is the reason the document is corrected rather than deleted.
+
+The carrier finding stands for its real consumers (deferred discovery, U3 expansion). The
+carrier-versus-arm split stands untouched — neither the floor scanner nor the bare-name closure
+member depended on any of this.
+
+---
+
 # The floor's live-tree default renders ignorance as a claim, and the cost is silent non-execution
 
 Found 2026-08-24 while reviewing two unrelated child PRs that had each, independently and
