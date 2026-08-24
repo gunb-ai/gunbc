@@ -793,7 +793,7 @@ type FloorRunCost {
 // NOT a precedence rule, and there is deliberately no arm in which one outcome excuses the other.
 fn floor_run_blocks(
   preparation: FloorPreparationOutcome,
-  test.claim.budget_tree_witness.claim: ClaimSafetyOutcome,
+  claim: ClaimSafetyOutcome,
 ) -> v2.std.logic.Bool {
   floor_preparation_outcome_blocks(outcome: preparation)
     || claim_safety_outcome_blocks(outcome: test.claim.budget_tree_witness.claim)

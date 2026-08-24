@@ -204,7 +204,7 @@ type FinitelySupportedFunction<K, V> {
   map_keys: fn() -> std.algebra.FreeMonoid<K>
   map_values: fn() -> std.algebra.FreeMonoid<V>
   insert: fn(K, V) -> FinitelySupportedFunction<K, V>
-  gunbc.scm.merge.merge: fn(FinitelySupportedFunction<K, V>) -> FinitelySupportedFunction<K, V>
+  merge: fn(FinitelySupportedFunction<K, V>) -> FinitelySupportedFunction<K, V>
   map_keys: fn() -> FreeMonoid<K>
   map_values: fn() -> FreeMonoid<V>
   map_has: fn(K) -> Bool

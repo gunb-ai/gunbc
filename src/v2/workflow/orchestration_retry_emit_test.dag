@@ -33,7 +33,7 @@ fn orch_retry_probe_facts(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.
 test fn orch_retry_row_direct_emit_accepted_holds() -> Bool {
   match v2.compiler.emit.emit(
     tree: v2.compiler.inferred_tree.InferredTree {
-      test.claim.extdeps_llm_claude_trust_witness.root: v2.extdeps.languages.bash.orch_retry_emitted_command,
+      root: v2.extdeps.languages.bash.orch_retry_emitted_command,
       facts: std.algebra.PartialFunction { lookup: orch_retry_probe_facts }
     },
     target: v2.extdeps.languages.bash.orch_retry_target_model(
@@ -257,7 +257,7 @@ test fn orch_retry_1level_emit_has_teeth_holds() -> Bool {
 test fn orch_retry_escalation_final_row_emit_holds() -> Bool {
   match v2.compiler.emit.emit(
     tree: v2.compiler.inferred_tree.InferredTree {
-      test.claim.extdeps_llm_claude_trust_witness.root: v2.extdeps.languages.bash.orch_retry_escalation_final_emitted_command,
+      root: v2.extdeps.languages.bash.orch_retry_escalation_final_emitted_command,
       facts: std.algebra.PartialFunction { lookup: orch_retry_probe_facts }
     },
     target: v2.extdeps.languages.bash.orch_retry_escalation_final_target_model(
@@ -273,7 +273,7 @@ test fn orch_retry_escalation_final_row_emit_holds() -> Bool {
 test fn orch_retry_escalation_step_row_emit_holds() -> Bool {
   match v2.compiler.emit.emit(
     tree: v2.compiler.inferred_tree.InferredTree {
-      test.claim.extdeps_llm_claude_trust_witness.root: v2.extdeps.languages.bash.orch_retry_escalation_step_emitted_command,
+      root: v2.extdeps.languages.bash.orch_retry_escalation_step_emitted_command,
       facts: std.algebra.PartialFunction { lookup: orch_retry_probe_facts }
     },
     target: v2.extdeps.languages.bash.orch_retry_escalation_step_target_model(
@@ -292,7 +292,7 @@ test fn orch_retry_escalation_step_row_emit_holds() -> Bool {
 test fn orch_retry_1level_row_direct_emit_accepted_holds() -> Bool {
   match v2.compiler.emit.emit(
     tree: v2.compiler.inferred_tree.InferredTree {
-      test.claim.extdeps_llm_claude_trust_witness.root: v2.extdeps.languages.bash.orch_retry_1level_emitted_command,
+      root: v2.extdeps.languages.bash.orch_retry_1level_emitted_command,
       facts: std.algebra.PartialFunction { lookup: orch_retry_probe_facts }
     },
     target: v2.extdeps.languages.bash.orch_retry_1level_target_model(

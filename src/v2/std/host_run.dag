@@ -43,7 +43,7 @@ fn host_logical_run_from_exit(exit: HostExit, stdout_bytes: v2.std.host_transpor
             },
             diagnostics: ds
           }
-        v2.std.witness.Violates { v2.std.diagnostic: d } =>
+        v2.std.witness.Violates { diagnostic: d } =>
           v2.std.diagnostic.Rejected {
             diagnostics: v2.std.diagnostic.rejected_with_pending(
               pending: ds,

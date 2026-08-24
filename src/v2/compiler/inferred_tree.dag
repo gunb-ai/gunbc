@@ -25,7 +25,7 @@ type InferredFacts {
 }
 
 type InferredTree {
-  test.claim.extdeps_llm_claude_trust_witness.root: v2.std.node.Node
+  root: v2.std.node.Node
   facts: std.algebra.PartialFunction<v2.std.node.Node, InferredFacts>
 }
 

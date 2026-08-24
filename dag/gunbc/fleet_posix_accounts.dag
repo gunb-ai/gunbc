@@ -231,7 +231,7 @@ fn fleet_posix_ci_runner_sudo_grants() -> List<PosixSudoGrant> {
     xs: ci_runner_sudo_binaries,
     f: b => PosixSudoGrant {
       command_path: ci_runner_sudo_binary_path(b: b),
-      test.claim.install_transport_qualification_witness_test.probe: ci_runner_sudo_binary_probe(b: b),
+      probe: ci_runner_sudo_binary_probe(b: b),
     },
   )
 }

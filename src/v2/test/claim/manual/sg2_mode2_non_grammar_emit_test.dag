@@ -25,14 +25,14 @@ fn sg2_mode2_facts_lookup(_key: v2.std.node.Node) -> v2.std.optional.Optional<v2
 }
 
 data sg2_mode2_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
-  test.claim.extdeps_llm_claude_trust_witness.root: v2.extdeps.languages.rust.rust_sg2_instantiation_source_type_node(),
+  root: v2.extdeps.languages.rust.rust_sg2_instantiation_source_type_node(),
   facts: std.algebra.PartialFunction {
     lookup: sg2_mode2_facts_lookup
   }
 }
 
 data sg2_mode2_perturbed_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
-  test.claim.extdeps_llm_claude_trust_witness.root: v2.extdeps.languages.rust.rust_sg2_foobar_xy_no_rc_source_type_node(),
+  root: v2.extdeps.languages.rust.rust_sg2_foobar_xy_no_rc_source_type_node(),
   facts: std.algebra.PartialFunction {
     lookup: sg2_mode2_facts_lookup
   }

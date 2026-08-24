@@ -135,7 +135,7 @@ fn emit_call_eval_composed_facts(key: v2.std.node.Node) -> v2.std.optional.Optio
 
 fn emit_call_eval_producer_tree() -> v2.compiler.inferred_tree.InferredTree {
   v2.compiler.inferred_tree.InferredTree {
-    test.claim.extdeps_llm_claude_trust_witness.root: v2.test.emit.rust_call_emit.rust_call_helper_arrow(),
+    root: v2.test.emit.rust_call_emit.rust_call_helper_arrow(),
     facts: std.algebra.PartialFunction { lookup: emit_call_eval_composed_facts }
   }
 }

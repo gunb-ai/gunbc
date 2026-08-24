@@ -76,7 +76,7 @@ test fn roadmap_row_grid_structure_holds() -> Bool {
 }
 
 test fn roadmap_row_page_carries_the_cells() -> Bool {
-  match extdeps.languages.html.try_serialize_html_source(test.claim.package_graph_witness_test.node: gunbc.roadmap_page.roadmap_page_for_authority()) {
+  match extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.roadmap_page_for_authority()) {
     extdeps.languages.html.EmitRejected { reason: _ } => false
     extdeps.languages.html.EmitOk { html: h } =>
       h.length() > 0

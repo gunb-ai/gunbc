@@ -24,7 +24,7 @@ fn unit_is_active_capture_from_result(state: String, active: Bool) -> UnitIsActi
 fn systemctl_is_active_read(transport: gunbc.host_effect.HostEffectTransport, unit: std.types.NonEmptyStr) -> UnitIsActiveCapture {
   match gunbc.host_operation_exec(transport: transport, operation: gunbc.host_operation_exec.SystemctlIsActive { unit: unit }) {
     gunbc.host_operation_exec.HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
-      unit_is_active_capture_from_result(state: out, gunbc.roadmap_authority.active: ok)
+      unit_is_active_capture_from_result(state: out, active: ok)
     gunbc.host_operation_exec.HostOperationRefused { operation: _, reason: why } =>
       UnitIsActiveCaptureRefused { reason: why }
   }

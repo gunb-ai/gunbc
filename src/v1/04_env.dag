@@ -154,7 +154,7 @@ fn symbol_index_insert_service(index: v1.compiler.infer_env.SymbolIndex, name: S
   SymbolIndex {
     entries: index.entries,
     global_bare: index.global_bare,
-    services: v2.std.collection.map_insert(index.services, name, ServiceCensusEntry { test.claim.observation_seed_scoped_run_witness.module_path: test.claim.observation_seed_scoped_run_witness.module_path, v2.test.resolve.qualified_module_projection_g1b_fixture.item: v2.test.resolve.qualified_module_projection_g1b_fixture.item }),
+    services: v2.std.collection.map_insert(index.services, name, ServiceCensusEntry { module_path: test.claim.observation_seed_scoped_run_witness.module_path, item: v2.test.resolve.qualified_module_projection_g1b_fixture.item }),
     transparent_alias_rep: index.transparent_alias_rep,
     type_head_exposures: index.type_head_exposures
   }
