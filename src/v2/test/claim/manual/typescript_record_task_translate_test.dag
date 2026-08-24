@@ -138,7 +138,7 @@ fn typescript_record_task_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data typescript_record_task_inferred_tree: InferredTree = InferredTree {
   root: typescript_record_task_emitted_root,
-  facts: Map { lookup: typescript_record_task_facts_lookup }
+  facts: PartialFunction { lookup: typescript_record_task_facts_lookup }
 }
 
 fn anchor_typescript_record_task_emit_accepts() -> Outcome<Medium<String>> {
