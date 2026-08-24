@@ -2163,19 +2163,44 @@ returns false", whose entire provenance was *a title written at dispatch time* �
 timestamp, in a fleet where the underlying file had been rewritten by someone else's merge in the
 interim.
 
+**That rule as stated is not yet actionable, and the qualifier is the whole of it.** Every partition
+has a shared conjunct; most are perfectly sound; a rule that fires on all of them fires on none. The
+colleague who caught the original error supplied the missing half, and it is **provenance
+asymmetry**: the shared conjunct here was not merely shared, it was *the only part of the instrument
+that nothing in the instrument could check*, and its provenance — a third party's string, written
+once, at dispatch — was **weaker than the varying half's**. Enrollment was live, joinable, and
+re-measurable on every run. So the instrument was exquisitely precise about the half that could not
+be wrong and silent on the half that was.
+
+**The tell is therefore a shared conjunct whose provenance is weaker than the varying one's.** Where
+the fixed half is the well-established part and the variation carries the uncertainty, a discriminator
+is doing exactly its job, and this entry says nothing against it.
+
 ### The second-order point, which is the reason this is filed here
 
-An independent path to the same answer was *already in the author's own message* and went unused. The
-floor reports an enrolled-but-passing witness as `stale_quarantine`, and the same DESIGN.md line the
-author had quoted for `known_red_held=206` also carries `stale_quarantine=0`. That figure rules out
-enrolled-and-passing without running anything. The author cited the line, took one number off it, and
-did not notice that the number beside it closed half the question.
+A *partial* check was already in the author's own message and went unused. The floor reports an
+enrolled-but-passing witness as `stale_quarantine`, and the same DESIGN.md line the author had quoted
+for `known_red_held=206` also carries `stale_quarantine=0`. The author cited the line, took one
+number off it, and did not notice the number beside it.
 
-Which is this document's thesis one turn further in: **the checking artifact is not always one step
-away — sometimes it is in the sentence you already wrote**, and the reason it goes unread is that it
-answers a question you have not yet realised you are asking. Two of this brief's entries were caught
-by their own recipients within minutes. That is a functioning fleet, and it is also the measurement
-of how little the author's own care was contributing at the margin.
+**But that figure does not close the question, and an earlier revision of this section said it did —
+which would have taught the wrong lesson from an incident whose root cause was trusting a static
+string.** `stale_quarantine=0` eliminates exactly one branch, `{enrolled-and-passing}`. It says
+nothing whatever about the unenrolled branch — the one the alarm was actually wired to. What closed
+the question was *running the witness*. Filing this as "the answer was sitting on the line I already
+quoted" would recommend a static document figure over an execution, in a document whose entire
+argument is the other way round.
+
+**The correct and narrower lesson: a ledger figure can eliminate a branch, and eliminating a branch is
+not producing an answer.** That is worth having — it is cheap, and it would have halved the space —
+but it is a different act from measuring, and conflating the two is how a document figure comes to
+stand in for a run.
+
+Which is this document's thesis one turn further in, with the correction applied: **the checking
+artifact is sometimes in the sentence you already wrote — and it is usually partial.** Three of this
+brief's entries were caught by their own recipients within minutes, including this section's own
+overreach, corrected by the colleague whose refutation it records. That is a functioning fleet, and
+it is also the measurement of how little the author's own care was contributing at the margin.
 
 ### What survived, sharpened by the colleague
 
