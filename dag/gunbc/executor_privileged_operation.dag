@@ -1,0 +1,157 @@
+module gunbc.executor_privileged_operation
+
+// WHY THIS MODULE EXISTS. A sudo grant and the command that consumes it are two renderings of ONE
+// fact, and the repository previously authored them twice: a roster of BINARY PATHS in
+// gunbc.fleet_posix_accounts, and an argv built independently at each call site. Nothing related
+// them, so the srv3 apply could hold a grant for /usr/bin/install and still be refused for the
+// exact argv it ran -- which is what happened, measured 2026-08-24.
+//
+// THE CONSTRUCTION. An operation is declared ONCE, and both renderings are DERIVED from it: the
+// argv the host executes, and the sudoers command match that authorizes it. The sudoers match is
+// literally the argv joined by spaces, so a grant that does not authorize its own command has no
+// spelling. This is a §5 construction wall, not a check: drift is unrepresentable rather than
+// detected.
+//
+// WHAT THIS DELIBERATELY DOES NOT DO. It does not decide WHO may hold the grant, WHICH host it is
+// installed on, or whether the installed set is exact. Those are separate facts -- the antagonist
+// review of 2026-08-24 (side chat, "Consolidate the transaction, not the concepts") establishes
+// that capability intent, sudoers command, sudoers file, and installation transaction are four
+// facts, not one carrier. This module owns exactly the second, and projects from the first.
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import v2.std.algebra { fold_list }
+import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
+import gunbc.fleet_posix_accounts {
+  ci_runner_sudo_binary_path,
+  SudoInstall,
+  SudoRm,
+  SudoSystemctl,
+}
+
+// THE OPERATION, PARAMETERIZED. Not a nullary enum of binaries: a binary path alone cannot say
+// which directory it may create or who ends up owning it, and granting whole /usr/bin/install is
+// granting root. Every field here narrows the authorization.
+type ExecutorPrivilegedOperation
+  = EnsureOwnedDirectory {
+      path: NonEmptyStr
+      owner: NonEmptyStr
+      group: NonEmptyStr
+      mode: NonEmptyStr
+    }
+  | RemoveDirectoryTree { path: NonEmptyStr }
+  | SystemdDaemonReload
+
+// THE ONE PROJECTION. Everything else in this module derives from this function, so there is
+// exactly one place where an operation becomes words.
+fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<NonEmptyStr> {
+  match op {
+    EnsureOwnedDirectory { path: p, owner: o, group: g, mode: m } => [
+      ci_runner_sudo_binary_path(b: SudoInstall),
+      "-d" as NonEmptyStr,
+      "-m" as NonEmptyStr,
+      m,
+      "-o" as NonEmptyStr,
+      o,
+      "-g" as NonEmptyStr,
+      g,
+      p
+    ]
+    RemoveDirectoryTree { path: p } => [
+      ci_runner_sudo_binary_path(b: SudoRm),
+      "-rf" as NonEmptyStr,
+      p
+    ]
+    SystemdDaemonReload => [
+      ci_runner_sudo_binary_path(b: SudoSystemctl),
+      "daemon-reload" as NonEmptyStr
+    ]
+  }
+}
+
+// THE SUDOERS COMMAND MATCH IS THE ARGV. Derived, never authored beside it.
+fn executor_privileged_operation_sudoers_command(op: ExecutorPrivilegedOperation) -> NonEmptyStr {
+  join(map(executor_privileged_operation_argv(op: op), w => w as String), " ") as NonEmptyStr
+}
+
+// RUN-AS IS root, NOT ALL. The executor previously rendered ALL=(ALL), which authorizes the
+// grantee to run the command as ANY user including other service accounts; Spark already rendered
+// ALL=(root). These were two different grants wearing one vocabulary. root is the narrower of the
+// two and is what every operation here actually needs.
+data executor_sudoers_run_as: NonEmptyStr = "root" as NonEmptyStr
+
+fn executor_privileged_operation_sudoers_line(
+  grantee: NonEmptyStr,
+  op: ExecutorPrivilegedOperation,
+) -> NonEmptyStr {
+  join([
+    grantee as String,
+    " ALL=(",
+    executor_sudoers_run_as as String,
+    ") NOPASSWD: ",
+    executor_privileged_operation_sudoers_command(op: op) as String
+  ], "") as NonEmptyStr
+}
+
+fn executor_privileged_operations_sudoers_body(
+  grantee: NonEmptyStr,
+  ops: List<ExecutorPrivilegedOperation>,
+) -> String {
+  fold_list(
+    xs: ops,
+    empty: "",
+    cons: (acc, op) =>
+      join([
+        acc,
+        executor_privileged_operation_sudoers_line(grantee: grantee, op: op) as String,
+        "\n"
+      ], "")
+  )
+}
+
+// THE POPULATION IS DERIVED FROM THE SLOT ROSTER, NOT HAND-LISTED. Each managed slot contributes
+// exactly the two operations the provisioner runs against it, so a slot added to the roster brings
+// its own authorization and a slot removed takes it away. The set is EXACT and finite -- every path
+// is named in full, and no wildcard appears anywhere. That is deliberate: a sudoers wildcard such
+// as /opt/actions-runner/* matches `..` (fnmatch's * declines to cross `/` but `..` contains none),
+// so `rm -rf /opt/actions-runner/..` would be authorized by it. Naming the slots exactly costs a
+// longer generated file and removes the traversal entirely.
+data executor_managed_directory_mode: NonEmptyStr = "755" as NonEmptyStr
+
+fn runner_slot_privileged_operations(
+  slot_dirs: List<NonEmptyStr>,
+  slot_owner: NonEmptyStr,
+) -> List<ExecutorPrivilegedOperation> {
+  fold_list(
+    xs: slot_dirs,
+    empty: [] as List<ExecutorPrivilegedOperation>,
+    cons: (acc, d) =>
+      acc + [
+        RemoveDirectoryTree { path: d },
+        EnsureOwnedDirectory {
+          path: d,
+          owner: slot_owner,
+          group: slot_owner,
+          mode: executor_managed_directory_mode,
+        }
+      ]
+  )
+}
+
+// THE SHELL RENDERING IS THE SAME ARGV, QUOTED. Quoting is a property of the shell that carries the
+// words, not of the authorization: sudo receives argv AFTER the shell has parsed it, so
+// `sudo '/usr/bin/rm' '-rf' '/opt/actions-runner/srv3-09'` presents sudo with exactly the words the
+// sudoers match names, unquoted. That is why one argv can ground both renderings without either
+// having to know about the other's escaping.
+fn executor_privileged_operation_shell_command(op: ExecutorPrivilegedOperation) -> String {
+  join([
+    "sudo ",
+    join(
+      map(
+        executor_privileged_operation_argv(op: op),
+        w => posix_single_quote(spelling: w as String),
+      ),
+      " ",
+    )
+  ], "")
+}

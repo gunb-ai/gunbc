@@ -15,12 +15,20 @@ import gunbc.membership_reconcile {
   membership_added_count,
 }
 import gunbc.ownership { Ownership }
+import gunbc.executor_privileged_operation {
+  EnsureOwnedDirectory,
+  RemoveDirectoryTree,
+  executor_managed_directory_mode,
+  executor_privileged_operation_shell_command,
+}
 import gunbc.runner_host_deploy {
   RunnerHostDeploy,
   runner_index_seq,
 }
 import extdeps.github.actions_runner {
-  ActionsRunnerPrivilegedBinaries,
+  ActionsRunnerSlotPrivilegedCommands,
+  actions_runner_base_dir,
+  actions_runner_cache_dir,
   ActionsRunnerBinaryArtifact,
   actions_runner_release_2_334_0,
   actions_runner_base_dir,
@@ -201,10 +209,28 @@ type RunnerSlotProvisionPlan {
 // what runner installation IS; this module knows which principal performs it here and therefore
 // which binaries that principal is permitted to execute. Both paths come from the closed
 // CiRunnerSudoBinary vocabulary, so a verb with no grant row has no spelling at this seam.
-fn gunbc_runner_privileged_binaries() -> ActionsRunnerPrivilegedBinaries {
-  ActionsRunnerPrivilegedBinaries {
-    install_path: ci_runner_sudo_binary_path(b: SudoInstall),
-    remove_path: ci_runner_sudo_binary_path(b: SudoRm),
+// THE COMMANDS THE SCRIPT RUNS ARE PROJECTED FROM THE SAME OPERATION ROW THE SUDOERS GRANT IS.
+// This function is the seam: gunbc.executor_privileged_operation owns the operation, and both the
+// executed shell word-vector and the authorizing sudoers match are DERIVED from its argv. Before
+// this, extdeps rebuilt the argv from two binary paths while the roster granted the binary alone,
+// so the script could name a command the principal was not authorized to run -- measured on srv3,
+// an add-only apply refused at the first sudo with zero slots mutated.
+fn gunbc_runner_slot_privileged_commands(
+  slot_dir: NonEmptyStr,
+  job_user: NonEmptyStr,
+) -> ActionsRunnerSlotPrivilegedCommands {
+  ActionsRunnerSlotPrivilegedCommands {
+    remove_command: executor_privileged_operation_shell_command(
+      op: RemoveDirectoryTree { path: slot_dir },
+    ),
+    install_command: executor_privileged_operation_shell_command(
+      op: EnsureOwnedDirectory {
+        path: slot_dir,
+        owner: job_user,
+        group: job_user,
+        mode: executor_managed_directory_mode,
+      },
+    ),
   }
 }
 
@@ -221,8 +247,22 @@ fn runner_slot_provision_plan(
     host_label: deploy.host_label,
     membership: membership,
     base_dir_script: actions_runner_base_dir_ensure_script(
-      runner_user: deploy.runner_user,
-      privileged: gunbc_runner_privileged_binaries(),
+      base_install_command: executor_privileged_operation_shell_command(
+        op: EnsureOwnedDirectory {
+          path: actions_runner_base_dir as NonEmptyStr,
+          owner: deploy.runner_user,
+          group: deploy.runner_user,
+          mode: executor_managed_directory_mode,
+        },
+      ),
+      cache_install_command: executor_privileged_operation_shell_command(
+        op: EnsureOwnedDirectory {
+          path: actions_runner_cache_dir as NonEmptyStr,
+          owner: deploy.runner_user,
+          group: deploy.runner_user,
+          mode: executor_managed_directory_mode,
+        },
+      ),
     ),
     upsert_extract_scripts: flat_map(membership.actions, a =>
       match a {
@@ -230,8 +270,10 @@ fn runner_slot_provision_plan(
           [actions_runner_slot_extract_script(
             artifact: artifact,
             slot_dir: m.slot_dir,
-            job_user: deploy.job_user,
-            privileged: gunbc_runner_privileged_binaries(),
+            privileged: gunbc_runner_slot_privileged_commands(
+              slot_dir: m.slot_dir,
+              job_user: deploy.job_user,
+            ),
           )]
         MemberChanged { at: _, from: _, to: _ } => []
         MemberRemoved { at: _, from: _ } => []

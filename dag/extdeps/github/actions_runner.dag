@@ -161,16 +161,15 @@ data actions_runner_slot_extract_script_scaffold: Disposition = Scaffold {
 // policy, so the shape could not be reused by a caller with a different one. Passing the paths in
 // keeps the dependency pointing the way it already does -- gunbc consumes extdeps, chooses the
 // realization, and remains the single place that answers what may run as root.
-type ActionsRunnerPrivilegedBinaries {
-  install_path: NonEmptyStr
-  remove_path: NonEmptyStr
+type ActionsRunnerSlotPrivilegedCommands {
+  remove_command: String
+  install_command: String
 }
 
 fn actions_runner_slot_extract_script(
   artifact: ActionsRunnerBinaryArtifact,
   slot_dir: NonEmptyStr,
-  job_user: NonEmptyStr,
-  privileged: ActionsRunnerPrivilegedBinaries,
+  privileged: ActionsRunnerSlotPrivilegedCommands,
 ) -> String {
   let url = actions_runner_download_url(artifact: artifact)
   let digest = actions_runner_release_digest(artifact: artifact)
@@ -179,18 +178,8 @@ fn actions_runner_slot_extract_script(
     "set -e",
     join(["curl -fsSL '", url, "' -o /tmp/actions-runner.tar.gz"], ""),
     digest_shell_verify_line(digest: digest, file_path: "/tmp/actions-runner.tar.gz"),
-    join(["sudo ", privileged.remove_path as String, " -rf '", slot_dir as String, "'"], ""),
-    join([
-      "sudo ",
-      privileged.install_path as String,
-      " -d -m 755 -o ",
-      job_user as String,
-      " -g ",
-      job_user as String,
-      " '",
-      slot_dir as String,
-      "'",
-    ], ""),
+    privileged.remove_command,
+    privileged.install_command,
     join(["tar xzf /tmp/actions-runner.tar.gz -C '", slot_dir as String, "'"], ""),
     "rm -f /tmp/actions-runner.tar.gz",
     "",
@@ -207,13 +196,13 @@ data actions_runner_base_dir_ensure_script_scaffold: Disposition = Scaffold {
 }
 
 fn actions_runner_base_dir_ensure_script(
-  runner_user: NonEmptyStr,
-  privileged: ActionsRunnerPrivilegedBinaries,
+  base_install_command: String,
+  cache_install_command: String,
 ) -> String {
   join([
     "set -e",
-    join(["sudo ", privileged.install_path as String, " -d -m 755 -o ", runner_user as String, " -g ", runner_user as String, " ", actions_runner_base_dir], ""),
-    join(["sudo ", privileged.install_path as String, " -d -m 755 -o ", runner_user as String, " -g ", runner_user as String, " ", actions_runner_cache_dir], ""),
+    base_install_command,
+    cache_install_command,
     "",
   ], "\n")
 }

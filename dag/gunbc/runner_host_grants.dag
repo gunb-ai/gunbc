@@ -1,0 +1,76 @@
+module gunbc.runner_host_grants
+
+// THE HOST'S GRANT POPULATION, DERIVED FROM ITS OWN DEPLOY ROW. This is a separate module from
+// gunbc.executor_privileged_operation on purpose, and the reason is structural rather than tidy:
+// the operation authority is consumed by gunbc.runner_slot_provision (which projects its scripts
+// from the same argv), so an operation module that also read the slot ROSTER would close an import
+// cycle -- and acyclicity is the one structural law the import graph has (DESIGN §3). Operations
+// know nothing about hosts; this module joins the two.
+
+import std.types { String, NonEmptyStr, List }
+import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
+import gunbc.executor_privileged_operation {
+  ExecutorPrivilegedOperation,
+  EnsureOwnedDirectory,
+  SystemdDaemonReload,
+  executor_managed_directory_mode,
+  executor_privileged_operations_sudoers_body,
+  runner_slot_privileged_operations,
+}
+import gunbc.runner_host_deploy { RunnerHostDeploy }
+import gunbc.runner_slot_provision { desired_runner_slot_members }
+
+// THE MANAGED STATE DIRECTORY, DECLARED ONCE. It is currently spelled THREE times in
+// gunbc.fleet_converge_plan and named nowhere: once as a bare literal in the lease guard's argv, and
+// twice more as the leading segment of fleet_converge_generation_store_path and
+// fleet_converge_generation_lock_path. The grant below has to name the same directory, which would
+// have made a fourth. §3 RESIDUAL, with a trigger rather than only prose: this row is the authority,
+// and it dissolves when fleet_converge_plan derives all three of its spellings from it instead of
+// re-typing the path. Until then the drift is real -- moving the state directory today requires
+// finding three unrelated string sites, and missing one produces a lease that guards a directory
+// nothing else uses.
+data gunbc_fleet_converge_state_dir: NonEmptyStr = "/var/lib/gunbc/fleet-converge" as NonEmptyStr
+
+// THE HOST'S REQUIRED PRIVILEGED POPULATION, DERIVED FROM ITS OWN DEPLOY ROW. Nothing here is
+// srv-specific: a host's slot roster, job user and runner user decide its grants, so adding a slot
+// or retargeting an account changes the authorization with no second edit. This is the function the
+// emitted sudoers artifact is rendered from.
+fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  let job = deploy.job_user
+  let slot_dirs = map(desired_runner_slot_members(deploy: deploy), m => m.slot_dir)
+  runner_slot_privileged_operations(slot_dirs: slot_dirs, slot_owner: job)
+    + [
+      EnsureOwnedDirectory {
+        path: gunbc_fleet_converge_state_dir,
+        owner: job,
+        group: job,
+        mode: executor_managed_directory_mode,
+      },
+      EnsureOwnedDirectory {
+        path: actions_runner_base_dir as NonEmptyStr,
+        owner: deploy.runner_user,
+        group: deploy.runner_user,
+        mode: executor_managed_directory_mode,
+      },
+      EnsureOwnedDirectory {
+        path: actions_runner_cache_dir as NonEmptyStr,
+        owner: deploy.runner_user,
+        group: deploy.runner_user,
+        mode: executor_managed_directory_mode,
+      },
+      SystemdDaemonReload
+    ]
+}
+
+data runner_host_sudoers_header: String = "# GENERATED from dag/gunbc/executor_privileged_operation.dag runner_host_sudoers_content — do not hand-edit\n"
+
+fn runner_host_sudoers_content(deploy: RunnerHostDeploy) -> String {
+  join([
+    runner_host_sudoers_header,
+    executor_privileged_operations_sudoers_body(
+      grantee: deploy.job_user,
+      ops: runner_host_privileged_operations(deploy: deploy),
+    )
+  ], "")
+}
+
