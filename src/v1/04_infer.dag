@@ -4129,12 +4129,17 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
         } else if !callee_is_body_binding && func_name == "empty_map" {
           let bare_m = bare_map_node()
+          // Reaching this branch is the keyed-container primitive proof. empty_map is
+          // intentionally absent from builtin_function_registry because its return type
+          // comes from the expected Map shape, so the generic signature lookup cannot be
+          // used as a second target resolver here.
+          let empty_map_call_semantics = Present { value: PlainCallSemantics { target: RuntimePrimitiveCall { primitive_name: "empty_map" } } }
           match expected {
             Present { value: exp } =>
               if node_is_keyed_collection(n: exp, source_indices: scope.type_env.source_indices) {
                 InferResult {
                   typed: make_named_expr_node(
-                    name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                    name: func_name, expr_data: ExprCall { call_semantics: empty_map_call_semantics, descent_evidence: none },
                     children: typed_arg_nodes,
                     inferred: Present { value: Resolved { node: exp } },
                     span: span,
@@ -4148,7 +4153,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Present { value: map_t } =>
                     InferResult {
                       typed: make_named_expr_node(
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: empty_map_call_semantics, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: Resolved { node: map_t } },
                         span: span,
@@ -4159,7 +4164,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   Absent =>
                     InferResult {
                       typed: make_named_expr_node(
-                        name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                        name: func_name, expr_data: ExprCall { call_semantics: empty_map_call_semantics, descent_evidence: none },
                         children: typed_arg_nodes,
                         inferred: Present { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
                         span: span,
@@ -4174,7 +4179,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Present { value: map_t } =>
                   InferResult {
                     typed: make_named_expr_node(
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: empty_map_call_semantics, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: Resolved { node: map_t } },
                       span: span,
@@ -4185,7 +4190,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Absent =>
                   InferResult {
                     typed: make_named_expr_node(
-                      name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: func_name, sig_lookup: call_sig_lookup) } }, descent_evidence: none },
+                      name: func_name, expr_data: ExprCall { call_semantics: empty_map_call_semantics, descent_evidence: none },
                       children: typed_arg_nodes,
                       inferred: Present { value: CompilerError { message: "empty_map(): Map kernel container profile missing (compiler misconfigured)", span: span } },
                       span: span,
