@@ -11,7 +11,7 @@ import product.fabric.demand {
   UnknownDemand, DemandPrincipalMismatch, DuplicateDemand,
   ReplacementAlreadyRegistered, SupersedeCrossesPrincipal, ReplacementWorkMismatch,
   DemandRefusal, SatisfactionDirective, CommandAttestation,
-  AttestationDoesNotCoverPrincipal,
+  attest_command_principal, AttestationDoesNotCoverPrincipal,
   TerminalReceiptAvailability, TerminalReceiptPresent, NoTerminalReceipt,
   acting_principal,
   SatisfiedByTerminalReceipt, AttachToExistingExecution, RequireNewAttempt, AwaitAdmission,
@@ -224,8 +224,12 @@ fn both_demands() -> List<Demand<NonEmptyStr>> {
 // existing test below still exercises the population and execution logic rather
 // than the attestation gate. The gate has its own tests, where the attestation
 // and the command deliberately disagree.
+// The witness reaches an attestation through the mint, not a record literal,
+// because a record literal is exactly what the carrier no longer admits. That
+// is not a concession to the wall - it is the whole population of routes to a
+// CommandAttestation, which is what makes the wall worth having.
 fn attesting(principal: NonEmptyStr) -> CommandAttestation<NonEmptyStr> {
-  CommandAttestation { principal: principal, evidence: "binding-auth-1" }
+  attest_command_principal(principal: principal, evidence: "binding-auth-1")
 }
 
 fn decide_as(

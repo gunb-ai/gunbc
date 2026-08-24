@@ -164,14 +164,53 @@ fn demand_maximum_buy_order<P>(d: Demand<P>) -> MoneyAmountMicro {
 // requester's demand and every check passed, because the pair genuinely
 // matched. Possession of an identity was authorization to mutate it.
 //
-// The attestation is what the caller claims to have authenticated, carried with
-// the receipt that established it. The core refuses any command acting outside
-// it. What remains outside the modeled guarantee is whether the attestation is
-// itself true, which is the binding's obligation at its own boundary and is
-// declared here rather than silently assumed.
-type CommandAttestation<P> {
+// THE COMPARISON ALONE DOES NOT CLOSE THAT, and saying so is the point of this
+// note. A first repair added the attestation record and compared its principal
+// against the principal the command acts as. As a plain record with public
+// fields, anyone holding the victim's FabricIdentity could equally write
+// CommandAttestation { principal: victim, evidence: anything } and the
+// comparison passed - it tested the attestation against itself. A richer type
+// name is not safety until construction enforces the distinction.
+//
+// So the carrier is sole_constructor: the record has no cross-module literal,
+// and the only route to one is attest_command_principal below. That is
+// CONFINEMENT, not authentication, and the two are different guarantees.
+//
+// THE CEILING, DECLARED RATHER THAN LEFT TO BE ASSUMED. sole_constructor
+// confines WHO MAY CONSTRUCT and establishes nothing about WHAT a sanctioned
+// caller's predicate proves. So the class splits, and only one half moved:
+//
+//   forgery by an arbitrary caller - any module writing the record literal
+//   directly - is structurally guaranteed against, because the construction
+//   has no spelling outside this module;
+//
+//   a binding that mints an attestation it did not actually verify is NOT
+//   closed and cannot be closed here. Whether a provider observation really
+//   authenticated a principal is external reality, observed and admitted at
+//   the binding's own boundary. It remains a boundary obligation on the
+//   binding, and the core is honest about receiving it rather than deriving
+//   it.
+//
+// NEXT-RUNG TRIGGER: the mint carries no admit_callers today because no
+// provider binding module exists yet to name, and a wall whose only admitted
+// caller does not exist refuses everything including its own evidence. When the
+// first binding lands, admit_callers narrows the mint to that binding's entry
+// points, and the residual above shrinks from "any caller may vouch" to "a
+// named binding may vouch".
+type CommandAttestation<P> sole_constructor {
   principal: P
   evidence: ObservationReceiptRef
+}
+
+// The evidence receipt is a required argument rather than an optional field, so
+// an attestation that names no observation has no spelling either. The core
+// still never interprets it; what the requirement buys is that the binding
+// cannot vouch anonymously.
+fn attest_command_principal<P>(
+  principal: P,
+  evidence: ObservationReceiptRef,
+) -> CommandAttestation<P> {
+  CommandAttestation { principal: principal, evidence: evidence }
 }
 
 type DemandRefusal<P>
