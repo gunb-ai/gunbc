@@ -1,6 +1,6 @@
 module v1.tests.claim.resolved_call_emission_identity_internal_witness_test
 
-import v1.std.core { SourceDeclarationCall, error_type }
+import v1.std.core { SourceDeclarationCall, SubValueRelation, error_type }
 import v1.compiler.infer {
   resolved_call_target_from_declaration_lookup,
   selective_func_env_view,

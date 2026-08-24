@@ -16,6 +16,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::error_type;
 pub use crate::v1_std_core::CallTargetIdentity;
 use crate::v1_std_core::CallTargetIdentity::SourceDeclarationCall;
+pub use crate::v1_std_core::SubValueRelation;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
