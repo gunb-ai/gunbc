@@ -21,10 +21,7 @@ pub fn probe_source() -> Rc<SourceFile> {
 
 pub fn probe_emitted() -> String {
     {
-        let result = crate::v1_compiler_compile::compile_sources(
-            Rc::new(vec![probe_source()]),
-            RenderTarget::Rust,
-        );
+        let result = compile_sources(Rc::new(vec![probe_source()]), RenderTarget::Rust);
         Rc::new({
             let mut __result = Vec::new();
             for f in result.files.clone().iter().cloned() {
@@ -46,10 +43,7 @@ pub fn probe_emits_fn_add() -> bool {
 
 pub fn probe_clean_source_has_no_diagnostics() -> bool {
     {
-        let result = crate::v1_compiler_compile::compile_sources(
-            Rc::new(vec![probe_source()]),
-            RenderTarget::Rust,
-        );
+        let result = compile_sources(Rc::new(vec![probe_source()]), RenderTarget::Rust);
         ((result.diagnostics.clone().len() as i64) == 0)
     }
 }

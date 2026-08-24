@@ -76,14 +76,8 @@ pub fn frontier_row_well_formed(row: Rc<FrontierRow>) -> bool {
     ((!(row.reason.clone() == "".to_string())
         && match (*row.dissolution.clone()).clone() {
             DissolutionCondition::BoundDissolution { trigger: t, .. } => {
-                (!(crate::std_dissolution::dissolution_trigger_ref(t.clone())
-                    .module_path
-                    .clone()
-                    == "".to_string())
-                    && !(crate::std_dissolution::dissolution_trigger_ref(t.clone())
-                        .decl_name
-                        .clone()
-                        == "".to_string()))
+                (!(dissolution_trigger_ref(t.clone()).module_path.clone() == "".to_string())
+                    && !(dissolution_trigger_ref(t.clone()).decl_name.clone() == "".to_string()))
             }
             DissolutionCondition::UnboundDissolution { description: d, .. } => {
                 !(d.clone() == "".to_string())
@@ -113,9 +107,7 @@ pub fn frontier_subject_eq(a: Rc<FrontierSubject>, b: Rc<FrontierSubject>) -> bo
 pub fn frontier_subject_key(subject: Rc<FrontierSubject>) -> String {
     match (*subject.clone()).clone() {
         FrontierSubject::PathSubject { path: p, .. } => p.clone(),
-        FrontierSubject::DeclSubject { ref_: r, .. } => {
-            crate::std_decl_ref::declaration_ref_display_key(r.clone())
-        }
+        FrontierSubject::DeclSubject { ref_: r, .. } => declaration_ref_display_key(r.clone()),
     }
 }
 
@@ -138,7 +130,7 @@ pub fn frontier_rows_to_keyed_rows(
 pub fn frontier_rows_keyed_roster_build(
     rows: Rc<Vec<Rc<FrontierRow>>>,
 ) -> Rc<KeyedRosterBuild<Rc<FrontierSubject>, Rc<FrontierRow>>> {
-    crate::std_keyed_roster::keyed_roster_build(
+    keyed_roster_build(
         frontier_rows_to_keyed_rows(rows.clone()),
         frontier_subject_eq,
     )
@@ -187,27 +179,25 @@ pub fn fold_frontier_expiry(
             pending_count: 0,
             fired_still_present_count: 0,
         },
-        |acc: FrontierExpiryReport, row: Rc<FrontierRow>| {
-            match crate::std_dissolution::dissolution_status(
-                row.dissolution.clone(),
-                present_decls.clone(),
-            ) {
-                DissolutionStatus::DissolutionUnbound => FrontierExpiryReport {
-                    unbound_count: (acc.unbound_count.clone() + 1),
-                    pending_count: acc.pending_count.clone(),
-                    fired_still_present_count: acc.fired_still_present_count.clone(),
-                },
-                DissolutionStatus::DissolutionPending => FrontierExpiryReport {
-                    unbound_count: acc.unbound_count.clone(),
-                    pending_count: (acc.pending_count.clone() + 1),
-                    fired_still_present_count: acc.fired_still_present_count.clone(),
-                },
-                DissolutionStatus::DissolutionFired => FrontierExpiryReport {
-                    unbound_count: acc.unbound_count.clone(),
-                    pending_count: acc.pending_count.clone(),
-                    fired_still_present_count: (acc.fired_still_present_count.clone() + 1),
-                },
-            }
+        |acc: FrontierExpiryReport, row: Rc<FrontierRow>| match dissolution_status(
+            row.dissolution.clone(),
+            present_decls.clone(),
+        ) {
+            DissolutionStatus::DissolutionUnbound => FrontierExpiryReport {
+                unbound_count: (acc.unbound_count.clone() + 1),
+                pending_count: acc.pending_count.clone(),
+                fired_still_present_count: acc.fired_still_present_count.clone(),
+            },
+            DissolutionStatus::DissolutionPending => FrontierExpiryReport {
+                unbound_count: acc.unbound_count.clone(),
+                pending_count: (acc.pending_count.clone() + 1),
+                fired_still_present_count: acc.fired_still_present_count.clone(),
+            },
+            DissolutionStatus::DissolutionFired => FrontierExpiryReport {
+                unbound_count: acc.unbound_count.clone(),
+                pending_count: acc.pending_count.clone(),
+                fired_still_present_count: (acc.fired_still_present_count.clone() + 1),
+            },
         },
     )
 }

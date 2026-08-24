@@ -48,15 +48,11 @@ pub fn check_bare_containers(
             ExprData::NoExprData => false,
             _ => true,
         };
-        let nname = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        let nname = authored_name_at(source_indices.clone(), n.clone());
         let self_diags = if is_expr.clone() {
             Rc::new(vec![])
         } else {
-            match (*crate::v1_std_core::authored_container_spelling_verdict(
-                n.clone(),
-                source_indices.clone(),
-            ))
-            .clone()
+            match (*authored_container_spelling_verdict(n.clone(), source_indices.clone())).clone()
             {
                 ContainerSpellingVerdict::ContainerSpellingDeclared {
                     arity: expected, ..
@@ -66,7 +62,7 @@ pub fn check_bare_containers(
                         && (n.connective.clone() == Connective::NoConnective))
                         && !has_structure.clone())
                     {
-                        Rc::new(vec![crate::v1_std_core::make_error_node(
+                        Rc::new(vec![make_error_node(
                             Rc::new(CompilerDiagnostic::ArityMismatch {
                                 name: nname.clone(),
                                 expected: expected.clone(),
@@ -82,7 +78,7 @@ pub fn check_bare_containers(
                 ContainerSpellingVerdict::ContainerSpellingUnknown {
                     container_leaf: leaf,
                     ..
-                } => Rc::new(vec![crate::v1_std_core::make_error_node(
+                } => Rc::new(vec![make_error_node(
                     Rc::new(CompilerDiagnostic::ContainerSpellingUnrecognized {
                         name: nname.clone(),
                         container_leaf: leaf.clone(),
@@ -207,17 +203,14 @@ pub fn normalize_module_diagnostics(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     {
-        let items = crate::v1_std_core::module_items(m.module.clone());
+        let items = module_items(m.module.clone());
         Rc::new({
             let mut __result = Vec::new();
             for item in items.iter().cloned() {
                 __result.extend(
                     (*check_bare_containers(
                         item.clone(),
-                        crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            m.module.clone(),
-                        ),
+                        authored_name_at(source_indices.clone(), m.module.clone()),
                         source_indices.clone(),
                     ))
                     .iter()

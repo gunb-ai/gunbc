@@ -330,7 +330,7 @@ pub fn coerce_primitive_type_dotted_fallback_note() -> String {
 pub fn coerce_primitive_type(target: RenderTarget, dag_name: String, decl_file: String) -> String {
     match lookup_checkpoint(target.clone(), dag_name.clone(), decl_file.clone()) {
         Some(cp) => cp.target_type.clone(),
-        None => crate::v1_std_core::qualified_last_segment(dag_name.clone()),
+        None => qualified_last_segment(dag_name.clone()),
     }
 }
 
@@ -366,7 +366,7 @@ pub fn lookup_inhabitant(target: RenderTarget, algebra: String) -> Option<Rc<Inh
 }
 
 pub fn coerce_container_template(target: RenderTarget, container_name: String) -> Option<String> {
-    match crate::std_types::container_template_algebra(container_name.clone()) {
+    match container_template_algebra(container_name.clone()) {
         Some(algebra) => match lookup_inhabitant(target.clone(), algebra.clone()) {
             Some(inh) => Some(inh.template.clone()),
             None => None,
@@ -457,7 +457,7 @@ pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
 
 pub fn inhabitant_test_names() -> Rc<Vec<String>> {
     v1_rt::concat(
-        crate::std_types::canonical_container_names(),
+        canonical_container_names(),
         Rc::new(vec!["PointwisePower".to_string()]),
     )
 }
