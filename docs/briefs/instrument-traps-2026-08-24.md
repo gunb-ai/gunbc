@@ -2076,3 +2076,41 @@ name both endpoints before dividing.** An elapsed time computed from a single fi
 against an unstated assumption about what that field marks — which is the positional-citation defect
 (§3) transposed onto time: a number that decays without anyone touching it, because what it measures
 was never written down beside it.
+
+### The coda: the figure was doing the misleading, and the document owns it
+
+The run finished green while the retraction above was still being written — 47 minutes in the
+three-phase step, every step green, the fourteen-hour gap closed at 17:39Z. The 44-minute reading was
+the same step three minutes from finishing. So the retraction was right on the merits and not merely
+procedurally, which is a pleasant outcome and not the interesting one.
+
+The interesting one is what the sibling session produced next: the wall-clock of the last fourteen
+main runs.
+
+    146  84 143 148 147 120 108 145 231 219 216 187 165 158     (minutes)
+
+Median ~146. Range 84–231. **All fourteen `conclusion=success`.** There is no overrun anywhere in that
+window, and 142 — the number that started this whole exchange — is *four minutes under the median*.
+
+So the reading was not merely wrong, it was wrong in the direction of an alarm, against a population
+where the alarm can never be right. And the mechanism is not carelessness on the reader's part:
+
+**DESIGN.md's ~30 minute figure describes the floor fold alone.** Not the queue. Not the toolchain
+build. Not the parse sweep or the regen phase, both of which were consolidated into the same step on
+2026-08-20 and 2026-08-23. The figure was accurate when written, remains accurate about its own
+subject, and sits in a document where the natural comparand — the number a reader can actually obtain
+— is the run's wall-clock. **Anyone dividing one by the other concludes a 3–5x overrun, every single
+time, from a correct figure and a correct measurement.**
+
+That is a sharper version of this document's thesis than any of the specimens above it. Earlier
+entries describe a reader asking the wrong field. Here the *document* offers a figure whose subject is
+narrower than the only question its readers can cheaply ask, and does not say so. The trap is
+published, not stumbled into — and the same clause has been re-pointed at fresh run counters twice in
+three days, which the Building-&-checks entry itself flags as evidence that transcribed run figures
+are positional citations wearing a number's clothes.
+
+The repair is not a bigger number. It is naming the subject beside it: *the fold takes ~30 minutes;
+a green main run's wall-clock has run 84–231 minutes, median ~146, of which the majority is
+frequently runner queue*. Two numbers, each with its denominator attached, so that neither can be
+divided by the other. **A figure without its subject is not a measurement, it is a number that will
+eventually be misused by someone reading carefully.**
