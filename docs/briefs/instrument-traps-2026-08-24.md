@@ -98,9 +98,22 @@ that produced no output, and appeared absent from a subsequent read, had in fact
 token counter decremented later, which was the only true signal available and was initially
 dismissed as stale.
 
+**Confirmed structurally, not inferentially.** The first account of this reasoned from the
+operator quoting back a commit sha only one message had supplied — sound, but it establishes
+that *one* send landed. A second session then checked the endpoint itself: across three
+separate captures of its own thread (3, 4 and 6 turns), **zero of its four posted messages
+appeared in any `turns` array**, including one carrying `sent:true` with a counter decrement.
+`role` is `None` on every entry, so there is no field to filter on. The array simply does not
+contain your side.
+
 Correct readings, in order of reliability: the **token counter decrementing**; the other
 side **responding to your content**; the returned turns — which cannot answer the question at
-all. The action that survives every reading is the same: **never re-send on a missing
+all.
+
+**The third is not weak, it is INCAPABLE, and the distinction decides behaviour.** A weak
+signal invites more sampling; an incapable one must be abandoned. Six retries is what you do
+to a weak signal — and six retries is exactly what was spent here before anyone asked whether
+the instrument could answer at all. The action that survives every reading is the same: **never re-send on a missing
 receipt**, and under the asynchronous-landing reading that rule gets *stronger*, because a
 missing receipt now carries no information whatsoever about whether the send will land.
 
