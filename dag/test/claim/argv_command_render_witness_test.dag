@@ -1,18 +1,35 @@
 module test.claim.argv_command_render
 
 import std.logic { Bool }
-import extdeps.exec.command { ArgvCommand, shell_command_render }
+import extdeps.exec.command { shell_command_render }
+import extdeps.storage.nbd { nbd_client_disconnect_command, nbd_client_program }
+import extdeps.tools.gnu_coreutils { cat_command, printf_command }
 
+// THESE WITNESSES NOW BUILD THEIR SUBJECT THROUGH PRODUCTION BUILDERS, and that is a consequence of
+// the wall rather than a preference about test style: extdeps.exec.command ArgvCommand is
+// sole_constructor, so a witness cannot hand-author one, exactly as extdeps.shell.exec's
+// TransportScript admits no test declaration. What is asserted is unchanged -- rendering quotes each
+// argv word, and an embedded apostrophe closes and reopens the quoting context rather than
+// terminating it.
+//
+// THE EXPECTATIONS ARE DERIVED, NOT TRANSCRIBED, for the first one: the program's path is a fact of
+// extdeps.storage.nbd, and a golden string repeating it would go red on a path correction that
+// changed nothing about quoting. What this file is a witness FOR is the quoting, so the quoting is
+// what it states literally.
 test fn shell_quote_plain_args_single_quoted() -> Bool {
-  shell_command_render(command: ArgvCommand { argv: ["nbd-client", "-N", "srv4iso"] }) == "'nbd-client' '-N' 'srv4iso'"
+  shell_command_render(command: nbd_client_disconnect_command(device: "/dev/nbd0"))
+    == join(["'", nbd_client_program as String, "' '-d' '/dev/nbd0'"], "")
 }
 
 test fn shell_quote_escapes_embedded_apostrophe() -> Bool {
-  shell_command_render(command: ArgvCommand { argv: ["echo", "it's"] }) == "'echo' 'it'\\''s'"
+  string_contains(
+    s: shell_command_render(command: cat_command(path: "it's")),
+    pattern: "'it'\\''s'",
+  )
 }
 
 test fn shell_quote_apostrophe_render_reopens_single_quote_context() -> Bool {
-  let rendered = shell_command_render(command: ArgvCommand { argv: ["printf", "o'brien"] })
+  let rendered = shell_command_render(command: printf_command(format: "%s", values: ["o'brien"]))
   string_contains(s: rendered, pattern: "'\\''")
     && !string_contains(s: rendered, pattern: "'o'brien'")
 }

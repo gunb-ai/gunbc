@@ -288,7 +288,7 @@ type ItemPrefixResult {
   err: ErrorNode?
 }
 
-type ServiceConfig { endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node? }
+type ServiceConfig { endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node? }
 type ConfigResult { config: ServiceConfig, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 
 type BindingPower { left: Int, right: Int }
@@ -1877,7 +1877,7 @@ fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
     match eat(tokens: tokens, expected: ExpectEq) {
       EatConsumed { token: _, tokens: __ec } =>
         let tokens = skip_newlines(tokens: __ec)
-        parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params)
+        parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params, is_sole_constructor: is_sole_constructor)
       EatUnchanged { tokens: __eu } =>
         let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
         ItemResult { item: item, tokens: __eu, ctx: ctx, err: none }
@@ -1911,7 +1911,7 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
     match eat(tokens: tokens, expected: ExpectEq) {
       EatConsumed { token: _, tokens: __ec } =>
         let tokens = skip_newlines(tokens: __ec)
-        parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params)
+        parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params, is_sole_constructor: is_sole_constructor)
       EatUnchanged { tokens: __eu } =>
         let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
         ItemResult { item: item, tokens: __eu, ctx: ctx, err: none }
@@ -1919,7 +1919,65 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
   }
 }
 
-fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan, type_params: List<Node>) -> ItemResult {
+// `type X = { a: A, b: B }` and `type X { a: A, b: B }` declare the same thing -- a named record
+// -- and before this function they parsed into two different item shapes: the brace form hoists
+// the fields onto the declaration (connective Conj, children = fields), the `=` form leaves them
+// inside an ANONYMOUS record type-expression under `inferred`. Every downstream consumer that
+// asks "is this a record named X" reads the first shape; the ones that read the second see an
+// unnamed 2-child Conj, which is exactly the shape a positional pair has, so the Rust emitter
+// rendered `type TranslateFoldAcc = (Rc<Node>, Rc<Node>)` while the SAME emitter kept writing
+// `TranslateFoldAcc { source: .., rebuilt: .. }` at construction and `.source` at every read --
+// accepted with 0 diagnostics, refused by rustc (7 blocks on the 03_ingest board, E0071/E0609).
+// The fork is a second representation of one concept, so it is closed here at the parse boundary
+// rather than compensated for in each target's renderer: after this, no stage can observe the
+// difference between the two spellings, and no emitter needs to know the `=` form exists.
+// A `where`-refined right-hand side is NOT a record: try_where_clause wraps its base in a Conj
+// carrying a type_annotation, which this predicate excludes. Nothing else in the grammar reaches
+// an alias right-hand side as an ANONYMOUS Conj -- a named or applied type is NoConnective, a
+// callable is Arrow with an ident_span, and `parse_field` requires a name before its colon -- so
+// the predicate cannot mistake a positional tuple for a record because the grammar never produces
+// one here. The FIELD COUNT is deliberately not part of the test: `type X = { }` and `type X { }`
+// must be the same empty record declaration for the same reason the two-field forms must, and an
+// exception at zero would leave the fork alive in exactly the corner a reader stops checking.
+//
+// ONE MODIFIER IS STILL DROPPED ON THE `=` FORM, AND IT IS NOT THIS CHANGE'S TO CLOSE.
+// `sole_constructor` is threaded into the record arm below, so both spellings of a record
+// declaration carry the seal. On every OTHER `=` right-hand side -- a leaf alias, a coproduct --
+// parse_type_body_after_eq still discards it, exactly as it did before this change. That is one
+// pre-existing class, not two, and it is left whole rather than half-refused: the coproduct arm
+// has a live consumer (test.fixture.sole_constructor_variant_probe.definer declares
+// `type SealedChoice sole_constructor = SealedA { .. } | SealedB { .. }`, whose probe measures the
+// variant-construction hole DESIGN section 4b records as entirely unwired), so refusing there would
+// break the fixture that exists to measure it, while wiring it is that audit's work and would
+// change what its probe reports. Refusing ONLY the leaf-alias arm -- the one with zero authored
+// instances in dag/ or src/v2/ -- would make one construct refuse in the harmless arm and stay
+// silent in the arm that matters, which is a worse rule than the one declared here.
+//
+// NEXT-RUNG TRIGGER (DESIGN section 4b(2)): this class CAN CLIMB AFTER ONE GROUNDING -- it is not
+// a permanent ceiling and it is not merely unbuilt. It climbs when the variant-construction audit
+// wires coproduct construction through sole_constructor_construction_diags (the hole DESIGN
+// section 4b records as entirely unwired, measured by
+// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses). At that
+// point the coproduct arm has somewhere for the flag to GO, refusing is no longer the only
+// alternative to silence, and the whole `=` family -- coproduct and leaf alias together -- is
+// threaded or refused in one motion by the lane that owns the wall. Until then the drop is
+// declared here rather than half-closed.
+fn alias_rhs_is_anonymous_record(te: Node) -> Bool {
+  te.connective == Conj
+    && te.ident_span == none
+    && te.type_annotation == none
+}
+
+fn type_item_from_alias_rhs(name: String, name_span: SourceSpan, start_span: SourceSpan, type_params: List<Node>, te: Node, is_sole_constructor: Bool) -> Node {
+  if alias_rhs_is_anonymous_record(te: te) {
+    let sole_ctor_prop = if is_sole_constructor { [make_field_init_node(name: "sole_constructor", value: make_expr_node(expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: start_span), span: start_span, name_span: no_span())] } else { [] }
+    Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: te.children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole_ctor_prop, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  } else {
+    Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: te } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  }
+}
+
+fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String, name_span: SourceSpan, start_span: SourceSpan, type_params: List<Node>, is_sole_constructor: Bool) -> ItemResult {
   let dummy = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, connective: NoConnective, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 
   match eat(tokens: tokens, expected: ExpectPipe) {
@@ -1960,7 +2018,7 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
       if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let wr = try_where_clause(tokens: r.tokens, ctx: r.ctx, base_te: r.type_expr, start_span: start_span)
       if has_err(err: wr.err) { return ItemResult { item: dummy, tokens: wr.tokens, ctx: wr.ctx, err: wr.err } }
-      let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: wr.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let item = type_item_from_alias_rhs(name: name, name_span: name_span, start_span: start_span, type_params: type_params, te: wr.type_expr, is_sole_constructor: is_sole_constructor)
       ItemResult { item: item, tokens: skip_newlines(tokens: wr.tokens), ctx: wr.ctx, err: none }
     }
   } else {
@@ -1968,7 +2026,7 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
     if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let wr = try_where_clause(tokens: r.tokens, ctx: r.ctx, base_te: r.type_expr, start_span: start_span)
     if has_err(err: wr.err) { return ItemResult { item: dummy, tokens: wr.tokens, ctx: wr.ctx, err: wr.err } }
-    let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: wr.type_expr } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    let item = type_item_from_alias_rhs(name: name, name_span: name_span, start_span: start_span, type_params: type_params, te: wr.type_expr, is_sole_constructor: is_sole_constructor)
     ItemResult { item: item, tokens: skip_newlines(tokens: wr.tokens), ctx: wr.ctx, err: none }
   }
   }
@@ -2774,7 +2832,7 @@ fn parse_service_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: So
 
   let ns_prop = make_field_init_node(name: "namespace_root", value: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: namespace_root } }, children: [], inferred: none, span: start_span), span: start_span, name_span: no_span())
   let svc_props = match r.config {
-    Present { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, auth_source: cfg.auth_source, rate_limit: cfg.rate_limit, retry: cfg.retry)
+    Present { value: cfg } => service_config_properties(endpoint: cfg.endpoint, auth: cfg.auth, auth_input: cfg.auth_input, auth_source: cfg.auth_source, rate_limit: cfg.rate_limit)
     Absent => []
   }
   let item = Node { name: name, span: start_span, ident_span: Present { value: svc_name_span },
@@ -2839,10 +2897,10 @@ fn parse_service_entries(tokens: TokenStream, ctx: ParseContext, config: Service
 }
 
 fn parse_service_config_block(tokens: TokenStream, ctx: ParseContext) -> ConfigResult {
-  parse_config_fields(tokens: tokens, ctx: ctx, endpoint: none, auth: none, auth_input: none, auth_source: none, rate_limit: none, retry: none)
+  parse_config_fields(tokens: tokens, ctx: ctx, endpoint: none, auth: none, auth_input: none, auth_source: none, rate_limit: none)
 }
 
-fn parse_config_fields(tokens: TokenStream, ctx: ParseContext, endpoint: Node?, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node?) -> ConfigResult {
+fn parse_config_fields(tokens: TokenStream, ctx: ParseContext, endpoint: Node?, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?) -> ConfigResult {
   let tokens = skip_newlines(tokens: tokens)
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
     let cfg = ServiceConfig {
@@ -2853,12 +2911,11 @@ fn parse_config_fields(tokens: TokenStream, ctx: ParseContext, endpoint: Node?, 
       auth: auth,
       auth_input: auth_input,
       auth_source: auth_source,
-      rate_limit: rate_limit,
-      retry: retry
+      rate_limit: rate_limit
     }
     ConfigResult { config: cfg, tokens: tokens, ctx: ctx, err: none }
   } else {
-    let dummy_cfg = ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: no_span()), auth: none, auth_input: none, auth_source: none, rate_limit: none, retry: none }
+    let dummy_cfg = ServiceConfig { endpoint: make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: no_span()), auth: none, auth_input: none, auth_source: none, rate_limit: none }
     let r = expect_ident(tokens: tokens)
     if has_err(err: r.err) { return ConfigResult { config: dummy_cfg, tokens: r.tokens, ctx: ctx, err: r.err } }
     let fname = r.name
@@ -2872,13 +2929,12 @@ fn parse_config_fields(tokens: TokenStream, ctx: ParseContext, endpoint: Node?, 
     let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => tokens }
 
     match fname {
-      "endpoint" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: Present { value: r3.expr }, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
-      "auth" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: Present { value: r3.expr }, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
-      "auth_input" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: Present { value: r3.expr }, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
-      "auth_source" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: Present { value: r3.expr }, rate_limit: rate_limit, retry: retry)
-      "rate_limit" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: Present { value: r3.expr }, retry: retry)
-      "retry" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: Present { value: r3.expr })
-      _ => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit, retry: retry)
+      "endpoint" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: Present { value: r3.expr }, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit)
+      "auth" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: Present { value: r3.expr }, auth_input: auth_input, auth_source: auth_source, rate_limit: rate_limit)
+      "auth_input" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: Present { value: r3.expr }, auth_source: auth_source, rate_limit: rate_limit)
+      "auth_source" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: Present { value: r3.expr }, rate_limit: rate_limit)
+      "rate_limit" => parse_config_fields(tokens: tokens, ctx: ctx, endpoint: endpoint, auth: auth, auth_input: auth_input, auth_source: auth_source, rate_limit: Present { value: r3.expr })
+      _ => ConfigResult { config: dummy_cfg, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("service config has no field `", fname, "`; the declared fields are `endpoint`, `auth`, `auth_input`, `auth_source` and `rate_limit`"), span: r.span) } }
     }
   }
 }
@@ -2971,7 +3027,7 @@ fn parse_rest_fields(tokens: TokenStream, ctx: ParseContext, base_url: Node?, me
       let field = make_field_init_node(name: fname, value: r3.expr, span: no_span(), name_span: no_span())
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: concat(headers, [field]))
     } else {
-      parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: headers)
+      TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("transport rest has no field `", fname, "`; the declared fields are `base_url`, `method`, `path`, `query`, `body`, `response_format`, `headers`, `auth_basic` and `tls`"), span: r.span) } }
     }
   }
 }
@@ -3009,11 +3065,7 @@ fn parse_shell_fields(tokens: TokenStream, ctx: ParseContext, argv: List<Node>, 
       let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r3.tokens }
       parse_shell_fields(tokens: tokens, ctx: r3.ctx, argv: argv, stdin: Present { value: r3.expr })
     } else {
-      let r3 = parse_expr(tokens: r2.tokens, ctx: ctx)
-      if has_err(err: r3.err) { return TransportResult { transport: dummy, tokens: r3.tokens, ctx: r3.ctx, err: r3.err } }
-      let e = eat(tokens: r3.tokens, expected: ExpectComma)
-      let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r3.tokens }
-      parse_shell_fields(tokens: tokens, ctx: r3.ctx, argv: argv, stdin: stdin)
+      TransportResult { transport: dummy, tokens: r2.tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("transport shell has no field `", fname, "`; the declared fields are `argv` and `stdin`"), span: r.span) } }
     }
   }
 }
@@ -3027,11 +3079,12 @@ fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?, v
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy = local_transport_node(span: span)
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
-    let bp = match base_path {
-      Present { value: e } => e
-      Absent => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: no_span())
+    match base_path {
+      Present { value: bp } =>
+        TransportResult { transport: file_transport_node(base_path: bp, verb: verb, span: span), tokens: tokens, ctx: ctx, err: none }
+      Absent =>
+        TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: "transport file declares no `path:` field; a file transport must name the path it reads or writes", span: span) } }
     }
-    TransportResult { transport: file_transport_node(base_path: bp, verb: verb, span: span), tokens: tokens, ctx: ctx, err: none }
   } else {
     let r = expect_ident(tokens: tokens)
     if has_err(err: r.err) { return TransportResult { transport: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -3047,7 +3100,7 @@ fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?, v
     } else if fname == "verb" {
       parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: base_path, verb: Present { value: r3.expr })
     } else {
-      parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: base_path, verb: verb)
+      TransportResult { transport: dummy, tokens: tokens, ctx: r3.ctx, err: Present { value: parse_error(msg: concat("transport file has no field `", fname, "`; the declared fields are `path` and `verb`"), span: r.span) } }
     }
   }
 }
@@ -4574,11 +4627,30 @@ fn parse_expr_no_brace(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   parse_expr_bp_no_brace(tokens: tokens, ctx: ctx, min_bp: 0)
 }
 
+// This retries when parse_prefix consumes the brace that the surrounding if/match owns.
+// Simply forbidding record literals in this path would reject valid conditions:
+// `if x == Present { value: y } { ... }` has a legitimate record literal and a distinct branch
+// brace. The retry distinguishes the swallowed-branch case while preserving that condition.
 fn parse_expr_bp_no_brace(tokens: TokenStream, ctx: ParseContext, min_bp: Int) -> ExprResult {
+  let tok = token_stream_first(stream: tokens)
+  let next = token_stream_first(stream: token_stream_advance(stream: tokens, n: 1))
   let r = parse_prefix(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return r }
-  let lhs = r.expr
-  parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: lhs, min_bp: min_bp)
+  let parsed = parse_expr_loop_no_brace(tokens: r.tokens, ctx: r.ctx, lhs: r.expr, min_bp: min_bp)
+  let leading_ident_brace = match tok { Present { value: t } => is_ident_shape(shape: t.shape)  Absent => false } && tok_is_lbrace(tok: next)
+  let stopped_at_infix = match infix_bp(tokens: parsed.tokens) { Present { value: _ } => true  Absent => false }
+  if leading_ident_brace && !has_err(err: parsed.err) && !tok_is_lbrace(tok: token_stream_first(stream: parsed.tokens)) && !stopped_at_infix {
+    let span = token_span(tok: tok)
+    let lhs = make_named_expr_node(name: tok.value.text, expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: span, name_span: span)
+    parse_expr_loop_no_brace(
+      tokens: token_stream_advance(stream: tokens, n: 1),
+      ctx: ctx,
+      lhs: lhs,
+      min_bp: min_bp
+    )
+  } else {
+    parsed
+  }
 }
 
 fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -> ExprResult {
@@ -4719,6 +4791,32 @@ fn parse_match_arm_stmts(tokens: TokenStream, ctx: ParseContext, acc: List<Node>
   }
 }
 
+data qualified_arm_start_note: String = "WHERE AN UNBRACED ARM BODY ENDS IS DECIDED HERE, AND THE ANSWER WAS KEYED ON THE FIRST SEGMENT OF THE NEXT PATTERN. parse_match_arm_stmts consumes statements until looks_like_arm_start says the next tokens open a new arm. That predicate recognised only a bare `_` and an UPPERCASE-start leaf, so a NAMESPACE-QUALIFIED pattern -- whose first token is the lowercase module head, v1 in v1.std.core.ExprStringInterp -- answered false, the body kept consuming, it swallowed the next arm pattern as one more statement, and the parse died on the following FatArrow. The reported span is the ARROW, several lines below the arm that actually ended, which is why four separate reproductions of the surrounding shapes all parsed and the trigger had to be bisected rather than guessed. MINIMAL REPRODUCTION, and every clause is load-bearing: an unbraced arm body containing a `let`, followed by an arm whose pattern is DOTTED. Remove the let and the body is a single expression that never enters the statement loop; make the next pattern `_` or an uppercase leaf and the predicate already answers true. MEASURED: on the namespace-cut branch, where qualifying every pattern turns this from rare into ordinary, exactly one corpus file of 3875 reaches it -- src/v1/05_emit.dag -- and it is invalid under the parser that branch itself carries, surviving only because its built binary predates its own committed mirror. So this is not a cut-branch accommodation: it is a grammar gap that the cut merely made reachable, and it fails LOUDLY at preparation, which is the cheap failure discipline. The scan requires the TERMINAL segment to be uppercase and the arrow to follow the path (or its brace group), so a lowercase dotted expression ending a body is unaffected -- and an expression statement genuinely followed by a FatArrow was never a legal parse."
+
+fn arm_start_after_qualified_path(tokens: TokenStream, offset: Int) -> Bool {
+  if !peek_is_expected_at(tokens: tokens, offset: offset, expected: ExpectDot) {
+    false
+  } else {
+    match token_stream_first(stream: token_stream_advance(stream: tokens, n: offset + 1)) {
+      Present { value: seg } =>
+        if !is_ident_shape(shape: seg.shape) {
+          false
+        } else if is_uppercase_start(name: seg.text) {
+          if peek_is_fat_arrow_at(tokens: tokens, offset: offset + 2) {
+            true
+          } else if peek_is_expected_at(tokens: tokens, offset: offset + 2, expected: ExpectLBrace) {
+            scan_for_fat_arrow_after_braces(remaining: token_stream_advance(stream: tokens, n: offset + 3), depth: 1)
+          } else {
+            arm_start_after_qualified_path(tokens: tokens, offset: offset + 2)
+          }
+        } else {
+          arm_start_after_qualified_path(tokens: tokens, offset: offset + 2)
+        }
+      Absent => false
+    }
+  }
+}
+
 fn looks_like_arm_start(tokens: TokenStream) -> Bool {
   let tok = token_stream_first(stream: tokens)
   let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
@@ -4727,14 +4825,12 @@ fn looks_like_arm_start(tokens: TokenStream) -> Bool {
       let n = tok.value.text
       if n == "_" {
         peek_is_fat_arrow_at(tokens: tokens, offset: 1)
-      } else if is_uppercase_start(name: n) {
-        if peek_is_fat_arrow_at(tokens: tokens, offset: 1) {
-          true
-        } else if peek_is_expected_at(tokens: tokens, offset: 1, expected: ExpectLBrace) {
-          scan_for_fat_arrow_after_braces(remaining: token_stream_advance(stream: tokens, n: 2), depth: 1)
-        } else {
-          false
-        }
+      } else if !is_uppercase_start(name: n) {
+        arm_start_after_qualified_path(tokens: tokens, offset: 1)
+      } else if peek_is_fat_arrow_at(tokens: tokens, offset: 1) {
+        true
+      } else if peek_is_expected_at(tokens: tokens, offset: 1, expected: ExpectLBrace) {
+        scan_for_fat_arrow_after_braces(remaining: token_stream_advance(stream: tokens, n: 2), depth: 1)
       } else {
         false
       }

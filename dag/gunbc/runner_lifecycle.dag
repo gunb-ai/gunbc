@@ -7,7 +7,7 @@ import std.measure { ByteSize, byte_size, byte_size_count }
 import std.disposition { Disposition, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import extdeps.github.actions_runner {
   ActionsRunnerRelease,
   ActionsRunnerBinaryArtifact,
@@ -169,12 +169,6 @@ fn runner_slot_caps_precede_start() -> Bool {
   runner_slot_add_step_index(step: AddStepMemoryCaps) < runner_slot_add_step_index(step: AddStepStartUnit)
 }
 
-fn runner_slot_instance_name(slot: RunnerSlotIdentity) -> String {
-  let idx = slot.slot_index
-  let two = if idx < 10 { join(["0", to_string(idx)], "") } else { to_string(idx) }
-  join([slot.host as String, "-", two], "")
-}
-
 fn runner_slot_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
   join(["actions-runner@", runner_slot_instance_name(slot: slot), ".service"], "") as NonEmptyStr
 }
@@ -183,7 +177,7 @@ fn runner_slot_dir_path(slot: RunnerSlotIdentity) -> NonEmptyStr {
   join([actions_runner_base_dir, "/", runner_slot_instance_name(slot: slot)], "") as NonEmptyStr
 }
 
-data runner_slot_disk_budget_per_slot_note: String = "Conservative per-slot disk charge for width preflight on srv4 (operator 2026-08-06): seven slots on 500GB NVMe cannot silently fall back to the historical five-slot pin. Derived from srv4_runner_count_disk_cap_note arithmetic (~38GB per slot at width 7 on 500GB class disk). Unobservable disk REFUSES; insufficient headroom REFUSES — never absorbs to width 5."
+data runner_slot_disk_budget_per_slot_note: String = "Conservative per-slot disk charge for width preflight on srv4 (operator 2026-08-06): a host cannot silently fall back to the historical five-slot pin. Unobservable disk REFUSES; insufficient headroom REFUSES — never absorbs to a width the disk happens to permit.\n\nTHE NUMBER IS CIRCULAR AND THAT IS RECORDED HERE RATHER THAN IN THE ROWS THAT CITE IT. This note previously read 'derived from srv4_runner_count_disk_cap_note arithmetic (~38GB per slot at width 7 on 500GB class disk)' as if that were a provenance. It is not: 500GB class disk divided by the width of the day IS the derivation, so the charge was computed FROM a desired width and is now used to CONSTRAIN one. Nothing was measured. A separate observation of live per-slot usage under an active reclaimer came in near 2.5 GB, two orders of magnitude below this row.\n\nWHAT THAT COSTS NOW, at the width the CPU axis committed on 2026-08-23: runner_width_disk_preflight charges 21 x 40.96 GB, about 860 GB, against srv4's 500 GB NVMe, and is EXPECTED TO REFUSE. So a circular charge is refusing a derived width -- two unmeasured numbers meeting -- and neither the refusal nor a hypothetical pass would be evidence about srv4's real disk. The refusal is still correct behaviour: refusing on an unreliable charge is the fail-closed arm, and lowering the charge to make the width fit would be fitting the measurement to the answer.\n\nWHAT IS NOT CLAIMED: that srv4 cannot hold 21 slots. Every ephemeral runner keeps a _work tree plus caches so the true figure is not 2.5 GB either, and the question is open in both directions. DISSOLVE-ON: a measured per-slot disk series on srv4 replacing this row, at which point the preflight either refuses on evidence or stops refusing."
 
 data runner_slot_disk_budget_per_slot: ByteSize = byte_size(40960000000)
 

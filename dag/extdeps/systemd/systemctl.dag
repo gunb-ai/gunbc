@@ -5,6 +5,8 @@ import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire, system
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.sudo.elevation { sudo_binary_path, sudo_non_interactive_flag }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -49,6 +51,15 @@ fn systemctl_daemon_reload_argv() -> List<String> {
 
 fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "enable", unit as String]
+}
+
+// START IS NOT RESTART, AND FOR A SLICE THE DIFFERENCE IS DESTRUCTIVE RATHER THAN STYLISTIC. Stopping a
+// slice kills every process in it (systemd.slice(5)), so `restart` applied to a compile pool would terminate
+// the compilers the pool exists to hold. `start` on an already-active slice is a no-op that re-applies the
+// unit's resource directives, which is what a converger wants. The modeled `Start` operation already exists
+// on the service surface; this is its argv authority for the shell-body realization edge.
+fn systemctl_start_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "start", unit as String]
 }
 
 fn systemctl_restart_argv(unit: NonEmptyStr) -> List<String> {
@@ -126,6 +137,14 @@ fn systemctl_user_start_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "--user", "start", unit as String]
 }
 
+// LoadState is the only observation that distinguishes an ABSENT unit from a present one, which is why the
+// `ShowLoadState` operation on the service surface above is its own operation rather than a
+// SystemdUnitProperty arm: that coproduct is numeric cgroup evidence sharing one numeric mock, and a wire
+// value of `not-found` is not a magnitude. Cited to systemd.unit(5) LoadState -- `loaded`, `not-found`,
+// `bad-setting`, `error`, `masked` -- of which `not-found` is the one this corpus reads positively.
+// `systemctl show` exits 0 for a unit the manager has never heard of and prints not-found, so a nonzero exit
+// means the MANAGER was unreadable, which is a different refusal from an absent unit and must not be folded
+// into it.
 fn systemctl_show_load_state_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "show", unit as String, "--property=LoadState", "--value"]
 }
@@ -300,6 +319,23 @@ service systemd.Systemctl {
     }
   }
 
+  operation ShowLoadState {
+    input { unit: NonEmptyStr }
+    output {
+      value: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "show", "{unit}", "--property=LoadState", "--value"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl show LoadState failed"
+    }
+    mock_response {
+      0 => { value: "not-found", success: true } "hermetic systemd.Systemctl.ShowLoadState"
+    }
+  }
+
   operation ListUnits {
     input {
       pattern: NonEmptyStr,
@@ -357,4 +393,41 @@ service systemd.Systemctl {
       } "hermetic systemd.Systemctl.Status active"
     }
   }
+}
+
+// PATH-resolved for the reason recorded across this conversion: the runner hosts these units live
+// on have not been observed by this repository, and sudo resolves the command through its own
+// secure_path. sudo's OWN path is absolute because extdeps.sudo.elevation records it with a
+// consumer -- the NOPASSWD rules that name it.
+data systemctl_program: NonEmptyStr = "systemctl"
+
+// ENABLE --now IS FUSED HERE AND SPLIT IN THE USER-SCOPE BUILDERS ABOVE, which reads like a
+// contradiction and is not. That split exists because the user-scope consumer converges the two
+// facts separately and observes them separately. This builder serves a different consumer: runner
+// slot activation, where the fused form is what is deployed today and what the sudoers grant on
+// those hosts names. Splitting it here would be a change to a live actuation shipped inside an argv
+// refactor, which is exactly the silent behaviour change this lane keeps refusing to make. If the
+// activation path later wants the two facts apart, that is its own change with its own witness.
+//
+// TWO THINGS ABOUT THE EMITTED WORDS CHANGE HERE AND ARE STATED RATHER THAN SLIPPED IN, because the
+// call site this replaces spelled `sudo` bare with no flag. The elevation now comes from
+// extdeps.sudo.elevation, so the words become that module's absolute /usr/bin/sudo and its -n:
+// non-interactive, which FAILS instead of blocking on a tty that CI does not have. That module mints
+// only the non-interactive form deliberately (interactive sudo is unreachable through it), and every
+// other privileged leaf in this repository already runs that way -- so this aligns one straggler
+// rather than inventing a posture. A reader who wants the old prompting behaviour is asking for a
+// different operation, and should say so with its own row.
+//
+// ELEVATION IS PART OF THE OPERATION, not a prefix the caller assembles: the units live in the
+// system manager, so an unelevated invocation is not a weaker version of this request, it is a
+// different one that fails. sudo's own calling convention comes from extdeps.sudo.elevation rather
+// than being re-spelled as two more literals here.
+fn systemctl_enable_now_command(units: List<String>) -> ArgvCommand {
+  argv_command(
+    program: sudo_binary_path,
+    arguments: append(
+      [sudo_non_interactive_flag as String, systemctl_program as String, "enable", "--now"],
+      items: units,
+    ),
+  )
 }

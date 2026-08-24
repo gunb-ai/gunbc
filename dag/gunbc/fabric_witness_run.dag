@@ -4,6 +4,8 @@ import std.types { NonEmptyStr }
 import std.currency { CurrencyCode, Usd }
 import std.nat { Nat }
 import std.measure { HardwareThreadCount, hardware_thread_count, MoneyAmountMicro, Second, second }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.envelope { unstated_envelope }
 import product.fabric.identity {
   FabricIdentity, WorkKey, ExecutionAttemptKey, OfferKey, GrantKey,
   fabric_identity_eq,
@@ -15,7 +17,7 @@ import product.fabric.work {
   ProgramRef, SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef,
 }
 import product.fabric.supply {
-  Offer, OfferFungibility, DemandOfferAffordability, GrantDuration, EstimatedGrantDuration,
+  SupplierOffer, OfferFungibility, DemandOfferAffordability, GrantDuration, EstimatedGrantDuration,
   offer_fungibility_for, offer_affordability_for,
 }
 import product.fabric.demand {
@@ -23,6 +25,7 @@ import product.fabric.demand {
 }
 import std.types { Timestamp }
 import extdeps.exec.command { ArgvCommand }
+import gunbc.claim_executor_cli { claim_executor_command }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import std.types { String, List }
 
@@ -30,7 +33,7 @@ import std.types { String, List }
 //
 // This module used to own authorize_floor_run and a FloorRunRefusal coproduct.
 // Both moved to product.fabric.supply, because comparing a Work's requirements
-// against an Offer's capabilities is provider-neutral fungibility and nothing in
+// against a SupplierOffer's capabilities is provider-neutral fungibility and nothing in
 // ShapeNotCovered / TrustDomainMismatch / CapabilitiesNotOffered was ever about
 // the floor. A gunbc module answering a fabric question is a gunbc module that
 // will answer it differently from the next consumer.
@@ -145,12 +148,12 @@ fn floor_work_contract(source: SourceManifestRef) -> WorkContract {
 //
 // WHY NO Architecture VALUE IS DECLARED HERE YET, and the receipt for it.
 // Matching a declared architecture against an offer's requires the OFFER to
-// carry one, and Offer has 25 constructors in tree, so the field and the arm
+// carry one, and SupplierOffer has 25 constructors in tree, so the field and the arm
 // that reads it land together. An earlier revision of this module declared
 // `floor_architecture() -> Architecture = Aarch64` anyway, with a comment
 // explaining that the consuming arm would come later. It had ZERO consumers,
 // and v2.lens.inert_carrier caught it on CI as an unrostered inert carrier --
-// in the same commit whose message refused to add an unread field to Offer by
+// in the same commit whose message refused to add an unread field to SupplierOffer by
 // citing review 53848's declared-but-nothing-derives-it defect. Refusing the
 // defect on one side of a module boundary and authoring it on the other is the
 // same defect, and the lens was a better reader of that than I was.
@@ -160,11 +163,40 @@ fn floor_work_contract(source: SourceManifestRef) -> WorkContract {
 // modeled, and minting the carrier early buys nothing except a row that lies
 // about being load-bearing.
 
+// WHAT A FLOOR RUN REQUIRES OF ITS EXECUTOR, AND WHY THAT IS HONESTLY NOTHING.
+//
+// A floor run is OUR OWN work on OUR OWN fleet, and it demonstrably runs today on slots that
+// provide none of the isolation guarantees -- a reused writable root by design, the host's process
+// namespace, and /home/ghrunner shared across every slot. Declaring a requirement the floor does
+// not actually have would be inventing a gap: the run would be modeled as ineligible for the
+// executor it has been green on for months, and the first person to trust the model would go
+// looking for a break that is not there.
+//
+// SO THE EMPTY PROFILE HERE IS A MEASUREMENT, NOT A PLACEHOLDER. It says the floor asks for no
+// tenancy guarantee, which is true and is exactly why the floor was safe to run this way. The gap
+// this model exists to express belongs to CUSTOMER work, where the tenant is not us -- see
+// product.fabric.isolation tenant_workload_isolation_requirement and the witness that measures
+// today's slots against it.
+//
+// CONSUMPTION STATUS, STATED PLAINLY BECAUSE THIS MODULE'S OWN HEADER INSISTS ON IT: the fold that
+// reads this (floor_offer_fungibility -> offer_fungibility_for) has NO production consumer, exactly
+// as its siblings ShapeNotCovered and CapabilitiesNotOffered do not. This is the modeled decision
+// the broker will consume, not a live wall, and calling it enforcement would be the rung inflation
+// the paragraph above already records for affordability. NEXT-RUNG TRIGGER is the same one: a
+// broker fold that selects an Offer for this Demand.
+fn floor_isolation_requirement() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
+}
+
 fn floor_execution_requirements() -> ExecutionRequirements {
   ExecutionRequirements {
-    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 8) } },
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+      envelope: unstated_envelope(),
+    },
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: "gunbc.trust.internal-fleet",
+    isolation: floor_isolation_requirement(),
   }
 }
 
@@ -188,19 +220,15 @@ fn floor_execution_requirements() -> ExecutionRequirements {
 fn floor_inputs_manifest_ref() -> ArtifactManifestRef {
   concat("gunbc.floor.inputs.source-roots:", join(witness_layer_roots, "+"))
 }
-
-// A modeled command, not a string blob. extdeps.exec.command already owns the
-// argv carrier, so authoring a shell line here would have been a second
-// representation of "how a process is invoked" -- the medium-as-string tell.
-
 fn floor_run_command() -> ArgvCommand {
-  ArgvCommand {
-    argv: fold(
+  claim_executor_command(
+    mode_flag: "--required-ci",
+    operands: fold(
       witness_layer_roots,
-      init: ["target/release/claim_executor", "--required-ci"],
+      init: [],
       f: fn(acc, root) { append(acc, items: ["--source-root", root]) },
     ),
-  }
+  )
 }
 
 // THE FLOOR IS MODELED AS AN ORDINARY PRICED DEMAND. NO PRICE IS CLEARED TODAY.
@@ -225,14 +253,14 @@ fn floor_run_command() -> ArgvCommand {
 // The fold stays: it is the modeled decision the broker will consume, and deleting
 // it would be deleting the design rather than the overstatement. What changes is
 // that it is described as UNCONSUMED, so its status is a countable gap instead of
-// an assumed guarantee. NEXT-RUNG TRIGGER: a broker fold that selects an Offer for
+// an assumed guarantee. NEXT-RUNG TRIGGER: a broker fold that selects a SupplierOffer for
 // this Demand, at which point affordability is on the live path and this row
 // becomes an ordinary description of a check that runs.
 //
 // Control-plane work is a separately privileged class. That exclusion must not
 // leak here: a floor run is customer work that happens to be ours.
 
-fn floor_offer_fungibility<P>(offer: Offer<P>) -> OfferFungibility {
+fn floor_offer_fungibility<P>(offer: SupplierOffer<P>) -> OfferFungibility {
   offer_fungibility_for(requirements: floor_execution_requirements(), offer: offer)
 }
 
@@ -251,7 +279,7 @@ fn floor_grant_duration() -> GrantDuration {
 }
 
 fn floor_offer_affordability<P>(
-  offer: Offer<P>,
+  offer: SupplierOffer<P>,
   maximum_buy_order: MoneyAmountMicro,
   budget_currency: CurrencyCode,
 ) -> DemandOfferAffordability {

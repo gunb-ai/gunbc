@@ -479,7 +479,7 @@ pub fn rust_capability_list_ops_home_note() -> String {
 pub fn derive_traits_contain(traits: Rc<Vec<RustCapability>>, capability: RustCapability) -> bool {
     {
         let mut __found = false;
-        for k in traits.clone().iter().cloned() {
+        for k in traits.iter().cloned() {
             if (k.clone() == capability.clone()) {
                 __found = true;
                 break;
@@ -493,7 +493,7 @@ pub fn derive_traits_union(
     base: Rc<Vec<RustCapability>>,
     extra: Rc<Vec<RustCapability>>,
 ) -> Rc<Vec<RustCapability>> {
-    extra.clone().iter().cloned().fold(
+    extra.iter().cloned().fold(
         base.clone(),
         |acc: Rc<Vec<RustCapability>>, k: RustCapability| {
             if derive_traits_contain(acc.clone(), k.clone()) {

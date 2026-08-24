@@ -51,10 +51,8 @@ func seed_runner_loudness_probe_failure_receipt() -> String {
 }
 
 test fn red_floor_entry_companion_names_declared_failure_receipt_fn() -> Bool {
-  match failure_receipt_companion(function: "extdeps_scope_placement_gate_passes") {
-    Present { value: companion } => companion == "extdeps_scope_placement_gate_failure_receipt"
-    Absent => false
-  }
+  failure_receipt_companion(function: "extdeps_scope_placement_gate_passes")
+    == "extdeps_scope_placement_gate_failure_receipt"
 }
 
 test fn red_seed_runner_failure_detail_projects_located_receipt() -> Bool {

@@ -9,56 +9,208 @@ import extdeps.systemd.systemctl {
   systemctl_restart_argv,
   systemctl_disable_now_argv,
 }
+import extdeps.tools.gnu_coreutils {
+  coreutils_install_directory_argv,
+  coreutils_install_binary_name,
+  coreutils_rm_force_argv,
+  coreutils_rm_empty_directory_argv,
+  coreutils_rm_force_recursive_argv,
+  coreutils_install_mode_flag,
+  coreutils_install_file_owned_argv,
+  coreutils_install_directory_owned_argv,
+}
+import gunbc.shell_command_text {
+  shell_command_intent,
+  shell_literal_words,
+  shell_command_text_of_argv,
+  shell_command_text_of_node,
+  shell_privileged_command_intent,
+  shell_privileged_command_text_of_argv,
+}
+import v2.extdeps.languages.bash_build {
+  bash_build_command_with_words,
+  bash_build_with_redir_to_file,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_lit,
+  bash_build_word_var,
+}
+import v2.std.node { Node }
 
 // Package-ensure and systemd unit-upsert argv spellings are derived from extdeps operation transport rows (dpkg.Package.Status, apt.PackageManager.Install, systemd.Systemctl daemon-reload/enable/restart/disable) — not hand-concatenated shell in emit.dag. Per shell-emission-model CUT: no minted EnsurePackage/UnitUpsert verb; emit composes inline If-Not-ExitZero(dpkg -s) then apt-install intent from these authorities. Privileged ops prefix sudo -n at the orchestration leaf (deploy access grant), never a root shell.
-fn argv_join(argv: List<String>) -> String {
-  join(argv, " ")
-}
-
-fn privileged_command(argv: List<String>) -> String {
-  concat("sudo -n ", argv_join(argv: argv))
-}
-
+// The argv -> text step is gunbc.shell_command_text, a modeled bash command serialized by
+// v2.workflow.bash_command_fold_serialize. It replaces a local `join(argv, " ")`, which put no
+// quoting on any element: an argv element carrying a space, a quote or a metacharacter lost its
+// boundary on the way to the host and re-parsed as several words. Element boundaries now survive
+// structurally, and a shape the grammar cannot express refuses instead of emitting text.
 fn dpkg_status_command(package: NonEmptyStr) -> String {
-  argv_join(argv: dpkg_status_argv(package: package))
+  shell_command_text_of_argv(argv: dpkg_status_argv(package: package))
 }
 
 fn apt_install_command(package: NonEmptyStr, privileged: Bool) -> String {
   if privileged {
-    privileged_command(argv: apt_install_argv(package: package))
+    shell_privileged_command_text_of_argv(argv: apt_install_argv(package: package))
   } else {
-    argv_join(argv: apt_install_argv(package: package))
+    shell_command_text_of_argv(argv: apt_install_argv(package: package))
   }
 }
 
 fn systemctl_daemon_reload_command(privileged: Bool) -> String {
   if privileged {
-    privileged_command(argv: systemctl_daemon_reload_argv())
+    shell_privileged_command_text_of_argv(argv: systemctl_daemon_reload_argv())
   } else {
-    argv_join(argv: systemctl_daemon_reload_argv())
+    shell_command_text_of_argv(argv: systemctl_daemon_reload_argv())
   }
 }
 
 fn systemctl_enable_command(unit: NonEmptyStr, privileged: Bool) -> String {
   if privileged {
-    privileged_command(argv: systemctl_enable_argv(unit: unit))
+    shell_privileged_command_text_of_argv(argv: systemctl_enable_argv(unit: unit))
   } else {
-    argv_join(argv: systemctl_enable_argv(unit: unit))
+    shell_command_text_of_argv(argv: systemctl_enable_argv(unit: unit))
+  }
+}
+
+fn systemctl_start_command(unit: NonEmptyStr, privileged: Bool) -> String {
+  if privileged {
+    shell_privileged_command_text_of_argv(argv: systemctl_start_argv(unit: unit))
+  } else {
+    shell_command_text_of_argv(argv: systemctl_start_argv(unit: unit))
   }
 }
 
 fn systemctl_restart_command(unit: NonEmptyStr, privileged: Bool) -> String {
   if privileged {
-    privileged_command(argv: systemctl_restart_argv(unit: unit))
+    shell_privileged_command_text_of_argv(argv: systemctl_restart_argv(unit: unit))
   } else {
-    argv_join(argv: systemctl_restart_argv(unit: unit))
+    shell_command_text_of_argv(argv: systemctl_restart_argv(unit: unit))
   }
 }
 
 fn systemctl_disable_now_command(unit: NonEmptyStr, privileged: Bool) -> String {
   if privileged {
-    privileged_command(argv: systemctl_disable_now_argv(unit: unit))
+    shell_privileged_command_text_of_argv(argv: systemctl_disable_now_argv(unit: unit))
   } else {
-    argv_join(argv: systemctl_disable_now_argv(unit: unit))
+    shell_command_text_of_argv(argv: systemctl_disable_now_argv(unit: unit))
   }
+}
+
+// THE DEPLOY STAGING DIRECTORY IS ONE FACT. Apply and retract both create a temp directory and
+// hold it in this shell variable; every staged file is named relative to it. Spelled at each use
+// site it was a literal inside seven different quotations, each of which decided independently
+// how to quote the expansion.
+data deploy_stage_dir_var: String = "_gunbc_stage"
+
+// A staged path is a WORD — a variable reference and a literal suffix concatenated as two parts
+// of one word — so nothing here decides how the expansion is quoted. The grammar does, and it
+// does so identically at a redirection target and at an install argument, from the same word.
+fn deploy_stage_path_word(stage_name: String) -> Node {
+  bash_build_word_concat_from_nodes(parts: [
+    bash_build_word_var(name: deploy_stage_dir_var),
+    bash_build_word_lit(text: concat("/", stage_name)),
+  ])
+}
+
+// Writing a staged file is `printf %s <content> > <staged path>`, NOT a here-document. A
+// here-doc terminates on a line equal to its delimiter, so the delimiter is a value the CONTENT
+// could contain: a unit file carrying the tag line ends the document early and the remainder is
+// executed as shell. Choosing a tag nobody expects to appear is a probability argument, not a
+// wall. As a quoted argument the content has no terminator to collide with.
+fn deploy_stage_write_command(stage_name: String, content: String) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_with_redir_to_file(
+      inner: shell_command_intent(words: ["printf", "%s", content]),
+      path: deploy_stage_path_word(stage_name: stage_name),
+    ),
+  )
+}
+
+// The one install this module cannot express as an argv of strings: its SOURCE is the staged
+// path, which is a word carrying a variable reference rather than a value known here. So the
+// leading words are taken from the same coreutils rows the argv builders use — the binary name
+// and the mode flag are not respelled — and only the two path arguments are placed as words.
+fn deploy_stage_install_command(stage_name: String, mode: NonEmptyStr, dest: String) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_command_with_words(words: concat(
+      shell_literal_words(words: [
+        "sudo",
+        "-n",
+        coreutils_install_binary_name as String,
+        coreutils_install_mode_flag as String,
+        mode as String,
+      ]),
+      [
+        deploy_stage_path_word(stage_name: stage_name),
+        bash_build_word_lit(text: dest),
+      ],
+    )),
+  )
+}
+
+fn install_directory_command(mode: NonEmptyStr, path: String, privileged: Bool) -> String {
+  if privileged {
+    shell_privileged_command_text_of_argv(argv: coreutils_install_directory_argv(mode: mode, path: path))
+  } else {
+    shell_command_text_of_argv(argv: coreutils_install_directory_argv(mode: mode, path: path))
+  }
+}
+
+// A staged file whose content carries a RUNTIME expansion: printf's format string is a literal
+// word and the expansion is its own word, so the value the host substitutes is never re-parsed
+// as shell. Spelled by hand this was `printf 'FMT' "$VAR" > "$stage/name"` — three independent
+// quoting decisions in one line.
+fn deploy_stage_write_expansion_command(stage_name: String, format: String, expansion_var: String) -> String {
+  shell_command_text_of_node(
+    stmt: bash_build_with_redir_to_file(
+      inner: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "printf"),
+        bash_build_word_lit(text: format),
+        bash_build_word_var(name: expansion_var),
+      ]),
+      path: deploy_stage_path_word(stage_name: stage_name),
+    ),
+  )
+}
+
+fn install_file_owned_command(
+  mode: NonEmptyStr,
+  owner: NonEmptyStr,
+  group: NonEmptyStr,
+  source: String,
+  dest: String,
+) -> String {
+  shell_privileged_command_text_of_argv(
+    argv: coreutils_install_file_owned_argv(
+      mode: mode,
+      owner: owner,
+      group: group,
+      source: source,
+      dest: dest,
+    ),
+  )
+}
+
+fn install_directory_owned_command(
+  mode: NonEmptyStr,
+  owner: NonEmptyStr,
+  group: NonEmptyStr,
+  path: String,
+) -> String {
+  shell_privileged_command_text_of_argv(
+    argv: coreutils_install_directory_owned_argv(mode: mode, owner: owner, group: group, path: path),
+  )
+}
+
+// Teardown removals. Each keeps rm(1)'s three shapes distinct all the way to the emitted text —
+// rm_empty_directory in particular is a REFUSAL when the directory is non-empty (a live agent
+// worktree root, per emit's teardown_worktree_rmdir_note), so it must never widen into -rf.
+fn rm_force_command(paths: List<String>) -> String {
+  shell_privileged_command_text_of_argv(argv: coreutils_rm_force_argv(paths: paths))
+}
+
+fn rm_empty_directory_command(path: String) -> String {
+  shell_privileged_command_text_of_argv(argv: coreutils_rm_empty_directory_argv(path: path))
+}
+
+fn rm_force_recursive_command(path: String) -> String {
+  shell_privileged_command_text_of_argv(argv: coreutils_rm_force_recursive_argv(path: path))
 }

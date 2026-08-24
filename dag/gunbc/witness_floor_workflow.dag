@@ -16,13 +16,14 @@ import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
+  upload_artifact_action,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
   DispatchInput, InputString,
   WorkflowPermissions, PermRead,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressExpression,
   RunnerSpec,
-  checkout_action, setup_rust_action, upload_artifact_action
+  checkout_action, setup_rust_action
 }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
@@ -361,12 +362,79 @@ fn witness_floor_run_script() -> String {
 // reads correctly is not evidence that it binds. The tell here was a step skipping while its
 // own stated condition was true, which is visible only by reading the step's outcome beside the
 // condition's operands, never from the workflow text.
+// A PREFIX, NOT A GUARD, despite the name: the value ends in `&& ` and is meant to be
+// concatenated in front of a condition. Used bare it emits a YAML expression ending in `&&`.
 fn witness_step_status_guard() -> String {
   "!cancelled() && "
 }
 
 fn witness_floor_precondition() -> String {
   concat(witness_step_status_guard(), "steps.build_witness_fold.outcome == 'success'")
+}
+
+// AN INSTRUMENT, NOT A CHECK. It records and it never refuses.
+//
+// `spawn rustfmt: No such file or directory (os error 2)` refused a required run on 2026-08-22
+// and the message reports the syscall and NOTHING about the environment that produced it. So the
+// failure destroys its own evidence, and every occurrence is exactly as unreadable as the last:
+// two sessions produced three mutually incompatible readings from it in one night (a per-host
+// fact, a runner lottery, a missing component), and all three were refuted by data neither
+// reading had. The rustup toolchain reported `component rustfmt is up to date` in the same job
+// that could not spawn it, so a bare PATH lookup found neither a rustup shim nor a toolchain
+// binary -- and no run, red or green, records which of those exists.
+//
+// THIS IS ALSO WHY IT RUNS ON GREEN JOBS. There is currently no baseline: nobody knows what a
+// WORKING job's PATH, shim directory or toolchain list looks like either, so a failed run's
+// environment could not be compared against anything even if we captured it. A zero is readable
+// only beside a nonzero, and today there is neither.
+//
+// IT IS GUARDED ONLY ON `!cancelled()`, deliberately weaker than witness_floor_precondition,
+// which additionally requires the build to have succeeded. A build failure is precisely a case
+// where the environment is in question, so gating the recorder on the build would blind it
+// exactly when it is wanted.
+//
+// EVERY PROBE IS TOTAL BY CONSTRUCTION -- each one falls back to a printed marker rather than a
+// nonzero exit, so the step cannot fail and needs no `continue-on-error`. That distinction is
+// not cosmetic: `continue-on-error` is a step that MAY report a verdict and has been told to be
+// ignored, which is the escape-hatch shape DESIGN 5 forbids. A step with no verdict to give is a
+// different thing, and writing it that way keeps it unmistakable.
+fn witness_toolchain_environment_probe_script() -> String {
+  concat(
+    "echo \"host=$(hostname) runner=$\{RUNNER_NAME:-unset}\"\n",
+    concat(
+      "echo \"PATH=$PATH\"\n",
+      concat(
+        "which -a rustfmt || echo \"which rustfmt: absent from PATH\"\n",
+        concat(
+          "which -a cargo rustc rustup || echo \"which cargo/rustc/rustup: absent from PATH\"\n",
+          concat(
+            "ls -l \"$\{CARGO_HOME:-$HOME/.cargo}/bin\" || echo \"cargo bin dir: absent\"\n",
+            concat(
+              "rustup which rustfmt || echo \"rustup which rustfmt: no answer\"\n",
+              concat(
+                "rustup toolchain list || echo \"rustup toolchain list: no answer\"\n",
+                "rustup default || echo \"rustup default: no answer\"\n"
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn witness_toolchain_environment_probe_step() -> Step {
+  RunStep {
+    name: Present { value: "Record the toolchain environment" },
+    id: none,
+    run: witness_toolchain_environment_probe_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: "!cancelled()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
 }
 
 fn witness_floor_run_step() -> Step {
@@ -419,18 +487,121 @@ type WitnessFloorBoundStep {
   step_name: String
 }
 
-// THE RUN STEP WAS DECLARED `capability_neutral` AND THAT DECLARATION WAS FALSE. It runs
-// `claim_executor --required-ci`, whose regen phase spawns rustfmt to normalize the emitted
-// mirror, so it consumes RustfmtCapability and now says so.
+// EACH PATH IS ONE ROW BECAUSE TWO CONSUMERS NOW READ IT. The writer learns the filename from
+// the environment variable this job sets; the matching upload step names the same file to
+// collect. Spelled twice -- six literals across the three files -- each pair is free to drift
+// silently in the worst possible direction: the uploader looks for a file the writer never
+// wrote, `if-no-files-found: error` fires, and the failure reads as "the floor produced no
+// roster" when the truth is "the writer and the uploader disagree about a filename". One row
+// per file makes that disagreement unrepresentable rather than caught.
+data required_floor_disposition_path: String = "required_floor_disposition.tsv"
+
+data required_floor_disposition_artifact_name: String = "required-floor-disposition"
+
+data expected_red_roster_join_path: String = "expected_red_roster_join.tsv"
+
+data expected_red_roster_join_artifact_name: String = "expected-red-roster-join"
+
+data long_home_storage_agreement_path: String = "long_home_storage_agreement.tsv"
+
+data long_home_storage_agreement_artifact_name: String = "long-home-storage-agreement"
+
+// THE FLOOR HAS BEEN WRITING THREE FILES ON EVERY RUN AND THROWING ALL THREE AWAY.
 //
-// A step that consumes a capability while declaring it consumes none is invisible to the
-// closure check BY CONSTRUCTION: the check was honest and had nothing to catch, because the
-// consumer said it consumed nothing. That is why the failure surfaced as a runner lottery
-// instead of as a refusal.
+// cli_run.rs reads GUNBC_REQUIRED_FLOOR_DISPOSITION, GUNBC_EXPECTED_RED_ROSTER_JOIN and
+// GUNBC_LONG_HOME_STORAGE_AGREEMENT, and `write_required_floor_disposition_tsv`,
+// `write_expected_red_roster_join_tsv` and `write_long_home_storage_agreement_tsv` emit them.
+// The disposition file carries one row per OFFERED site: identity, disposition, and the matched
+// prefix where one applies. All three environment variables are already set on this job.
+// Nothing ever collected any of the files, so every run tore its runner down and took them.
 //
-// Cargo is deliberately NOT listed on the run step: it invokes a prebuilt binary and does not
-// shell out to cargo. Listing it would trade one false declaration for another.
-fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
+// This is ONE unwired last hop with three instances, not three similar things -- so it is fixed
+// at the class, by one step shape applied three times. Fixing one site would leave the other two
+// for someone to rediscover, paying the whole investigation again to reach a conclusion already
+// written down here.
+//
+// WHAT THAT COST, concretely: gunbc#8860 added three witnesses and could not show they were
+// discovered. The `planned=` delta looked like proof and is not -- discovery is deterministic
+// per commit but confounded, one unrelated line has been measured moving `offered` by 14 -- and
+// the log carries no per-identity output for a passing witness. So the run answered neither
+// "did my witness run" nor "was it declined, and why", while holding the file that answers the
+// second one.
+//
+// WHAT THIS DOES NOT ANSWER, and the PR body says it too: a row reading Planned means the
+// identity was DISCOVERED AND ROUTED. It does not mean the claim executed, and it certainly
+// does not mean it passed -- `ClaimOutcome::Pass` increments a counter and discards the
+// identity, so no execution roster exists anywhere to upload. This narrows the question; it
+// does not close it.
+//
+// `if-no-files-found: error` IS SAFE ON ALL THREE, and that was checked rather than assumed --
+// `error` on a file the run does not always write would redden green runs. cli_run.rs guards the
+// join file on `roster_join_active`, which is `GUNBC_EXPECTED_RED_ROSTER_JOIN.is_some()`, and
+// this job sets it; the other two are guarded only on their own paths being set, likewise set
+// here. So all three are written whenever the floor reaches its writes. The one way a file is
+// absent is a refusal that returns before them -- a run whose line has already stopped, where a
+// second red is noise rather than a fabricated verdict.
+//
+// `if-no-files-found: error` IS ALSO LOAD-BEARING ON ALL THREE, not decoration. The default is `warn`:
+// it would upload nothing, go green, and hand a reader an empty artifact in which "no sites
+// were declined" and "the file was never written" are indistinguishable. A blank is not
+// evidence. `gunbc.fleet_workflow_steps` `ci_release_bins_upload_step` already sets it.
+//
+// THE CONDITION UPLOADS ALL THREE AFTER A FAILED FLOOR TOO, the case that matters most: a run
+// that failed is exactly when someone wants to know what was admitted. It reuses
+// witness_floor_precondition -- not cancelled, and the fold was built -- rather than the
+// action's success-only default, so a red floor still publishes all three files.
+// WHY THREE STEPS AND NOT ONE BUNDLED STEP WITH THREE PATHS, MEASURED RATHER THAN PREFERRED.
+// gunbc#8875 landed the bundled form: one artifact, three newline-separated paths,
+// `if-no-files-found: warn`. Flipping that one flag to `error` does not produce this step's
+// guarantee, and the difference is in the action rather than in taste. actions/upload-artifact
+// resolves all path patterns through ONE globber into ONE combined file list, and evaluates
+// `if-no-files-found` on `searchResult.filesToUpload.length === 0` -- the whole list, once. So
+// under the bundled shape, with EITHER flag value, two files present and one missing uploads
+// the two and says nothing: the absence that this evidence exists to make visible is exactly
+// the absence the bundled step cannot report. One step per file is what moves that from caught
+// to unrepresentable, because each step's list is the one file it names.
+//
+// THE INCIDENT THAT PAID FOR THIS, carried forward from the bundled step rather than dropped
+// with it: a PR was blocked by sixteen failures in witness families its diff could not reach,
+// the summary counters said fifteen identities had moved between dispositions, and it could not
+// be closed because the rows naming WHICH fifteen no longer existed anywhere. Two independent
+// recomputations from the trees then disagreed with the floor's own counts at both ends -- so
+// the only instrument that could settle it was the one the job was deleting. A receipt computed
+// and dropped is worse than one never computed, because the summary it backs keeps being quoted
+// as though the detail were available.
+//
+// long_home_storage_agreement.tsv is in the set deliberately rather than incidentally: it is
+// the row that records a file whose PATH and whose declared MODULE disagree about long-home,
+// which is the first hypothesis any recurrence of that incident has to eliminate.
+//
+// CANCELLATION IS EXCLUDED, and that is a separate fact from the build guard below: a cancelled
+// run's TSVs are partial by construction, and a partial receipt read as a complete one is the
+// fabricated-output failure.
+fn witness_floor_tsv_upload_step(step_name: String, artifact_name: String, path: String) -> Step {
+  UsesStep {
+    name: Present { value: step_name },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: artifact_name)),
+        kv(key: "path", value: yaml_string(s: path)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+        kv(key: "retention-days", value: yaml_int(n: 14)),
+      ]
+    },
+    env: none,
+    if_condition: Present { value: witness_floor_precondition() },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// ONE PREPARATION, RENDERED TWICE. Checkout, toolchain and build are byte-identical in both
+// jobs, so they are authored ONCE here and each job appends only the step that distinguishes it.
+// Two copies would be two definitions of one fact, free to drift the moment either is edited --
+// the §3 fork this file already closes for the step/role pair, reintroduced across jobs.
+fn prepared_bound_steps() -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
       step: witness_floor_checkout_step(),
@@ -447,62 +618,62 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: "Build the witness fold",
     },
-    WitnessFloorBoundStep {
-      step: witness_floor_run_step(),
-      role: consumes_only(capabilities: [RustfmtCapability]),
-      step_name: "All witnesses (one prepared subject, one fold)",
-    },
-    WitnessFloorBoundStep {
-      step: witness_floor_disposition_upload_step(),
-      role: capability_neutral,
-      step_name: "Upload floor disposition receipts",
-    },
   ]
 }
 
-// THE THREE TSVs THE JOB ALREADY WRITES AND THEN THREW AWAY.
+// THE FLOOR'S RUN STEP WAS DECLARED `capability_neutral` AND THAT DECLARATION WAS FALSE. It runs
+// `claim_executor --required-ci`, whose regen phase spawns rustfmt to normalize the emitted
+// mirror, so it consumes RustfmtCapability and now says so.
 //
-// The job env has named GUNBC_REQUIRED_FLOOR_DISPOSITION, GUNBC_EXPECTED_RED_ROSTER_JOIN and
-// GUNBC_LONG_HOME_STORAGE_AGREEMENT for as long as the fold has run, so the identity-grain
-// receipts were produced on every run and discarded with the runner. The consequence is not
-// theoretical: a PR was blocked by sixteen failures in witness families its diff could not
-// reach, the summary counters said fifteen identities had moved between dispositions, and the
-// incident could not be closed because the rows naming WHICH fifteen no longer existed
-// anywhere. Two independent recomputations from the trees then disagreed with the floor's own
-// counts at both ends -- so the only instrument that could settle it is the one the job was
-// deleting. A receipt computed and dropped is worse than one never computed, because the
-// summary it backs keeps being quoted as though the detail were available.
+// A step that consumes a capability while declaring it consumes none is invisible to the closure
+// check BY CONSTRUCTION: the check was honest and had nothing to catch, because the consumer said
+// it consumed nothing. That is why the failure surfaced as a runner lottery instead of a refusal.
 //
-// long_home_storage_agreement.tsv is in the set deliberately rather than incidentally: it is
-// the row that records a file whose PATH and whose declared MODULE disagree about long-home,
-// which is the first hypothesis any recurrence of that incident has to eliminate.
-//
-// if_condition is the status guard rather than success(): the run this evidence is FOR is the
-// failing one, so a step that only fires after a green floor would capture exactly the runs
-// nobody needs it for. Cancellation is excluded because a cancelled run's TSVs are partial by
-// construction and a partial receipt read as a complete one is the fabricated-output failure.
-fn witness_floor_disposition_upload_step() -> Step {
-  UsesStep {
-    name: Present { value: "Upload floor disposition receipts" },
-    id: none,
-    uses: upload_artifact_action,
-    with: Present {
-      value: [
-        kv(key: "name", value: yaml_string(s: "required-floor-receipts")),
-        kv(
-          key: "path",
-          value: yaml_string(
-            s: "required_floor_disposition.tsv\nexpected_red_roster_join.tsv\nlong_home_storage_agreement.tsv"
-          )
+// Cargo is deliberately NOT listed on the run step: it invokes a prebuilt binary and does not
+// shell out to cargo. Listing it would trade one false declaration for another.
+fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
+  append(
+    prepared_bound_steps(),
+    items: [
+      WitnessFloorBoundStep {
+        step: witness_toolchain_environment_probe_step(),
+        role: capability_neutral,
+        step_name: "Record the toolchain environment",
+      },
+      WitnessFloorBoundStep {
+        step: witness_floor_run_step(),
+        role: consumes_only(capabilities: [RustfmtCapability]),
+        step_name: "All witnesses (one prepared subject, one fold)",
+      },
+      WitnessFloorBoundStep {
+        step: witness_floor_tsv_upload_step(
+          step_name: "Upload the floor's admission roster",
+          artifact_name: required_floor_disposition_artifact_name,
+          path: required_floor_disposition_path
         ),
-        kv(key: "if-no-files-found", value: yaml_string(s: "warn"))
-      ]
-    },
-    env: none,
-    if_condition: Present { value: "!cancelled()" },
-    continue_on_error: none,
-    timeout_minutes: none
-  }
+        role: capability_neutral,
+        step_name: "Upload the floor's admission roster",
+      },
+      WitnessFloorBoundStep {
+        step: witness_floor_tsv_upload_step(
+          step_name: "Upload the expected-red roster join",
+          artifact_name: expected_red_roster_join_artifact_name,
+          path: expected_red_roster_join_path
+        ),
+        role: capability_neutral,
+        step_name: "Upload the expected-red roster join",
+      },
+      WitnessFloorBoundStep {
+        step: witness_floor_tsv_upload_step(
+          step_name: "Upload the long-home storage agreement",
+          artifact_name: long_home_storage_agreement_artifact_name,
+          path: long_home_storage_agreement_path
+        ),
+        role: capability_neutral,
+        step_name: "Upload the long-home storage agreement",
+      },
+    ],
+  )
 }
 
 fn witness_floor_steps() -> List<Step> {
@@ -577,9 +748,9 @@ data witness_floor_workflow: Workflow = {
   env: Present {
     value: [
       kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always")),
-      kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: yaml_string(s: "expected_red_roster_join.tsv")),
-      kv(key: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: yaml_string(s: "required_floor_disposition.tsv")),
-      kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: yaml_string(s: "long_home_storage_agreement.tsv"))
+      kv(key: "GUNBC_EXPECTED_RED_ROSTER_JOIN", value: yaml_string(s: expected_red_roster_join_path)),
+      kv(key: "GUNBC_REQUIRED_FLOOR_DISPOSITION", value: yaml_string(s: required_floor_disposition_path)),
+      kv(key: "GUNBC_LONG_HOME_STORAGE_AGREEMENT", value: yaml_string(s: long_home_storage_agreement_path))
     ]
   },
   permissions: Present {

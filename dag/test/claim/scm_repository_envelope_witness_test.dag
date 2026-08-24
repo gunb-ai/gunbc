@@ -1,6 +1,6 @@
 module test.claim.scm_repository_envelope_witness
 
-// The repository envelope, executed. What is under test is the layer image.dag deliberately is not:
+// The repository envelope, executed. What is under test is the layer commit_closure_json_v2 deliberately is not:
 // an empty initialized repository with NO root, several commits over ONE shared node population, and
 // a checked-out selection that may be absent but may never dangle.
 //
@@ -30,8 +30,13 @@ import gunbc.scm.repository_envelope {
   empty_repository, encode_repository, decode_repository,
   repository_envelope_format_tag, repository_node_identity_rule_tag,
   RepositoryEncodeOutcome, RepositoryEncoded, RepositoryEncodeRefused,
-  RepositoryRefusal, RepositoryImageRefusal, RepositoryCommitRootUnresolved,
-  RepositoryCheckedOutUnresolved, RepositoryIdentityRuleUnrecognized,
+  RepositoryEncodeRefusal, RepositoryEncodeClosureDocRefusal,
+  RepositoryCommitRootNotInStore, RepositoryCheckoutNotInCommits,
+  RepositoryDecodeRefusal, RepositoryDecodeClosureDocRefusal,
+  RepositoryIdentityRuleUnrecognized,
+  RepositoryCommitRootReferenceUnresolved, RepositoryCheckoutReferenceUnresolved,
+  RepositoryUnexpectedMember, RepositoryMemberContext,
+  RepositoryEnvelopeMembers, RepositoryCommitMembers,
   encode_repository_checked,
 }
 
@@ -171,7 +176,7 @@ test fn scm_env_the_root_signature_distinguishes_order() -> Bool {
 //
 // This is the THIRD time this stack has shipped an observation structurally incapable of producing
 // its own negative, and the second time the identical defect was fixed one layer down and then
-// reintroduced one layer up -- image.dag's sharing claim had exactly this shape and exactly this
+// reintroduced one layer up -- commit_closure_json_v2's sharing claim had exactly this shape and exactly this
 // repair. Recorded here rather than silently corrected, because the pattern is the finding: a claim
 // whose subject is an encoding must observe the ENCODED form, and deduplicating consumers make any
 // downstream count agree with itself.
@@ -288,7 +293,7 @@ test fn scm_env_a_dangling_commit_root_refuses() -> Bool {
           elements: [
             json_object(
               members: [
-                json_kv(key: "root", value: json_string(s: "4242")),
+                json_kv(key: "root", value: json_object(members: [json_kv(key: "at", value: json_string(s: "4242"))])),
                 json_kv(key: "message", value: json_string(s: "dangling")),
               ]
             )
@@ -420,10 +425,9 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
     RepositoryEncoded { value: _ } => "encoded"
     RepositoryEncodeRefused { cause: cause } =>
       match cause {
-        RepositoryImageRefusal { cause: _ } => "image"
-        RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
-        RepositoryCommitRootUnresolved { reference: _ } => "commit_root"
-        RepositoryCheckedOutUnresolved { reference: _ } => "checked_out"
+        RepositoryEncodeClosureDocRefusal { cause: _ } => "closure_document"
+        RepositoryCommitRootNotInStore { root: _ } => "commit_root"
+        RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
       }
   }
 }
@@ -466,3 +470,91 @@ test fn scm_env_a_complete_repository_encodes() -> Bool {
     RepositoryEncodeRefused { cause: _ } => false
   }
 }
+
+
+// ------------------------------------------------------------------------------------------------
+// THE CLOSED MEMBER SET AT THE ENVELOPE LAYER. Same rule, this layer's vocabulary.
+// ------------------------------------------------------------------------------------------------
+
+fn scm_env_wire_of(repo: RepositoryEnvelope) -> List<JsonKeyValue> {
+  scm_env_members(v: encode_repository(repo: repo))
+}
+
+fn scm_env_decode_members(members: List<JsonKeyValue>) -> RepositoryDecodeOutcome {
+  decode_repository(v: json_object(members: members))
+}
+
+// The claims below assert the CAUSE, not merely that something refused: a document that refused for
+// an unrelated reason would satisfy a bare refusal claim and prove nothing about the member set.
+fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
+  match outcome {
+    RepositoryDecoded { envelope: _ } => "decoded"
+    RepositoryDecodeRefused { cause: cause } =>
+      match cause {
+        RepositoryDecodeClosureDocRefusal { cause: _ } => "closure_document"
+        RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
+        RepositoryCommitRootReferenceUnresolved { reference: _ } => "commit_root"
+        RepositoryCheckoutReferenceUnresolved { reference: _ } => "checked_out"
+        RepositoryUnexpectedMember { context: _, key: _ } => "unexpected_member"
+      }
+  }
+}
+
+// An extra member is added to the ENCODER'S OWN OUTPUT, so the document is otherwise exactly what
+// this decoder emits -- the refusal can only be the extra member, not some unrelated defect in a
+// hand-authored envelope.
+test fn scm_env_an_unknown_envelope_member_refuses() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(
+      members: concat(
+        scm_env_wire_of(repo: scm_env_two_commit_repository()),
+        [json_kv(key: "future_field", value: json_string(s: "x"))]
+      )
+    )
+  ) == "unexpected_member"
+}
+
+// THE DENOMINATOR CONTROL. The same wire without the extra member must load, or the claim above is
+// satisfied by a decoder that refuses its own output.
+test fn scm_env_the_unmodified_wire_still_loads() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(members: scm_env_wire_of(repo: scm_env_two_commit_repository()))
+  ) == "decoded"
+}
+
+fn scm_env_commit_with_extra(m: JsonKeyValue) -> JsonKeyValue {
+  if m.key == "commits" {
+    match m.value {
+      JsonArray { elements: es } =>
+        json_kv(key: "commits", value: json_array(elements: map(es, e => scm_env_widen_commit(v: e))))
+      _ => m
+    }
+  } else {
+    m
+  }
+}
+
+fn scm_env_widen_commit(v: JsonValue) -> JsonValue {
+  match v {
+    JsonObject { members: ms } =>
+      json_object(members: concat(ms, [json_kv(key: "author", value: json_string(s: "unmodeled"))]))
+    _ => v
+  }
+}
+
+test fn scm_env_an_unknown_commit_member_refuses() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(
+      members: map(
+        scm_env_wire_of(repo: scm_env_two_commit_repository()),
+        m => scm_env_commit_with_extra(m: m)
+      )
+    )
+  ) == "unexpected_member"
+}
+
+
+
+
+
+

@@ -1,6 +1,6 @@
 module v2.std.materialize
 
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, Fnv1a64 }
 import v2.std.node { Node, content_hash, node_subtree_nodes }
 import std.realization { Materialization, Recompute, Memoize, Share }
 import std.computation_identity { ComputationIdentity, StructurallyIdentical, IdentityUnknown, MissingConcept, identity_permits_share }
@@ -38,7 +38,7 @@ fn materialized_has_peer(acc: List<MaterializedNode>, h: ContentHash) -> Bool {
 }
 
 fn materialize_fold_step(acc: List<MaterializedNode>, n: Node) -> List<MaterializedNode> {
-  let h = content_hash(n: n)
+  let h = Fnv1a64(content_hash(n: n))
   if materialized_has_peer(acc: acc, h: h) {
     list_snoc_item(
       xs: materialized_mark_peers_share(acc: acc, h: h),
@@ -74,7 +74,7 @@ fn distinct_hashes(root: Node) -> List<ContentHash> {
     xs: node_subtree_nodes(root: root),
     empty: empty_hashes,
     cons: fn(acc, n) {
-      let h = content_hash(n: n)
+      let h = Fnv1a64(content_hash(n: n))
       if hashes_contain(hs: acc, h: h) { acc } else { list_snoc_item(xs: acc, item: h) }
     }
   )

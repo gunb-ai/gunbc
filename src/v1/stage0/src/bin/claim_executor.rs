@@ -1841,8 +1841,8 @@ struct ClaimResult {
     /// failure mode has to be recovered by substring-matching `detail` — which is what
     /// `falsifier_failure_mode` did, and its fallback arm is `WitnessRed`, so a reworded
     /// message silently demoted a budget refusal to a witness failure. This keeps the fact
-    /// as data on the path that needs it. It is a projection of `ClaimOutcome::TimedOut`,
-    /// not a second authority: nothing sets it except the `TimedOut` arm below.
+    /// as data on the path that needs it. It is a projection of the two budget arms of
+    /// `ClaimOutcome`, not a second authority: nothing sets it except those arms below.
     budget_refusal: Option<BudgetRefusal>,
     /// Set when a wet witness refused because a host CLI dependency was absent on PATH
     /// before execution. Parsed from the failure-receipt wire
@@ -2106,14 +2106,8 @@ impl ExpectedRedDisposition {
             // before any caller of `run_batch_unit`, so CI does not execute this path at all.
             // Losing a cost signal on a retiring surface is the right trade; reporting a
             // passing row as undecided is not.
-            ClaimOutcome::TimedOut {
-                completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
-                ..
-            } => Self::BudgetFailure,
-            ClaimOutcome::TimedOut {
-                completion: v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget,
-                ..
-            } => Self::StaleQuarantineAssertionReturnedTrue,
+            ClaimOutcome::BudgetInterrupted { .. } => Self::BudgetFailure,
+            ClaimOutcome::CompletedOverBudget { .. } => Self::StaleQuarantineAssertionReturnedTrue,
             // A ROUTE GAP JOINS THE INFRASTRUCTURE ARM, not the assertion arm, and for the
             // same reason `HostToolUnresolved` already sits there: enrollment asserts an
             // expected VERDICT, and a claim whose route has no arm for a host effect never
@@ -2715,11 +2709,13 @@ fn claim_result_for_outcome(
             host_dependency_refusal: None,
             resolve_realization,
         },
-        ClaimOutcome::TimedOut {
-            elapsed_ms,
+        // ONE ARM PER READING. The prose used to be selected by matching a field this arm
+        // could have wildcarded away; it is now selected by which variant was constructed, so
+        // a receipt cannot say "killed ... elapsed is a ceiling" about a row that completed.
+        ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms,
             budget_ms,
             kind,
-            completion,
         } => ClaimResult {
             function,
             entry: entry.clone(),
@@ -2734,22 +2730,55 @@ fn claim_result_for_outcome(
             // The old comment defended the wording ("'ceiling' is deliberate"), which is how it
             // survived — a considered-looking justification for a claim that only held on one
             // arm.
-            detail: match completion {
-                v1_compiler::cli_run::BudgetCompletion::Interrupted => format!(
-                    "killed at its {} budget: at least {}ms elapsed against a {}ms budget \
-                     (interrupted, so elapsed bounds the cost and does not measure it)",
-                    kind.label(),
-                    elapsed_ms,
-                    budget_ms
-                ),
-                v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget => format!(
-                    "completed over its {} budget: exactly {}ms elapsed against a {}ms budget \
-                     (ran to completion and passed, then was reclassified on cost)",
-                    kind.label(),
-                    elapsed_ms,
-                    budget_ms
-                ),
-            },
+            detail: format!(
+                "killed at its {} budget: at least {}ms elapsed against a {}ms budget \
+                 (interrupted, so elapsed bounds the cost and does not measure it)",
+                kind.label(),
+                elapsed_at_least_ms,
+                budget_ms
+            ),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
+            witness_row_costs: Vec::new(),
+            expectation_refusal: None,
+            budget_refusal: Some(BudgetRefusal {
+                elapsed_ms: elapsed_at_least_ms,
+                budget_ms,
+                kind,
+                completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
+            }),
+            host_dependency_refusal: None,
+            resolve_realization,
+        },
+        ClaimOutcome::CompletedOverBudget {
+            elapsed_ms,
+            budget_ms,
+            kind,
+        } => ClaimResult {
+            function,
+            entry: entry.clone(),
+            ok: false,
+            // The detail names the budget in prose for the human reading a log; `budget_refusal`
+            // beside it is what classification reads, so the mode does not depend on this
+            // wording. What the wording MUST get right is whether the number is a bound or a
+            // measurement, and it used to say "killed ... elapsed is a ceiling" unconditionally.
+            // That is true of an interrupted row and FALSE of a completed one: a
+            // `CompletedOverBudget` row ran to completion, passed, and has an exact elapsed, so
+            // asserting it was killed and censored is a fabricated fact in a durable receipt.
+            // The old comment defended the wording ("'ceiling' is deliberate"), which is how it
+            // survived — a considered-looking justification for a claim that only held on one
+            // arm.
+            detail: format!(
+                "completed over its {} budget: exactly {}ms elapsed against a {}ms budget \
+                 (ran to completion and passed, then was reclassified on cost)",
+                kind.label(),
+                elapsed_ms,
+                budget_ms
+            ),
             wall_nanos,
             resolve_nanos,
             corpus_resolve_nanos: 0,
@@ -2762,7 +2791,7 @@ fn claim_result_for_outcome(
                 elapsed_ms,
                 budget_ms,
                 kind,
-                completion,
+                completion: v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget,
             }),
             host_dependency_refusal: None,
             resolve_realization,
@@ -4100,7 +4129,7 @@ fn read_schedule_witness_entry_paths(
 /// The first budget kill among this discovery batch's witnesses, if any.
 ///
 /// Discovery is the falsifier path — it is where the incident that motivated the typed
-/// `TimedOut` actually lives (`resolution_divergence_silent_pick_gate_keystone_holds` is a
+/// budget arms actually live (`resolution_divergence_silent_pick_gate_keystone_holds` is a
 /// discovery row). A discovery batch flattens N witness outcomes into one `ok`/`detail`
 /// pair, so without lifting the refusal out of `witness_outcomes` the batch would carry
 /// `budget_refusal: None`, miss the structural path in `batch_failure_mode_and_detail`, and
@@ -4111,19 +4140,15 @@ fn discovery_budget_refusal(summary: &DiscoverySummary) -> Option<BudgetRefusal>
     summary
         .witness_outcomes
         .iter()
-        .find_map(|w| match w.outcome {
-            ClaimOutcome::TimedOut {
-                elapsed_ms,
-                budget_ms,
-                kind,
-                completion,
-            } => Some(BudgetRefusal {
-                elapsed_ms,
-                budget_ms,
-                kind,
-                completion,
-            }),
-            _ => None,
+        // Both budget arms lift, through the projection rather than a wildcard: this carrier
+        // keeps the axis as data, so it wants the pair, not one of the two arms.
+        .find_map(|w| {
+            w.outcome.budget_event().map(|event| BudgetRefusal {
+                elapsed_ms: event.elapsed_ms,
+                budget_ms: event.budget_ms,
+                kind: event.kind,
+                completion: event.completion,
+            })
         })
 }
 
@@ -4201,27 +4226,34 @@ fn scoped_witness_summary_outcome(
                     v1_compiler::cli_run::hermetic_effect_ground_label(ground)
                 ),
             ),
-            ClaimOutcome::TimedOut {
+            // "budget-killed" was unconditional and is only true of an interrupted row; a
+            // completed one passed and was reclassified on an exact cost. The tag is what
+            // downstream reads, so a wrong tag is worse than wrong prose — and it is now the ARM
+            // that selects the tag, so the two cannot be given one name by a wildcard.
+            ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms,
+                budget_ms,
+                kind,
+            } => (
+                "budget-killed",
+                format!(
+                    "{} elapsed_ms={} budget_ms={} elapsed_is=at least",
+                    kind.label(),
+                    elapsed_at_least_ms,
+                    budget_ms
+                ),
+            ),
+            ClaimOutcome::CompletedOverBudget {
                 elapsed_ms,
                 budget_ms,
                 kind,
-                completion,
             } => (
-                // "budget-killed" was unconditional and is only true of an interrupted row; a
-                // completed one passed and was reclassified on an exact cost. The tag is what
-                // downstream reads, so a wrong tag is worse than wrong prose.
-                match completion {
-                    v1_compiler::cli_run::BudgetCompletion::Interrupted => "budget-killed",
-                    v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget => {
-                        "budget-exceeded-completed"
-                    }
-                },
+                "budget-exceeded-completed",
                 format!(
-                    "{} elapsed_ms={} budget_ms={} elapsed_is={}",
+                    "{} elapsed_ms={} budget_ms={} elapsed_is=exactly",
                     kind.label(),
                     elapsed_ms,
-                    budget_ms,
-                    completion.elapsed_reading()
+                    budget_ms
                 ),
             ),
         });
@@ -6004,161 +6036,6 @@ fn write_gate_warm_cost_receipt_at(base: &std::path::Path, batch_records: &[Batc
     true
 }
 
-/// Per-witness cost receipt (Piece #5 spine): one row per discovery witness preserving
-/// `(entry, function, eval_wall_ms, resolve_ms)` identity — the grain
-/// falsifier_cadence_surface_note requires before per-row placement is admissible. The
-/// complete machine-readable record is the TSV file; rendered streams may project a subset
-/// later (W2 ruling: one record, two projections). Fail-closed on write error.
-///
-/// TWO COLUMN CORRECTIONS (2026-08-05), both cases of a column that could not say what it
-/// meant:
-///
-/// 1. `eval_ms` -> `eval_wall_ms`. The figure is and always was WALL, while the fast-lane
-///    cap that kills these rows is enforced on THREAD CPU, so the old name invited a
-///    threshold built on this file to select a different population than the cap kills.
-///    Renaming is the honest half; the *enforced* quantity still does not appear here at
-///    all, because these rows project through `std.observation.ObservationEvent`, which
-///    carries wall and rss but no cpu. See `v1_interpreter::WITNESS_COST_CLOCK_BASIS_NOTE`
-///    for the bound that makes this narrower than it sounds (eval is single-threaded, so
-///    wall bounds cpu above: a row under the cap on wall is provably under on cpu) and for
-///    the std change that would close it.
-///
-/// 2. `outcome` and `detail` are now EMITTED rather than dropped. The row tuple always
-///    carried them; the writer discarded the last two fields. Because `discovery_claim_result`
-///    pushes selection-skipped rows into this same receipt with zero timings, a `0` in the
-///    eval column meant "never executed" OR "ran in under a millisecond" and the file could
-///    not distinguish them — the empty-observation narrow, in an artifact whose whole
-///    purpose is per-row cost. A census taken from a selection-applied per-PR run would have
-///    counted skipped rows as fast ones.
-///
-///    Note the `.dag` model was never wrong here: `WitnessCostReceiptRow` already carries
-///    `outcome` and the projection witness already matches on it. Only this writer dropped
-///    it — the model/realization fork, not a modeling gap.
-///
-/// 3. An absent measurement now renders as `unmeasured`, not `0`. Emitting the outcome column
-///    made the two cases *decidable*, but the number itself was still fabricated, and
-///    `std.observation`'s `observation_measured_note` rules on exactly this: "A renderer
-///    projecting MeasuredUnavailable prints the cause; it never prints 0 and never omits the
-///    field, because a silently omitted number is the same fabrication one layer up." An
-///    executed witness may legitimately measure 0 ms, and those rows keep their `0`; a row
-///    that never ran has no cost to report and now says so. The cell is deliberately
-///    non-numeric so a consumer reaching for a number fails loudly rather than counting an
-///    unexecuted row as a fast one.
-fn write_witness_row_cost_receipt(batch_records: &[BatchRecord]) -> bool {
-    write_witness_row_cost_receipt_at(std::path::Path::new("target"), batch_records)
-}
-
-/// Rendering for a timing cell whose measurement does not exist. Deliberately NOT a number,
-/// so a consumer that reaches for one fails loudly instead of counting an unexecuted row as a
-/// fast one — the failure mode this receipt had while the cell said `0`.
-const UNMEASURED_CELL: &str = "unmeasured";
-
-/// Whether a row's timings are absent rather than measured. Keyed on the same
-/// `selection-skipped` outcome spelling `discovery_claim_result` writes and
-/// `wet_witness_row_outcome_label` already dispatches on, rather than inferring absence from
-/// the numbers — inferring it from a zero is precisely the conflation being closed.
-fn row_measurement_is_absent(outcome_variant: &str) -> bool {
-    outcome_variant == "selection-skipped"
-}
-
-/// What the drift wire may say about one row, decided BEFORE any comparison runs.
-///
-/// The fail-open this closes was not a bad comparison — it was comparing at all. A row that
-/// never executed floored to `observed = 0`, and 0 never exceeds a basis, so the comparator
-/// returned `WithinBasis`: a positive claim that the row met its cost basis, from a
-/// measurement that does not exist, and one that could never fail. Deciding comparability
-/// first makes that verdict unreachable rather than merely unlikely.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DriftRowDisposition {
-    /// No measurement exists — nothing to judge. Mirror of `BasisAbsent`.
-    ObservationAbsent,
-    /// A measurement exists but no basis to judge it against.
-    BasisAbsent,
-    /// Both present: the only state in which a verdict is meaningful.
-    Comparable,
-}
-
-fn drift_row_disposition(outcome_variant: &str, has_basis: bool) -> DriftRowDisposition {
-    // Order is load-bearing: absence of the OBSERVATION wins over presence of a basis. The
-    // defect was precisely a row that had a basis and no measurement being treated as
-    // comparable because its fabricated zero looked like one.
-    if row_measurement_is_absent(outcome_variant) {
-        DriftRowDisposition::ObservationAbsent
-    } else if has_basis {
-        DriftRowDisposition::Comparable
-    } else {
-        DriftRowDisposition::BasisAbsent
-    }
-}
-
-fn write_witness_row_cost_receipt_at(
-    base: &std::path::Path,
-    batch_records: &[BatchRecord],
-) -> bool {
-    let mut body = String::from(
-        "batch\tentry\tfunction\teval_wall_ms\teval_cpu_ms\tresolve_ms\twarm_ms\toutcome\tdetail\n",
-    );
-    let mut row_count = 0usize;
-    for rec in batch_records {
-        let n = rec.batch_index + 1;
-        for result in &rec.results {
-            for row in &result.witness_row_costs {
-                // A row that never executed has no cost to report. Printing `0` for it would
-                // be the fabricated zero std.observation's `observation_measured_note`
-                // forbids in as many words: "A renderer projecting MeasuredUnavailable prints
-                // the cause; it never prints 0 and never omits the field." So the timing
-                // columns render as UNMEASURED and the cause rides in outcome/detail, rather
-                // than a real measurement of zero standing in for the absence of one.
-                //
-                // Note the two are genuinely different facts here: an executed witness may
-                // legitimately measure 0 ms (sub-millisecond), and those rows keep their `0`.
-                //
-                // `eval_cpu_ms` sits BESIDE `eval_wall_ms` rather than replacing it, and its
-                // job is to make the remedy readable from this file alone: a slow row with
-                // high CPU is algorithm or repeated evaluation, a slow row with low CPU is
-                // waiting, I/O, subprocess or scheduling (operator ruling 2026-08-05). It is
-                // not a second threshold — the witness threshold is stated on wall — and a
-                // clock the producer did not sample renders UNMEASURED for the same reason
-                // an unexecuted row does: an unread clock must not read as a fast one.
-                let cells = if row_measurement_is_absent(&row.outcome) {
-                    format!(
-                        "{UNMEASURED_CELL}\t{UNMEASURED_CELL}\t{UNMEASURED_CELL}\t{UNMEASURED_CELL}"
-                    )
-                } else {
-                    let cpu = match row.eval_cpu_nanos {
-                        Some(ns) => (ns / 1_000_000).to_string(),
-                        None => UNMEASURED_CELL.to_string(),
-                    };
-                    format!(
-                        "{}\t{cpu}\t{}\t{}",
-                        row.eval_wall_nanos / 1_000_000,
-                        row.resolve_nanos / 1_000_000,
-                        row.warm_nanos / 1_000_000
-                    )
-                };
-                body.push_str(&format!(
-                    "{n}\t{}\t{}\t{cells}\t{}\t{}\n",
-                    row.entry, row.function, row.outcome, row.detail
-                ));
-                row_count += 1;
-            }
-        }
-    }
-    let path = base.join("floor-witness-row-cost-receipt.tsv");
-    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
-        eprintln!(
-            "claim_executor: failed to write witness row-cost receipt {}: {e} — walk fails closed here",
-            path.display()
-        );
-        return false;
-    }
-    eprintln!(
-        "[receipt] floor witness row-cost: {row_count} row(s) (TSV receipt: {})",
-        path.display()
-    );
-    true
-}
-
 fn batch_is_wet(batch: &[Runnable]) -> bool {
     batch.iter().any(|runnable| match runnable {
         Runnable::DiscoveryBatch { execution_mode, .. } => *execution_mode == ExecutionMode::Wet,
@@ -6381,273 +6258,6 @@ fn witness_row_cost_verdict_via_authority(
         )),
         Err(e) => Err(format!("{function}: {e}")),
     }
-}
-
-/// Drift comparison on the falsifier cadence only (margin ruling: row grew >2× against its
-/// dated basis = counted drift receipt, never merge-refusing). A row with no dated basis is
-/// BasisAbsent — typed, located, counted; never assume fine. Comparator authority is
-/// `dag/gunbc/witness_row_cost.dag` (resolved once; per-row exceeds_basis calls).
-fn write_witness_row_cost_drift_receipt_at(
-    base: &std::path::Path,
-    batch_records: &[BatchRecord],
-    basis_path: &std::path::Path,
-    source_roots: &[String],
-) -> bool {
-    let entry = "dag/gunbc/witness_row_cost.dag";
-    let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
-        Ok(v) => v,
-        Err(m) => {
-            eprintln!(
-                "claim_executor: failed to resolve {entry} for drift comparator (fail-closed):\n{m}"
-            );
-            return false;
-        }
-    };
-    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-
-    let mut basis: std::collections::HashMap<(String, String), WitnessRowCostBasisRow> =
-        std::collections::HashMap::new();
-    if let Ok(text) = std::fs::read_to_string(basis_path) {
-        for line in text.lines().skip(1) {
-            match parse_witness_row_cost_basis_line(line) {
-                Ok(None) => {}
-                Ok(Some((key, row))) => {
-                    basis.insert(key, row);
-                }
-                Err(msg) => {
-                    // Skip — never insert a wrong-host / malformed / zero-eval row
-                    // (would poison the 2× comparator; review 43284). Loud + counted via log.
-                    eprintln!("claim_executor: {msg}");
-                }
-            }
-        }
-    } else {
-        eprintln!(
-            "claim_executor: witness-row-cost basis file missing at {} — every row records BasisAbsent",
-            basis_path.display()
-        );
-    }
-
-    let mut body =
-        String::from("batch\tentry\tfunction\tobserved_eval_ms\tbasis_eval_ms\tverdict\trun_ref\n");
-    let mut drift_count = 0usize;
-    let mut basis_absent_count = 0usize;
-    let mut observation_absent_count = 0usize;
-    // A cross-clock pair is neither within basis nor exceeding it, and it is not a missing
-    // basis either — a basis IS present, on the wrong clock. Counted on its own line because
-    // its remedy differs: seed the missing row versus fix the producer handing over the wrong
-    // clock. Absorbing it into either neighbour would zero its frequency by construction.
-    let mut clock_mismatch_count = 0usize;
-    for rec in batch_records {
-        let n = rec.batch_index + 1;
-        for result in &rec.results {
-            for row in &result.witness_row_costs {
-                // A row that never executed has no observation to compare. Flooring it to 0
-                // and running the comparator produced `WithinBasis` — a POSITIVE verdict that
-                // the row met its cost basis, derived entirely from a measurement that does
-                // not exist, and one that can never fail because 0 never exceeds anything.
-                // That is the fabricated zero of the sibling receipt promoted into a verdict,
-                // and it fails open: the drift wire silently passed unexecuted rows.
-                //
-                // `ObservationAbsent` is the mirror of the `BasisAbsent` arm already below —
-                // there a measurement exists with no basis to judge it, here a basis exists
-                // with no measurement to judge. Neither is a comparison, and neither is
-                // reported as one. Counted, so the population is visible rather than absorbed.
-                let key = (row.entry.clone(), row.function.clone());
-                if drift_row_disposition(&row.outcome, basis.contains_key(&key))
-                    == DriftRowDisposition::ObservationAbsent
-                {
-                    observation_absent_count += 1;
-                    let basis_cell = basis
-                        .get(&key)
-                        .map(|b| b.eval_ms_basis.to_string())
-                        .unwrap_or_default();
-                    body.push_str(&format!(
-                        "{n}\t{}\t{}\t{UNMEASURED_CELL}\t{basis_cell}\tObservationAbsent\t\n",
-                        row.entry, row.function
-                    ));
-                    continue;
-                }
-                let observed = row.eval_wall_nanos / 1_000_000;
-                let dated = basis.get(&key);
-                let verdict = match witness_row_cost_verdict_via_authority(&ctx, observed, dated) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        eprintln!(
-                            "claim_executor: drift comparator refused for {}::{}: {e} — walk fails closed here",
-                            row.entry, row.function
-                        );
-                        return false;
-                    }
-                };
-                // Counting reads the arm the authority named; it does not re-decide it.
-                match verdict.as_str() {
-                    "BasisAbsent" => basis_absent_count += 1,
-                    "DriftExceeded" => drift_count += 1,
-                    "BasisClockMismatch" => clock_mismatch_count += 1,
-                    _ => {}
-                }
-                let (basis_cell, run_ref_cell) = match dated {
-                    None => (String::new(), String::new()),
-                    Some(b) => (b.eval_ms_basis.to_string(), b.run_ref.clone()),
-                };
-                body.push_str(&format!(
-                    "{n}\t{}\t{}\t{observed}\t{basis_cell}\t{verdict}\t{run_ref_cell}\n",
-                    row.entry, row.function
-                ));
-            }
-        }
-    }
-    let path = base.join("floor-witness-row-cost-drift-receipt.tsv");
-    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
-        eprintln!(
-            "claim_executor: failed to write witness row-cost drift receipt {}: {e} — walk fails closed here",
-            path.display()
-        );
-        return false;
-    }
-    eprintln!(
-        "[receipt] floor witness row-cost drift: basis_absent={basis_absent_count} observation_absent={observation_absent_count} clock_mismatch={clock_mismatch_count} drift_exceeded={drift_count} (TSV: {})",
-        path.display()
-    );
-    true
-}
-
-/// Single-authority projection: fetch `gunbc.witness_row_cost.witness_row_cost_migration_threshold_ms`
-/// once (never a hand-typed 500 in the seed — DESIGN §3) so the threshold cannot drift from the
-/// fast-lane budget authority it is derived from.
-fn witness_row_cost_migration_threshold_ms_via_authority(
-    ctx: &InterpContext,
-) -> Result<u128, String> {
-    match run_in_context_with_args(ctx, "witness_row_cost_migration_threshold_ms", &[], false) {
-        Ok(Value::Int(n)) if n >= 0 => Ok(n as u128),
-        Ok(other) => Err(format!(
-            "witness_row_cost_migration_threshold_ms returned {other}, expected non-negative Int (fail-closed)"
-        )),
-        Err(e) => Err(format!("witness_row_cost_migration_threshold_ms: {e}")),
-    }
-}
-
-/// Single-authority projection, mirroring `witness_row_cost_verdict_via_authority`:
-/// the threshold comparison lives entirely in `.dag`'s `witness_row_cost_migration_verdict`.
-/// Rust reads back the returned `MigrationDisclosureVerdict` coproduct's tag only.
-fn witness_row_cost_migration_verdict_via_authority(
-    ctx: &InterpContext,
-    observed_ms: u128,
-) -> Result<bool, String> {
-    let observed = millisecond_value(ctx, observed_ms)?;
-    match run_in_context_with_args(
-        ctx,
-        "witness_row_cost_migration_verdict",
-        &[(Some("observed".to_string()), observed)],
-        false,
-    ) {
-        Ok(Value::Variant { variant_name, .. }) => {
-            Ok(ctx.sym_eq(variant_name, "MandatoryMigration"))
-        }
-        Ok(other) => Err(format!(
-            "witness_row_cost_migration_verdict returned {other}, expected MigrationDisclosureVerdict variant (fail-closed)"
-        )),
-        Err(e) => Err(format!("witness_row_cost_migration_verdict: {e}")),
-    }
-}
-
-/// MANDATORY-MIGRATION DISCLOSURE (`witness_row_cost_migration_threshold_note`, gunbc.witness_row_cost):
-/// runs every floor pass (not gated to falsifier cadence — this is what surfaces an over-threshold
-/// witness before it ever trips the 5s fail-stop on an unrelated PR). Disclosure only: never fails
-/// the walk on a nonzero population. Both the threshold fetch and the per-row verdict are authority
-/// calls into `gunbc.witness_row_cost`; this function only serializes the resulting rows to a TSV
-/// and a log — it is strictly the receipt-writing seam, not a second decision surface.
-fn write_witness_row_cost_migration_disclosure_receipt_at(
-    base: &std::path::Path,
-    batch_records: &[BatchRecord],
-    source_roots: &[String],
-) -> bool {
-    let entry = "dag/gunbc/witness_row_cost.dag";
-    let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
-        Ok(v) => v,
-        Err(m) => {
-            eprintln!(
-                "claim_executor: failed to resolve {entry} for migration disclosure (fail-closed):\n{m}"
-            );
-            return false;
-        }
-    };
-    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-    let threshold_ms = match witness_row_cost_migration_threshold_ms_via_authority(&ctx) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!(
-                "claim_executor: migration disclosure threshold fetch failed: {e} — walk fails closed here"
-            );
-            return false;
-        }
-    };
-
-    let mut body =
-        String::from("batch\tentry\tfunction\tobserved_eval_ms\tthreshold_ms\tverdict\n");
-    let mut mandatory_count = 0usize;
-    let mut worst: Vec<(u128, String, String)> = Vec::new();
-    let mut observation_absent_count = 0usize;
-    for rec in batch_records {
-        let n = rec.batch_index + 1;
-        for result in &rec.results {
-            for row in &result.witness_row_costs {
-                if row_measurement_is_absent(&row.outcome) {
-                    observation_absent_count += 1;
-                    body.push_str(&format!(
-                        "{n}\t{}\t{}\t\t{threshold_ms}\tObservationAbsent\n",
-                        row.entry, row.function
-                    ));
-                    continue;
-                }
-                let observed = row.eval_wall_nanos / 1_000_000;
-                let is_mandatory = match witness_row_cost_migration_verdict_via_authority(
-                    &ctx, observed,
-                ) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        eprintln!(
-                            "claim_executor: migration verdict refused for {}::{}: {e} — walk fails closed here",
-                            row.entry, row.function
-                        );
-                        return false;
-                    }
-                };
-                let verdict = if is_mandatory {
-                    mandatory_count += 1;
-                    worst.push((observed, row.entry.clone(), row.function.clone()));
-                    "MandatoryMigration"
-                } else {
-                    "BelowMigrationThreshold"
-                };
-                body.push_str(&format!(
-                    "{n}\t{}\t{}\t{observed}\t{threshold_ms}\t{verdict}\n",
-                    row.entry, row.function
-                ));
-            }
-        }
-    }
-    worst.sort_by(|a, b| b.0.cmp(&a.0));
-    worst.truncate(5);
-    for (ms, entry, function) in &worst {
-        eprintln!(
-            "[witness-row-cost-migration-disclosure] worst: {entry}::{function} observed={ms}ms threshold={threshold_ms}ms"
-        );
-    }
-    let path = base.join("floor-witness-row-cost-migration-disclosure-receipt.tsv");
-    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
-        eprintln!(
-            "claim_executor: failed to write witness row-cost migration disclosure receipt {}: {e} — walk fails closed here",
-            path.display()
-        );
-        return false;
-    }
-    eprintln!(
-        "[receipt] floor witness row-cost migration disclosure: mandatory_migration={mandatory_count} observation_absent={observation_absent_count} threshold_ms={threshold_ms} (TSV: {})",
-        path.display()
-    );
-    true
 }
 
 /// ONE stage's own receipt, written before the next stage begins. The aggregate receipt
@@ -8455,8 +8065,6 @@ fn run_walk(
     stop_policy: FloorBatchStopPolicy,
     batch_clamp_params: Option<&[Option<ResolvedFloorBatchClamp>]>,
     budget_tighten_ms: Option<u128>,
-    falsifier_cadence: bool,
-    witness_row_cost_basis_path: &Path,
     emit_ordinary_floor_receipts: bool,
     // The observed walk-attempt identity. `None` is legitimate ONLY for a plan with no
     // on-success stages: nothing writes an attempt-scoped receipt, so nothing needs the
@@ -8727,44 +8335,10 @@ fn run_walk(
     let gate_warm_cost_receipt_ok =
         !emit_ordinary_floor_receipts || write_gate_warm_cost_receipt(&batch_records);
     trace_floor_phase("gate-warm-cost-receipt", "completed", "");
-    trace_floor_phase("witness-row-cost-receipt", "started", "");
-    let witness_row_cost_receipt_ok =
-        !emit_ordinary_floor_receipts || write_witness_row_cost_receipt(&batch_records);
-    trace_floor_phase("witness-row-cost-receipt", "completed", "");
     trace_floor_phase("wet-witness-row-outcome-receipt", "started", "");
     let wet_witness_row_outcome_receipt_ok = !emit_ordinary_floor_receipts
         || write_floor_wet_witness_row_outcome_receipt(&batch_records);
     trace_floor_phase("wet-witness-row-outcome-receipt", "completed", "");
-    trace_floor_phase("witness-row-cost-drift-receipt", "started", "");
-    let witness_row_cost_drift_receipt_ok = if !emit_ordinary_floor_receipts {
-        true
-    } else if falsifier_cadence {
-        write_witness_row_cost_drift_receipt_at(
-            std::path::Path::new("target"),
-            &batch_records,
-            witness_row_cost_basis_path,
-            source_roots,
-        )
-    } else {
-        true
-    };
-    trace_floor_phase("witness-row-cost-drift-receipt", "completed", "");
-    trace_floor_phase(
-        "witness-row-cost-migration-disclosure-receipt",
-        "started",
-        "",
-    );
-    let witness_row_cost_migration_disclosure_receipt_ok = !emit_ordinary_floor_receipts
-        || write_witness_row_cost_migration_disclosure_receipt_at(
-            std::path::Path::new("target"),
-            &batch_records,
-            source_roots,
-        );
-    trace_floor_phase(
-        "witness-row-cost-migration-disclosure-receipt",
-        "completed",
-        "",
-    );
     // Written on EVERY exit path, red included — a red run is precisely when the
     // alert needs to know which component failed (gunbc.floor_component_receipt).
     trace_floor_phase("floor-component-receipt", "started", "");
@@ -8799,10 +8373,7 @@ fn run_walk(
         || !resolve_receipt_ok
         || !batch_wall_receipt_ok
         || !gate_warm_cost_receipt_ok
-        || !witness_row_cost_receipt_ok
         || !wet_witness_row_outcome_receipt_ok
-        || !witness_row_cost_drift_receipt_ok
-        || !witness_row_cost_migration_disclosure_receipt_ok
         || !floor_component_receipt_ok
         || !materialization_receipt_ok;
     push_ordinary_receipt_write_refusals(
@@ -8810,10 +8381,7 @@ fn run_walk(
         resolve_receipt_ok,
         batch_wall_receipt_ok,
         gate_warm_cost_receipt_ok,
-        witness_row_cost_receipt_ok,
         wet_witness_row_outcome_receipt_ok,
-        witness_row_cost_drift_receipt_ok,
-        witness_row_cost_migration_disclosure_receipt_ok,
         floor_component_receipt_ok,
         materialization_receipt_ok,
     );
@@ -9348,8 +8916,6 @@ fn run_perturb_check(
         FloorBatchStopPolicy::StopBeforeDependents,
         None,
         None,
-        false,
-        Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
         true,
         // The perturb re-walk passes `&[]` for stages, so no attempt-scoped receipt is
         // written and no identity is owed.
@@ -10380,6 +9946,9 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut scoped_batch_id: Option<String> = None;
     let mut required_floor_mode = false;
     let mut required_ci_mode = false;
+    let mut required_cited_symbol_mode = false;
+    let mut required_v2_emission_mode = false;
+    let mut required_v2_emission_selftest_mode = false;
     let mut corpus_type_judgment_mode = false;
     let mut required_regen_mode = false;
     let mut required_regen_fixed_point_mode = false;
@@ -10411,6 +9980,15 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-ci" => {
                 required_ci_mode = true;
+            }
+            "--required-cited-symbol" => {
+                required_cited_symbol_mode = true;
+            }
+            "--required-v2-emission" => {
+                required_v2_emission_mode = true;
+            }
+            "--required-v2-emission-selftest" => {
+                required_v2_emission_selftest_mode = true;
             }
             "--corpus-type-judgment" => {
                 corpus_type_judgment_mode = true;
@@ -10507,6 +10085,40 @@ fn run() -> Result<ExitCode, ExitCode> {
         let job = std::env::var("GITHUB_JOB").unwrap_or_else(|_| "standalone".to_string());
         emit_cgroup_measurement(&format!("job={job} (--measure-cgroup-peak)"));
         return Ok(ExitCode::SUCCESS);
+    }
+
+    // ── V2 EMISSION: TWO STANDALONE ENTRY POINTS BESIDE THE REQUIRED PHASE ──────
+    //
+    // The v2-emission transaction IS ENROLLED in `--required-ci` as phase 3 (see that
+    // mode below), on an operator ruling relayed through the requesting session
+    // 2026-08-23, at a measured +135s against the floor's ~30-40 minutes. These two
+    // flags are not an opt-in alternative to that phase and must not be read as one:
+    // they exist because running the emission alone, or running only its red/green
+    // evidence, are real local actions -- the same reason the `src/v1` .dag parse sweep
+    // keeps its own bin beside its required phase.
+    //
+    // This comment said "DELIBERATELY NOT ENROLLED" in the revision that ADDED the
+    // enrolment, which is the premise contamination DESIGN warns about rather than a
+    // stale comment: a reader grepping here would conclude the phase is opt-in when it
+    // is required. It is rewritten rather than annotated, because two accounts of one
+    // fact is what produced the contradiction.
+    //
+    // Both flags run the SAME producer the required phase runs
+    // (`cli_run::compile_entry_emission`), so a green here and a green there cannot be
+    // different facts.
+    if required_v2_emission_selftest_mode {
+        let failures = v1_compiler::cli_run::run_required_v2_emission_selftest();
+        for failure in &failures {
+            eprintln!("required-v2-emission-selftest: FAIL {failure}");
+        }
+        return if failures.is_empty() {
+            eprintln!(
+                "required-v2-emission-selftest: OK red fixture refused on the annotation cause, green fixture emitted"
+            );
+            Ok(ExitCode::SUCCESS)
+        } else {
+            Err(ExitCode::from(1))
+        };
     }
 
     // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT, and that ordering is load-bearing rather
@@ -10677,7 +10289,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // paragraph's re-add queue), so nothing is admitted by the absence — but the three
     // measurements above are simply not taken, which is a declared rung drop, not a silent one.
     //
-    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The three phases are independent —
+    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The four phases are independent —
     // the one real data dependency, the fixed point's need for regen's pass-1 digest, went with
     // the phase that consumed it — so every phase RUNS EVEN AFTER AN EARLIER FAILURE and the run
     // reports the complete ledger instead of letting the first defect hide the rest. The line
@@ -10687,9 +10299,18 @@ fn run() -> Result<ExitCode, ExitCode> {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut ran: Vec<&'static str> = Vec::new();
 
-        // PHASE 1 — src/v1 .dag parse sweep. Independent of everything below it.
-        eprintln!("required-ci: phase parse (src/v1 .dag)");
-        match v1_compiler::cli_run::run_v1_src_dag_parse(&v1_compiler::cli_run::workspace_root()) {
+        // PHASE 1 — the .dag parse sweep, over every authored root (src/v1, dag, src/v2).
+        // Independent of everything below it. The roster is
+        // `cli_run::DAG_PARSE_SWEEP_ROOTS`, shared with the standalone bin so the cheapest
+        // local check and this phase cover the same files.
+        eprintln!(
+            "required-ci: phase parse (.dag: {})",
+            v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS.join(", ")
+        );
+        match v1_compiler::cli_run::run_dag_parse_sweep(
+            &v1_compiler::cli_run::workspace_root(),
+            &v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS,
+        ) {
             Ok(count) => eprintln!("required-ci: parse OK {count} file(s) parse-clean"),
             Err(errors) => {
                 for e in &errors {
@@ -10729,7 +10350,66 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
         ran.push("regen");
 
-        // PHASE 3 — the witness floor. Independent; runs whatever happened above.
+        // PHASE 3 — v2 emission. ENROLLED 2026-08-23 on an operator ruling relayed through
+        // the requesting session, after the 2026-08-23 break reached main and stayed for
+        // hours with every required phase green: the required run parses src/v1 .dag,
+        // compares the regen mirrors and folds the floor, and NONE OF THE THREE COMPILES A
+        // v2 ENTRY. Measured cost +135s against the floor's ~30-40 minutes.
+        //
+        // ORDERED AHEAD OF THE FLOOR, and the ordering is a report-order fact only: the
+        // phases stay independent and every one runs even after an earlier failure, so
+        // this does not stop the floor starting on an unemittable tree. Making it an early
+        // PREREQUISITE (an exit before the floor) is a scheduling decision that belongs to
+        // the operator with the number attached, and it would change this mode's
+        // stopped-line audit design, so it is not taken here.
+        //
+        // The subject is the SAME PRODUCER the cargo board runs
+        // (cli_run::compile_entry_emission, which `gunbc compile --entry` also calls), so
+        // a green here and an emitting board are one fact rather than two.
+        eprintln!("required-ci: phase v2-emission (one entry, the board's producer)");
+        match v1_compiler::cli_run::run_required_v2_emission(&source_roots) {
+            Ok(runs) => {
+                let mut not_completed = 0usize;
+                for run in &runs {
+                    eprintln!("{}", run.measurement_line("required-ci: v2-emission"));
+                    match &run.disposition {
+                        v1_compiler::cli_run::EntryEmissionDisposition::Completed { .. } => {}
+                        v1_compiler::cli_run::EntryEmissionDisposition::Refused {
+                            phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-ci: v2-emission EmissionRefused entry={} phase={phase} cause={cause}",
+                                run.entry
+                            );
+                        }
+                        v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
+                            earlier_phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-ci: v2-emission EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
+                                run.entry
+                            );
+                        }
+                    }
+                }
+                if not_completed > 0 {
+                    phase_failures.push(format!("v2-emission ({not_completed} not completed)"));
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "required-ci: v2-emission EmissionNotExecuted earlier_phase=roster cause={e}"
+                );
+                phase_failures.push(format!("v2-emission roster: {e}"));
+            }
+        }
+        ran.push("v2-emission");
+
+        // PHASE 4 — the witness floor. Independent; runs whatever happened above.
         eprintln!("required-ci: phase floor (one prepared subject, one fold)");
         let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
         match v1_compiler::cli_run::run_required_floor(
@@ -10762,6 +10442,66 @@ fn run() -> Result<ExitCode, ExitCode> {
             Ok(ExitCode::SUCCESS)
         } else {
             Err(ExitCode::from(1))
+        };
+    }
+
+    if required_v2_emission_mode {
+        let roots = if source_roots.is_empty() {
+            v1_compiler::cli_run::witness_layer_roots()
+        } else {
+            source_roots.clone()
+        };
+        return match v1_compiler::cli_run::run_required_v2_emission(&roots) {
+            Ok(runs) => {
+                let mut not_completed = 0usize;
+                for run in &runs {
+                    // ONE SELF-DESCRIBING LINE. The disposition is ON the line, so a run
+                    // that never reached the compiler cannot be read as a clean emission
+                    // of nothing by anything that reads one line at a time.
+                    eprintln!("{}", run.measurement_line("required-v2-emission"));
+                    match &run.disposition {
+                        v1_compiler::cli_run::EntryEmissionDisposition::Completed { .. } => {}
+                        v1_compiler::cli_run::EntryEmissionDisposition::Refused {
+                            phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-v2-emission: EmissionRefused entry={} phase={phase} cause={cause}",
+                                run.entry
+                            );
+                        }
+                        v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
+                            earlier_phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-v2-emission: EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
+                                run.entry
+                            );
+                        }
+                    }
+                }
+                eprintln!(
+                    "required-v2-emission: entries={} not_completed={}",
+                    runs.len(),
+                    not_completed
+                );
+                if not_completed == 0 {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                }
+            }
+            // The roster itself being unreadable is reported as itself: no entry ran, so
+            // there is no per-entry disposition to render.
+            Err(e) => {
+                eprintln!(
+                    "required-v2-emission: EmissionNotExecuted earlier_phase=roster cause={e}"
+                );
+                Err(ExitCode::from(1))
+            }
         };
     }
 
@@ -10803,6 +10543,65 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             Err(e) => {
                 eprintln!("required-regen-fixed-point: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
+    // THE CITED-SYMBOL CENSUS IS ITS OWN REQUIRED CHECK, NOT A PHASE OF `--required-ci`.
+    //
+    // WHY IT IS NOT A PHASE. The operator narrowed `--required-ci` from eight phases to three on
+    // 2026-08-21 (#8791), and that ruling is about what one composed entry point is responsible
+    // for. A census with a different subject gets its own named check instead: `--required-ci`
+    // stays at exactly three phases, so nothing about the narrowing is weakened, contradicted or
+    // quietly reinterpreted. Routing the same phase in under a different name would be the
+    // workaround this repository refuses; a distinct concern with its own check is the shape the
+    // ruling points at.
+    //
+    // WHY IT IS NOT A FLOOR CLAIM EITHER, and this one is structural rather than a preference.
+    // `run_required_floor` declines any entry that reads the live tree (`DeclinedLiveTree`), and
+    // reading the live corpus IS this census's subject -- relocating the witness moves it from
+    // `DeclinedLongModule` to `DeclinedLiveTree` and never to `Planned`. No amount of making it
+    // cheaper opens that door.
+    //
+    // WHAT IT REPORTS. Every unresolved reference with the typed arm that refused it, and -- on a
+    // green -- the population it checked. An empty refusal list means both "every authored
+    // reference resolved" and "there were no references to check"; those are different states and
+    // only the first is coverage, so a population it cannot read FAILS rather than greening over
+    // an unknown denominator.
+    if required_cited_symbol_mode {
+        let (ctx, _entry) = match cited_symbol_lens_context(&source_roots) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("cited-symbol: refused: {e}");
+                return Err(ExitCode::from(1));
+            }
+        };
+        let rows = match cited_symbol_census(&ctx) {
+            Ok(rows) => rows,
+            Err(e) => {
+                eprintln!("cited-symbol: refused: {e}");
+                return Err(ExitCode::from(1));
+            }
+        };
+        if !rows.is_empty() {
+            for row in &rows {
+                eprintln!("cited-symbol: REFUSED {row}");
+            }
+            eprintln!(
+                "cited-symbol: FAIL {} authored reference(s) do not resolve — a citation outlived \
+                 what it names (DESIGN §3)",
+                rows.len()
+            );
+            return Err(ExitCode::from(1));
+        }
+        return match cited_symbol_population(&ctx) {
+            Ok(checked) => {
+                eprintln!("cited-symbol: OK every authored reference resolves checked={checked}");
+                Ok(ExitCode::SUCCESS)
+            }
+            Err(e) => {
+                eprintln!("cited-symbol: refused: population unreadable: {e}");
                 Err(ExitCode::from(1))
             }
         };
@@ -10928,7 +10727,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     // requirement is unchanged by #8140: the walk moved AFTER plan evaluation (it is now
     // demand-directed on `schedules_discovery`), so this install precedes it by even
     // more, and the walk's whole-tree read is still policy-funnelled.
-    v1_compiler::cli_run::install_output_policy(&source_roots);
+    if let Err(why) = v1_compiler::cli_run::install_output_policy(&source_roots) {
+        eprintln!("claim_executor: {why}");
+        return Err(ExitCode::from(1));
+    }
     // Install the per-target group-marker syntax (GitHub Actions `::group::` vs a
     // plain-terminal header) from the .dag authority, so the parallel walk folds each
     // batch's host-effect traces into a collapsible group.
@@ -11637,8 +11439,6 @@ fn run() -> Result<ExitCode, ExitCode> {
         batch_stop_policy,
         batch_clamp_params.as_deref(),
         budget_tighten_ms,
-        plan_function == "gunbc_falsifier_plan",
-        Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
         !matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. })),
         walk_attempt_id.as_deref(),
     );
@@ -11716,7 +11516,7 @@ fn run() -> Result<ExitCode, ExitCode> {
 /// so "falsifier dark" is one of three modes, never an undifferentiated exit 1.
 // STALE SIGNAL, NOT MERELY DEAD CODE. These substrings matched a budget refusal back when a
 // raised one reached the claim seam as a `RuntimeError` carrying the refusal as prose. It now
-// arrives as `ClaimOutcome::TimedOut` with the pair typed, so nothing renders this text on the
+// arrives as a `ClaimOutcome` budget arm with the pair typed, so nothing renders this text on the
 // required-floor path any more. That matters more for the RESTORE than for today: this function
 // sits past the required-floor early return, on the falsifier lane whose workflows the floor cut
 // deleted, and a dead `.contains` does not fail loudly when a lane comes back — it matches
@@ -11830,10 +11630,7 @@ fn push_ordinary_receipt_write_refusals(
     resolve_receipt_ok: bool,
     batch_wall_receipt_ok: bool,
     gate_warm_cost_receipt_ok: bool,
-    witness_row_cost_receipt_ok: bool,
     wet_witness_row_outcome_receipt_ok: bool,
-    witness_row_cost_drift_receipt_ok: bool,
-    witness_row_cost_migration_disclosure_receipt_ok: bool,
     floor_component_receipt_ok: bool,
     materialization_receipt_ok: bool,
 ) {
@@ -11855,20 +11652,8 @@ fn push_ordinary_receipt_write_refusals(
         "ordinary-floor gate warm-cost receipt write refused",
     );
     push(
-        witness_row_cost_receipt_ok,
-        "ordinary-floor witness row-cost receipt write refused",
-    );
-    push(
         wet_witness_row_outcome_receipt_ok,
         "ordinary-floor wet witness row-outcome receipt write refused",
-    );
-    push(
-        witness_row_cost_drift_receipt_ok,
-        "ordinary-floor witness row-cost drift receipt write refused",
-    );
-    push(
-        witness_row_cost_migration_disclosure_receipt_ok,
-        "ordinary-floor witness row-cost migration disclosure receipt write refused",
     );
     push(
         floor_component_receipt_ok,
@@ -12079,11 +11864,12 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // not. The three are printed together so the subtraction is visible rather
     // than inferable.
     eprintln!(
-        "required-floor: offered={} routed={} declined_long={} declined_live={} \
-         — every discovered site is exactly one of these",
+        "required-floor: offered={} routed={} declined_long={} declined_fixture={} \
+         declined_live={} — every discovered site is exactly one of these",
         outcome.sites_offered,
         outcome.claims_planned,
         outcome.declined_long_module,
+        outcome.declined_fixture_member,
         outcome.declined_live_tree
     );
     // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
@@ -12115,7 +11901,8 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
          host_tool_unresolved={} route_gap_unenrolled={} route_gap_held={} \
          stale_route_gap={} known_red_now_passing={} known_red_budget_refused={} \
          known_red_passed_over_budget={} known_red_host_tool_unresolved={} \
-         known_red_host_effect_refused={} over_cost_line_diagnostic={}",
+         known_red_host_effect_refused={} known_red_runtime_errored={} \
+         known_red_observation_unreadable={} over_cost_line_diagnostic={}",
         outcome.claims_planned,
         outcome.claims_executed,
         outcome.receipt_identities,
@@ -12134,6 +11921,8 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         outcome.known_red_passed_over_budget,
         outcome.known_red_host_tool_unresolved_held,
         outcome.known_red_host_effect_refused,
+        outcome.known_red_runtime_errored.len(),
+        outcome.known_red_observation_unreadable.len(),
         outcome.over_cost_line_diagnostic
     );
     // ONE receipt, both numbers (#8642). This replaced a per-miss trace line that had no hit
@@ -12186,6 +11975,12 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for unresolved in &outcome.host_tool_unresolved {
         eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
     }
+    for errored in &outcome.known_red_runtime_errored {
+        eprintln!("required-floor: KNOWN-RED-RUNTIME-ERRORED {errored}");
+    }
+    for unreadable in &outcome.known_red_observation_unreadable {
+        eprintln!("required-floor: KNOWN-RED-OBSERVATION-UNREADABLE {unreadable}");
+    }
     for gap in &outcome.route_gap {
         eprintln!("required-floor: ROUTE-GAP {gap}");
     }
@@ -12199,7 +11994,12 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
 /// SEVEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
 /// caller, because a mode that forgot one of them would green a run the other refused. (The
 /// count is stated because a reader checks it; it was five before main added `route_gap` and
-/// `stale_route_gap`, and the sentence went on saying five through the merge that added them.)
+/// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
+/// It briefly said nine while `known_red_runtime_errored` and `known_red_observation_unreadable`
+/// were wired in here; they are REPORTED and deliberately NOT gating, so the count is seven
+/// again. Making them block reds lanes with no connection to the defect, which needs an
+/// approved design and a shadow phase rather than an author's judgement — and the honest
+/// reporting half does not have to wait for that decision.)
 fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) -> bool {
     outcome.failures.is_empty()
         && outcome.stale_quarantine.is_empty()
@@ -13209,8 +13009,6 @@ mod tests {
             None,
             None,
             false,
-            Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
-            false,
             None,
         );
         let emitted = String::from_utf8(sink).expect("emitted bytes must be valid utf-8");
@@ -13401,18 +13199,7 @@ mod tests {
     #[test]
     fn push_ordinary_receipt_write_refusals_locates_each_failed_writer() {
         let mut details = Vec::new();
-        push_ordinary_receipt_write_refusals(
-            &mut details,
-            true,
-            false,
-            true,
-            true,
-            true,
-            true,
-            true,
-            false,
-            true,
-        );
+        push_ordinary_receipt_write_refusals(&mut details, true, false, true, true, false, true);
         assert_eq!(details.len(), 2);
         assert!(details
             .iter()
@@ -13579,15 +13366,13 @@ mod tests {
 
         // ROW 3 — timed out: a BUDGET failure. An interruption plus a lower bound on cost is
         // never a semantic verdict, so it must not read as a quarantine holding.
-        let t = row(ClaimOutcome::TimedOut {
-            elapsed_ms: 5001,
+        let t = row(ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms: 5001,
             budget_ms: 5000,
+            // The VARIANT now says which case this is, so 5001 is a lower bound by
+            // construction: the completed row is a different arm the fixture cannot reach by
+            // omitting a field.
             kind: BudgetKind::Cpu,
-            // Interrupted, so 5001 is a lower bound. Named rather than defaulted: the
-            // CompletedOverBudget row is a DIFFERENT case with its own arm, and a fixture that
-            // did not say which one it built would be asserting about whichever the compiler
-            // picked.
-            completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
         });
         assert!(
             t.agreements.is_empty(),
@@ -13661,11 +13446,10 @@ mod tests {
         let f = "witness_holds";
         let expected_red = vec![(entry.to_string(), f.to_string())];
         for o in [
-            ClaimOutcome::TimedOut {
-                elapsed_ms: 1,
+            ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms: 1,
                 budget_ms: 1,
                 kind: BudgetKind::Wall,
-                completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
             },
             ClaimOutcome::RuntimeError {
                 message: "boom".into(),
@@ -15299,13 +15083,12 @@ mod tests {
     // `from_outcome` that never returned KnownRed at all would also pass.
     #[test]
     fn enrollment_holds_only_semantic_failures_not_undecided_claims() {
-        use v1_compiler::cli_run::{BudgetCompletion, BudgetKind, CiWitnessVerdict, ClaimOutcome};
+        use v1_compiler::cli_run::{BudgetKind, CiWitnessVerdict, ClaimOutcome};
 
-        let interrupted = ClaimOutcome::TimedOut {
-            elapsed_ms: 5_000,
+        let interrupted = ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms: 5_000,
             budget_ms: 5_000,
             kind: BudgetKind::Cpu,
-            completion: BudgetCompletion::Interrupted,
         };
         let missing_tool = ClaimOutcome::HostToolUnresolved {
             name: "git".to_string(),
@@ -15932,8 +15715,6 @@ mod tests {
                 None,
                 None,
                 false,
-                Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
-                false,
                 None,
             )
         };
@@ -16015,8 +15796,6 @@ mod tests {
             FloorBatchStopPolicy::StopBeforeDependents,
             None,
             None,
-            false,
-            Path::new("dag/gunbc/witness_row_cost_basis.tsv"),
             true,
             walk_attempt_id,
         )
@@ -16903,7 +16682,7 @@ mod tests {
         // recorded 900794ms is a censored measurement, not a completed one. Seeding it
         // would pin it WithinBasis below ~1.8M ms under the 2x comparator and enshrine a
         // deadline ceiling as normal cost. It must stay BasisAbsent — the honest third
-        // state — until ClaimOutcome::TimedOut can distinguish killed from completed.
+        // state — until ClaimOutcome distinguishes killed from completed, which it now does.
         for line in text.lines() {
             if line.trim_start().starts_with('#') {
                 continue;
@@ -17131,281 +16910,6 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
     }
 
-    /// Fixture for the row-cost receipt: one row that EXECUTED in under a millisecond and
-    /// one row that was NEVER EXECUTED. Both floor to `0` in the millisecond eval column,
-    /// which is precisely the collision the receipt has to survive.
-    fn zero_eval_collision_records() -> Vec<BatchRecord> {
-        vec![BatchRecord {
-            batch_index: 0,
-            wall_nanos: 0,
-            clamp_ms: None,
-            unit_count: 2,
-            runtime_units: FloorRuntimeUnitCount::Observed { units: 2 },
-            label: "collision".to_string(),
-            is_wet: false,
-            results: vec![ClaimResult {
-                function: "discovery-corpus".to_string(),
-                entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
-                ok: true,
-                detail: String::new(),
-                wall_nanos: 0,
-                resolve_nanos: 0,
-                corpus_resolve_nanos: 0,
-                corpus_eval_nanos: 0,
-                corpus_witnesses: 2,
-                runtime_unit_count: discovery_runtime_unit_count_from_summary(2),
-                witness_row_costs: vec![
-                    // Executed, sub-millisecond: 500_000ns / 1_000_000 == 0. Both clocks
-                    // sampled, as production rows are.
-                    WitnessRowCost {
-                        entry: "dag/test/claim/fast_test.dag".to_string(),
-                        function: "ran_in_under_a_millisecond".to_string(),
-                        eval_wall_nanos: 500_000,
-                        eval_cpu_nanos: Some(300_000),
-                        resolve_nanos: 0,
-                        warm_nanos: 0,
-                        outcome: "Done".to_string(),
-                        detail: String::new(),
-                    },
-                    // Executed, but only the wall clock was sampled — a real state for any
-                    // producer that is not `run_claim_measured`.
-                    WitnessRowCost {
-                        entry: "dag/test/claim/wall_only_test.dag".to_string(),
-                        function: "cpu_clock_not_sampled".to_string(),
-                        eval_wall_nanos: 4_000_000,
-                        eval_cpu_nanos: None,
-                        resolve_nanos: 0,
-                        warm_nanos: 0,
-                        outcome: "Done".to_string(),
-                        detail: String::new(),
-                    },
-                    // Never executed: pushed by `discovery_claim_result` with zero timings.
-                    WitnessRowCost {
-                        entry: "dag/test/claim/skipped_test.dag".to_string(),
-                        function: "never_executed_at_all".to_string(),
-                        eval_wall_nanos: 0,
-                        eval_cpu_nanos: None,
-                        resolve_nanos: 0,
-                        warm_nanos: 0,
-                        outcome: "selection-skipped".to_string(),
-                        detail: "affected-set".to_string(),
-                    },
-                ],
-                expectation_refusal: None,
-                budget_refusal: None,
-                host_dependency_refusal: None,
-                resolve_realization: None,
-            }],
-        }]
-    }
-
-    #[test]
-    /// The empty-observation narrow, closed at the artifact: a `0` in the eval column means
-    /// "ran in under a millisecond" OR "was never run", and before the outcome/detail columns
-    /// were emitted the receipt could not say which. A census taken from a selection-applied
-    /// per-PR run would have counted skipped rows as fast ones.
-    fn witness_row_cost_receipt_distinguishes_unexecuted_from_sub_millisecond() {
-        let base =
-            std::env::temp_dir().join(format!("gunbc-row-cost-collision-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&base);
-        assert!(write_witness_row_cost_receipt_at(
-            &base,
-            &zero_eval_collision_records()
-        ));
-        let path = base.join("floor-witness-row-cost-receipt.tsv");
-        let body = fs::read_to_string(&path).unwrap();
-
-        let executed = body
-            .lines()
-            .find(|l| l.contains("ran_in_under_a_millisecond"))
-            .expect("executed row");
-        let skipped = body
-            .lines()
-            .find(|l| l.contains("never_executed_at_all"))
-            .expect("skipped row");
-
-        // Columns 3..7 are eval_wall_ms, eval_cpu_ms, resolve_ms, warm_ms.
-        let cost_cols = |line: &str| {
-            let f: Vec<&str> = line.split('\t').collect();
-            (
-                f[3].to_string(),
-                f[4].to_string(),
-                f[5].to_string(),
-                f[6].to_string(),
-            )
-        };
-
-        // The executed row measured genuinely-zero milliseconds (500_000ns wall, 300_000ns
-        // cpu, both floor to 0). Those are real measurements and must survive as the numbers
-        // they are.
-        assert_eq!(
-            cost_cols(executed),
-            (
-                "0".to_string(),
-                "0".to_string(),
-                "0".to_string(),
-                "0".to_string()
-            ),
-            "a sub-millisecond row measured 0 and must report 0: {executed}"
-        );
-
-        // The unexecuted row has NO measurement and must not fabricate one — the
-        // std.observation observation_measured_note rule applied at the renderer: never print
-        // 0 for an absent measurement, never omit the field.
-        let absent = cost_cols(skipped);
-        assert_eq!(
-            absent,
-            (
-                UNMEASURED_CELL.to_string(),
-                UNMEASURED_CELL.to_string(),
-                UNMEASURED_CELL.to_string(),
-                UNMEASURED_CELL.to_string()
-            ),
-            "an unexecuted row must report absence, not a zero: {skipped}"
-        );
-        for cell in [&absent.0, &absent.1, &absent.2, &absent.3] {
-            assert!(
-                cell.parse::<u128>().is_err(),
-                "an absent measurement must not parse as a number, or a census counts an \
-                 unexecuted row as a fast one: {cell}"
-            );
-        }
-
-        // Discriminating on cost alone — false before this landed, and the assertion that
-        // goes RED if a fabricated zero ever returns.
-        assert_ne!(
-            cost_cols(executed),
-            absent,
-            "executed and unexecuted must differ in the cost columns themselves"
-        );
-
-        // THE SAME COLLISION ONE COLUMN OVER. A row that RAN but whose CPU clock was never
-        // sampled has no cpu figure, and rendering `0` there would say the witness used no
-        // CPU at all — which reads as the strongest possible remedy signal (pure waiting)
-        // for a row about which nothing is known. It must render absence while its wall
-        // figure, which WAS measured, stays a number.
-        let wall_only = body
-            .lines()
-            .find(|l| l.contains("cpu_clock_not_sampled"))
-            .expect("wall-only row");
-        let (wall, cpu, _, _) = cost_cols(wall_only);
-        assert_eq!(
-            wall, "4",
-            "a measured wall figure must survive: {wall_only}"
-        );
-        assert_eq!(
-            cpu, UNMEASURED_CELL,
-            "an unsampled cpu clock must report absence, not 0: {wall_only}"
-        );
-        assert!(
-            cpu.parse::<u128>().is_err(),
-            "an absent cpu measurement must not parse as a number, or a remedy read counts \
-             an unsampled clock as an idle one: {cpu}"
-        );
-
-        // And the two clocks must not be aliases of one another: the executed fixture
-        // measured 500_000ns wall against 300_000ns cpu, so a producer that filled both
-        // columns from one figure would be invisible at millisecond grain here. Assert on
-        // the raw rows instead, where the distinction is representable.
-        let records = zero_eval_collision_records();
-        let fast = &records[0].results[0].witness_row_costs[0];
-        assert_eq!(fast.eval_wall_nanos, 500_000);
-        assert_eq!(fast.eval_cpu_nanos, Some(300_000));
-        assert_ne!(
-            Some(fast.eval_wall_nanos),
-            fast.eval_cpu_nanos,
-            "the two clocks are independent carriers, not one figure written twice"
-        );
-
-        // The header names the column, so a consumer joins on a name rather than on an
-        // index that silently shifted when it was inserted.
-        let header: Vec<&str> = body.lines().next().expect("header").split('\t').collect();
-        assert!(
-            header.contains(&"eval_cpu_ms"),
-            "the cpu column must be named in the header: {header:?}"
-        );
-        assert_eq!(
-            header
-                .iter()
-                .position(|c| *c == "eval_wall_ms")
-                .map(|i| i + 1),
-            header.iter().position(|c| *c == "eval_cpu_ms"),
-            "the two clocks belong side by side, so the remedy is readable from this file \
-             alone without joining another: {header:?}"
-        );
-
-        // The typed disposition still rides beside the number, so the cause stays recoverable
-        // rather than being merely signalled by absence.
-        assert!(
-            executed.contains("\tDone\t"),
-            "executed row must carry its outcome: {executed}"
-        );
-        assert!(
-            skipped.contains("\tselection-skipped\t"),
-            "unexecuted row must say so: {skipped}"
-        );
-
-        // The eval column is WALL and must say so: the fast-lane cap that kills these rows
-        // is enforced on thread CPU, so a bare `eval_ms` invites a threshold built on this
-        // file to select a different population than the cap kills.
-        //
-        // Compared at COLUMN grain rather than by substring. A substring test is answering a
-        // question about column names with a question about characters, and the two only
-        // coincide by accident: `\teval_ms` happens not to occur inside `\teval_wall_ms`
-        // (review 48405 read it as though it did, which is a fair thing to misread and reason
-        // enough not to write it that way). Splitting on tabs asks the question directly.
-        let header: Vec<&str> = body.lines().next().expect("header").split('\t').collect();
-        assert!(
-            header.contains(&"eval_wall_ms"),
-            "eval column must name its clock: {header:?}"
-        );
-        assert!(
-            !header.contains(&"eval_ms"),
-            "the clock-ambiguous spelling must not return: {header:?}"
-        );
-        let _ = fs::remove_dir_all(&base);
-    }
-
-    #[test]
-    /// A row that never executed must not receive a verdict about its cost. Flooring it to 0
-    /// and running the comparator yields `WithinBasis` — a positive claim that the row met
-    /// its basis, from a measurement that does not exist, and one that can NEVER fail because
-    /// 0 never exceeds anything. That is a fail-open verdict, not a conservative default.
-    fn drift_comparator_refuses_to_judge_an_unexecuted_row() {
-        // THE DISCRIMINATING CASE: a basis EXISTS, so the comparator has everything it needs
-        // to emit a verdict — and must still refuse, because the observation does not exist.
-        // Before this, that row floored to 0, compared as `0 <= basis`, and reported
-        // `WithinBasis`: a verdict that could never fail, about a row that never ran.
-        assert_eq!(
-            drift_row_disposition("selection-skipped", true),
-            DriftRowDisposition::ObservationAbsent,
-            "an unexecuted row with a basis present must still refuse a verdict"
-        );
-        assert_eq!(
-            drift_row_disposition("selection-skipped", false),
-            DriftRowDisposition::ObservationAbsent,
-            "absence of the observation outranks absence of the basis"
-        );
-
-        // The two states that ARE meaningful stay reachable — this is not a blanket refusal.
-        assert_eq!(
-            drift_row_disposition("Done", true),
-            DriftRowDisposition::Comparable,
-            "an executed row with a basis is the only comparable state"
-        );
-        assert_eq!(
-            drift_row_disposition("Done", false),
-            DriftRowDisposition::BasisAbsent
-        );
-        // An executed row that measured genuinely-zero milliseconds is a real measurement and
-        // must remain comparable — the whole point is that 0-because-fast and
-        // 0-because-never-ran are different facts.
-        assert_eq!(
-            drift_row_disposition("Failed", true),
-            DriftRowDisposition::Comparable
-        );
-    }
-
     #[test]
     fn wet_witness_row_outcome_label_maps_three_distinct_values() {
         assert_eq!(wet_witness_row_outcome_label("Done"), "passed");
@@ -17456,11 +16960,10 @@ mod tests {
             total_entry_groups: 0,
             selected_entry_groups: 0,
         };
-        let killed = ClaimOutcome::TimedOut {
-            elapsed_ms: 900_001,
+        let killed = ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms: 900_001,
             budget_ms: 900_000,
             kind: BudgetKind::Wall,
-            completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
         };
 
         // Both arms: the receipt projection may succeed or refuse, and a receipt refusal must
@@ -20521,6 +20024,93 @@ fn run_behavioral_receipt_census(source_roots: &[String]) -> Result<ExitCode, Ex
 /// transcript comparison, and the verdict. WHAT IT DOES NOT COVER, stated rather than implied:
 /// the emit, and the emit-path-to-mirror lookup. Those have their own gates; this one would
 /// report a false green about them, so it does not speak about them at all.
+/// THE CITED-SYMBOL CENSUS, RUN AS ITS OWN REQUIRED CHECK BECAUSE IT CANNOT BE RUN AS A CLAIM.
+///
+/// `v2.lens.cited_symbol_resolution` resolves every structural `DeclarationRef` the repository
+/// authors -- hand-authored doc binds, the generated design document's references, and the roster
+/// registry -- against live declaration facts, and refuses a reference whose module, declaration or
+/// field is absent or ambiguous. Its live-corpus claim was carried only by a witness under
+/// `dag/test/claim/long/`, whose entire file is classified `OfflineLocalRecipe`, so nothing executed
+/// it: on unmodified main the lens was RED with 27 refusing production references while every
+/// required check was green.
+///
+/// WHY NOT THE FLOOR. `run_required_floor` declines an identity whose entry reads the live tree
+/// (`DeclinedLiveTree`), and reading the live corpus IS this census's subject. Relocating the
+/// witness out of the long home moves it from one decline arm to the other and never to `Planned`.
+/// The route is therefore a MODE, `--required-cited-symbol`, invoked by its own job -- not a claim,
+/// so it sits outside both the per-claim safety deadline and the live-tree arm, and not a phase of
+/// `--required-ci`, which the operator narrowed to three on 2026-08-21 and which this leaves
+/// byte-unchanged.
+///
+/// Returns the located refusals -- one line per unresolved reference, carrying the typed arm that
+/// refused it -- so the failure names what to fix rather than reporting a count.
+/// The size of the population the census just checked, so a green names its denominator.
+///
+/// An empty refusal list is returned both when every reference resolves and when there are no
+/// references at all; those are different states and only the first is coverage.
+fn cited_symbol_population(ctx: &InterpContext) -> Result<i64, String> {
+    match run_value(ctx, "cited_symbol_production_reference_count") {
+        Ok(Value::Int(n)) => Ok(n),
+        Ok(other) => Err(format!(
+            "cited_symbol_production_reference_count must be an Int, got {other:?}"
+        )),
+        Err(msg) => Err(msg),
+    }
+}
+
+/// The lens's evaluation context. The caller builds it ONCE and lends it to both readers -- the
+/// refusal report and the population count -- which is why they take a `&InterpContext` rather
+/// than source roots: two constructions would be two reads of a tree that can change between them,
+/// and a denominator is only meaningful for the census it accompanies. An earlier revision said
+/// this while both helpers built their own; the comment was true of the intent and false of the
+/// code, which is the stale-claim class this very census exists to catch (found in review 54581).
+fn cited_symbol_lens_context(source_roots: &[String]) -> Result<(InterpContext, String), String> {
+    const LENS_REL: &str = "lens/cited_symbol_resolution.dag";
+    let entry = source_roots
+        .iter()
+        .map(|r| Path::new(r).join(LENS_REL))
+        .find(|p| p.exists())
+        .ok_or_else(|| {
+            format!(
+                "cited-symbol: no source root carries {LENS_REL} (roots: {}) -- the census cannot \
+                 be run, which is ignorance and not a green",
+                source_roots.join(", ")
+            )
+        })?
+        .to_string_lossy()
+        .into_owned();
+    let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry)
+        .map_err(|e| format!("cited-symbol: resolve {entry} failed: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    Ok((ctx, entry))
+}
+
+fn cited_symbol_census(ctx: &InterpContext) -> Result<Vec<String>, String> {
+    match run_value(ctx, "cited_symbol_unresolved_reference_report") {
+        Ok(Value::List(rows)) => {
+            let mut out = Vec::new();
+            for row in rows.iter() {
+                match row {
+                    Value::Str(s) => out.push(s.to_string()),
+                    other => {
+                        return Err(format!(
+                            "cited-symbol: report rows must be String, got {other:?} (fail-closed)"
+                        ))
+                    }
+                }
+            }
+            Ok(out)
+        }
+        Ok(other) => Err(format!(
+            "cited-symbol: cited_symbol_unresolved_reference_report must return a List, got \
+             {other:?} (fail-closed)"
+        )),
+        Err(msg) => Err(format!(
+            "cited-symbol: census unavailable (fail-closed): {msg}"
+        )),
+    }
+}
+
 fn behavioral_receipt_selftest(source_roots: &[String]) -> Result<bool, String> {
     let workspace = v1_compiler::cli_run::workspace_root();
     // NOT under src/v1: regen seeds every .dag there into the stage0 compile closure, and this

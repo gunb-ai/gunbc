@@ -146,7 +146,7 @@ fn lbe_inferred_tree(root: Node) -> InferredTree {
   let facts = lbe_inferred_facts(resolved: root)
   InferredTree {
     root: root,
-    facts: Map {
+    facts: PartialFunction {
       lookup: fn(_) {
         Present { value: facts }
       }
@@ -293,7 +293,7 @@ fn lbe_run_test_claim_assert_from_mock(
   )
 }
 
-data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
+test data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
   anchor: ManualLbeConjDagSurface,
   label: lbe_label_conj_dag_surface,
   mock: lbe_io_mock_conj_dag_surface()
@@ -305,7 +305,7 @@ data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
   Deferred { actual: _, diagnostic: _ } => false
 }
 
-data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
+test data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
   anchor: ManualLbeDisjDagSurface,
   label: lbe_label_disj_dag_surface,
   mock: lbe_io_mock_disj_dag_surface()
@@ -317,7 +317,7 @@ data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
   Deferred { actual: _, diagnostic: _ } => false
 }
 
-data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
+test data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
   anchor: ManualLbeTransformDagSurface,
   label: lbe_label_transform_dag_surface,
   mock: lbe_io_mock_transform_dag_surface()
@@ -355,6 +355,6 @@ fn lbe_witness_dag_surface_language_identity() -> Bool {
   lbe_io_mock_conj_dag_surface().snapshot.language == ^dag_language_model_surface_id
 }
 
-data witness_testgen_schedules_three_lbe_generators: Bool = lbe_witness_testgen_schedules_three_generators()
+test data witness_testgen_schedules_three_lbe_generators: Bool = lbe_witness_testgen_schedules_three_generators()
 
-data witness_dag_surface_language_identity: Bool = lbe_witness_dag_surface_language_identity()
+test data witness_dag_surface_language_identity: Bool = lbe_witness_dag_surface_language_identity()

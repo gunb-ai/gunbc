@@ -3,9 +3,9 @@
 
 use self::TypeResolutionVerdict::*;
 use crate::std_algebra::AlgebraProfile::{
-    ApproximateFieldProfile, BooleanAlgebraCollectionProfile, BooleanAlgebraProfile,
-    FreeMonoidCollectionProfile, FreeMonoidScalarProfile, OrderedRingProfile,
-    PartialFunctionProfile,
+    ApproximateFieldProfile, BooleanAlgebraProfile, FinitePowerSetProfile,
+    FinitelySupportedFunctionProfile, FreeMonoidCollectionProfile, FreeMonoidScalarProfile,
+    OrderedRingProfile, PartialFunctionProfile,
 };
 use crate::std_algebra::AlgebraTypeTemplate::{
     AlgebraTypeVariable, ContainerOf, NamedTemplate, OptionalOf, ReceiverElement, ReceiverKey,
@@ -910,7 +910,7 @@ pub fn algebra_method_field(
     {
         let params = Rc::new({
             let mut __result = Vec::new();
-            for t in param_types.clone().iter().cloned() {
+            for t in param_types.iter().cloned() {
                 __result.push(make_param_node(
                     "_".to_string(),
                     t.clone(),
@@ -1117,7 +1117,7 @@ pub fn instantiate_algebra_type(
             } => {
                 let param_bs = Rc::new({
                     let mut __result = Vec::new();
-                    for tp in p.clone().iter().cloned() {
+                    for tp in p.iter().cloned() {
                         __result.push(instantiate_algebra_type(
                             tp.clone(),
                             base.clone(),
@@ -1128,14 +1128,14 @@ pub fn instantiate_algebra_type(
                 });
                 let param_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for b in param_bs.clone().iter().cloned() {
+                    for b in param_bs.iter().cloned() {
                         __result.extend((*b.diagnostics.clone()).iter().cloned());
                     }
                     __result
                 });
                 let param_nodes = Rc::new({
                     let mut __result = Vec::new();
-                    for b in param_bs.clone().iter().cloned() {
+                    for b in param_bs.iter().cloned() {
                         __result.push(b.ty.clone());
                     }
                     __result
@@ -1145,7 +1145,7 @@ pub fn instantiate_algebra_type(
                     ty: make_callable_type(
                         Rc::new({
                             let mut __result = Vec::new();
-                            for pn in param_nodes.clone().iter().cloned() {
+                            for pn in param_nodes.iter().cloned() {
                                 __result.push(make_param_node(
                                     "_".to_string(),
                                     pn.clone(),
@@ -1184,14 +1184,14 @@ pub fn instantiate_algebra_field(
         });
         let param_types = Rc::new({
             let mut __result = Vec::new();
-            for b in param_bs.clone().iter().cloned() {
+            for b in param_bs.iter().cloned() {
                 __result.push(b.ty.clone());
             }
             __result
         });
         let param_diags = Rc::new({
             let mut __result = Vec::new();
-            for b in param_bs.clone().iter().cloned() {
+            for b in param_bs.iter().cloned() {
                 __result.extend((*b.diagnostics.clone()).iter().cloned());
             }
             __result
@@ -1239,14 +1239,14 @@ pub fn enrich_kernel_type(
                 });
                 let fields = Rc::new({
                     let mut __result = Vec::new();
-                    for b in field_bs.clone().iter().cloned() {
+                    for b in field_bs.iter().cloned() {
                         __result.push(b.ty.clone());
                     }
                     __result
                 });
                 let field_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for b in field_bs.clone().iter().cloned() {
+                    for b in field_bs.iter().cloned() {
                         __result.extend((*b.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -1481,7 +1481,7 @@ pub fn build_type_substitution(
             }
             __result
         });
-        pairs.clone().iter().cloned().fold(
+        pairs.iter().cloned().fold(
             base_subst.clone(),
             |subst: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<AlgebraTypeTemplate>)| {
                 let arg_type = match Rc::new({
@@ -1806,7 +1806,7 @@ pub fn apply_type_substitution(
             } => {
                 let param_bs = Rc::new({
                     let mut __result = Vec::new();
-                    for tp in p.clone().iter().cloned() {
+                    for tp in p.iter().cloned() {
                         __result.push(apply_type_substitution(
                             tp.clone(),
                             subst.clone(),
@@ -1818,14 +1818,14 @@ pub fn apply_type_substitution(
                 });
                 let param_nodes = Rc::new({
                     let mut __result = Vec::new();
-                    for b in param_bs.clone().iter().cloned() {
+                    for b in param_bs.iter().cloned() {
                         __result.push(b.ty.clone());
                     }
                     __result
                 });
                 let param_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for b in param_bs.clone().iter().cloned() {
+                    for b in param_bs.iter().cloned() {
                         __result.extend((*b.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -1840,7 +1840,7 @@ pub fn apply_type_substitution(
                     ty: make_callable_type(
                         Rc::new({
                             let mut __result = Vec::new();
-                            for pn in param_nodes.clone().iter().cloned() {
+                            for pn in param_nodes.iter().cloned() {
                                 __result.push(make_param_node(
                                     "_".to_string(),
                                     pn.clone(),

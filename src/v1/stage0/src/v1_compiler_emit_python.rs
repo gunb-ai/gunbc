@@ -10,6 +10,7 @@ pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Python;
+use crate::v1_compiler_emit::BoundOperation::*;
 pub use crate::v1_compiler_emit::{
     compute_service_fields, effective_operation_transport, emit_algebra_method_template,
     emit_bin_op_symbol, emit_container, emit_default_bin_op, emit_error_expr,
@@ -28,9 +29,8 @@ pub use crate::v1_compiler_emit::{
     has_nested_records_node, has_service_items, is_null_coalesce, is_tco_eligible, lookup_item,
     module_emit_scope, order_typed_call_args, scope_after_expr, seed_bindings,
     service_fallback_transport, service_field_ctors, service_field_decls, test_file_path,
-    typed_named_arg_matches,
 };
-pub use crate::v1_compiler_emit::{BlockEmitState, InterpPart, ServiceFieldSet};
+pub use crate::v1_compiler_emit::{BlockEmitState, BoundOperation, InterpPart, ServiceFieldSet};
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
     capitalize_first, escape_json_string, escape_string_literal_body, extract_test_projections,
@@ -121,7 +121,7 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                         ),
                         Rc::new({
                             let mut __result = Vec::new();
-                            for p in test_projections.clone().iter().cloned() {
+                            for p in test_projections.iter().cloned() {
                                 if (p.module_name.clone()
                                     == authored_name_at(
                                         tm.type_env.clone().source_indices.clone(),
@@ -186,7 +186,7 @@ pub fn emit_init_py(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<TextFile> {
     {
         let import_lines = Rc::new({
             let mut __result = Vec::new();
-            for tm in modules.clone().iter().cloned() {
+            for tm in modules.iter().cloned() {
                 __result.push({
                     let mod_name = module_to_filename(authored_name_at(
                         tm.type_env.clone().source_indices.clone(),
@@ -290,7 +290,7 @@ pub fn emit_py_test_file(
         {
             let tests_str = Rc::new({
                 let mut __result = Vec::new();
-                for p in projections.clone().iter().cloned() {
+                for p in projections.iter().cloned() {
                     __result.push(emit_py_operation_test(p.clone(), 0));
                 }
                 __result
@@ -437,7 +437,7 @@ pub fn emit_py_imports(
         {
             let import_lines = Rc::new({
                 let mut __result = Vec::new();
-                for imp in imports.clone().iter().cloned() {
+                for imp in imports.iter().cloned() {
                     __result.push({
                         let mod_name = module_to_filename(authored_name_at(
                             source_indices.clone(),
@@ -500,7 +500,7 @@ pub fn emit_py_imports(
             });
             Rc::new({
                 let mut __result = Vec::new();
-                for line in import_lines.clone().iter().cloned() {
+                for line in import_lines.iter().cloned() {
                     if (line.clone() != "".to_string()) {
                         __result.push(line);
                     }
@@ -517,7 +517,7 @@ pub fn emit_py_prelude(typed_module: Rc<TypedModule>) -> String {
         let items = typed_module.items.clone();
         let has_structs = {
             let mut __found = false;
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 if (is_type_def_item(item.clone()) && (item.connective.clone() == Connective::Conj))
                 {
                     __found = true;
@@ -528,7 +528,7 @@ pub fn emit_py_prelude(typed_module: Rc<TypedModule>) -> String {
         };
         let has_enums = {
             let mut __found = false;
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 if (is_type_def_item(item.clone()) && (item.connective.clone() == Connective::Disj))
                 {
                     __found = true;
@@ -539,7 +539,7 @@ pub fn emit_py_prelude(typed_module: Rc<TypedModule>) -> String {
         };
         let has_services = {
             let mut __found = false;
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 if is_service_item(item.clone()) {
                     __found = true;
                     break;
@@ -685,7 +685,7 @@ pub fn emit_py_dataclass_from_children(
         {
             let field_lines = Rc::new({
                 let mut __result = Vec::new();
-                for child in children.clone().iter().cloned() {
+                for child in children.iter().cloned() {
                     __result.push(emit_py_dataclass_field_from_child(
                         child.clone(),
                         env.clone(),
@@ -749,7 +749,7 @@ pub fn emit_py_enum_from_children(
     {
         let has_data = {
             let mut __found = false;
-            for child in children.clone().iter().cloned() {
+            for child in children.iter().cloned() {
                 if ((child.children.clone().len() as i64) > 0) {
                     __found = true;
                     break;
@@ -761,7 +761,7 @@ pub fn emit_py_enum_from_children(
             {
                 let variant_classes = Rc::new({
                     let mut __result = Vec::new();
-                    for child in children.clone().iter().cloned() {
+                    for child in children.iter().cloned() {
                         __result.push(emit_py_variant_class_from_child(
                             name.clone(),
                             child.clone(),
@@ -772,7 +772,7 @@ pub fn emit_py_enum_from_children(
                 });
                 let variant_names = Rc::new({
                     let mut __result = Vec::new();
-                    for child in children.clone().iter().cloned() {
+                    for child in children.iter().cloned() {
                         __result.push(v1_rt::concat(
                             name.clone(),
                             authored_name(env.clone(), child.clone()),
@@ -800,7 +800,7 @@ pub fn emit_py_enum_from_children(
             {
                 let variant_lines = Rc::new({
                     let mut __result = Vec::new();
-                    for child in children.clone().iter().cloned() {
+                    for child in children.iter().cloned() {
                         __result.push(v1_rt::concat(
                             v1_rt::concat(
                                 "    ".to_string(),
@@ -1010,17 +1010,17 @@ pub fn emit_py_func_def(
         );
         let body_scope = build_params_scope(scope.clone(), params.clone());
         let si = scope.type_env.clone().source_indices.clone();
-        let body_scope = uses.clone().iter().cloned().fold(
-            body_scope.clone(),
-            |s: Rc<InferScope>, u: Rc<Node>| {
-                extend_scope(
-                    s,
-                    resource_use_name_at(u.clone(), si.clone()),
-                    resource_use_resource(u.clone()),
-                    Rc::new(SubValueRelation::SubValueUnknown),
-                )
-            },
-        );
+        let body_scope =
+            uses.iter()
+                .cloned()
+                .fold(body_scope.clone(), |s: Rc<InferScope>, u: Rc<Node>| {
+                    extend_scope(
+                        s,
+                        resource_use_name_at(u.clone(), si.clone()),
+                        resource_use_resource(u.clone()),
+                        Rc::new(SubValueRelation::SubValueUnknown),
+                    )
+                });
         let body_str = emit_unified_typed_func_body(
             body.clone(),
             RenderTarget::Python,
@@ -1072,7 +1072,7 @@ pub fn emit_py_func_params(
     {
         let param_strs = Rc::new({
             let mut __result = Vec::new();
-            for p in params.clone().iter().cloned() {
+            for p in params.iter().cloned() {
                 __result.push(emit_param_shared(
                     p.clone(),
                     RenderTarget::Python,
@@ -1083,7 +1083,7 @@ pub fn emit_py_func_params(
         });
         let resource_strs = Rc::new({
             let mut __result = Vec::new();
-            for u in uses.clone().iter().cloned() {
+            for u in uses.iter().cloned() {
                 __result.push(v1_rt::concat(
                     v1_rt::concat(
                         emit_ident(
@@ -1103,7 +1103,7 @@ pub fn emit_py_func_params(
         });
         let service_strs = Rc::new({
             let mut __result = Vec::new();
-            for sn in service_names.clone().iter().cloned() {
+            for sn in service_names.iter().cloned() {
                 __result.push(v1_rt::concat(
                     v1_rt::concat(service_var_name(sn.clone()), ": ".to_string()),
                     sanitize_service_name(sn.clone()),
@@ -1144,13 +1144,13 @@ pub fn emit_py_typed_expr(
 }
 
 pub fn emit_py_transport_body(
-    transport: Rc<Node>,
+    bound: Rc<BoundOperation>,
     op_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
 ) -> String {
     emit_unified_transport_dispatch(
-        transport.clone(),
+        bound.clone(),
         op_name.clone(),
         source_indices.clone(),
         depth.clone(),
@@ -1172,13 +1172,8 @@ pub fn emit_py_service_def(
         registry.clone(),
         env.clone(),
         |name, transport, ops, si| emit_py_service_init(transport.clone(), ops.clone(), si.clone()),
-        |transport, op_name, si, depth| {
-            emit_py_transport_body(
-                transport.clone(),
-                op_name.clone(),
-                si.clone(),
-                depth.clone(),
-            )
+        |bound, op_name, si, depth| {
+            emit_py_transport_body(bound.clone(), op_name.clone(), si.clone(), depth.clone())
         },
     )
 }
@@ -1210,7 +1205,7 @@ pub fn emit_py_service_init(
                     v1_rt::concat("self, ".to_string(), params.clone().join(&", ".to_string()));
                 let assigns_str = Rc::new({
                     let mut __result = Vec::new();
-                    for a in assigns.clone().iter().cloned() {
+                    for a in assigns.iter().cloned() {
                         __result.push(v1_rt::concat("    ".to_string(), a.clone()));
                     }
                     __result
@@ -1292,7 +1287,7 @@ pub fn emit_py_headers_dict(
         let hdrs = transport_headers(transport.clone(), source_indices.clone());
         let header_entries = Rc::new({
             let mut __result = Vec::new();
-            for h in hdrs.clone().iter().cloned() {
+            for h in hdrs.iter().cloned() {
                 __result.push(v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
@@ -1334,7 +1329,7 @@ pub fn emit_py_shell_call(
         let envs = transport_env(transport.clone(), source_indices.clone());
         let env_dict_entries = Rc::new({
             let mut __result = Vec::new();
-            for e in envs.clone().iter().cloned() {
+            for e in envs.iter().cloned() {
                 __result.push(v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
@@ -1416,7 +1411,7 @@ pub fn emit_py_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
         let cap_children = item.children.clone();
         let methods = Rc::new({
             let mut __result = Vec::new();
-            for c in cap_children.clone().iter().cloned() {
+            for c in cap_children.iter().cloned() {
                 __result.push(emit_py_capability_method(c.clone(), env.clone()));
             }
             __result

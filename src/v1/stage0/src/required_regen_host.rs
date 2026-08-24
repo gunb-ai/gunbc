@@ -1193,12 +1193,28 @@ fn copy_hand_maintained_support(stage0_src: &Path, dest_src: &Path) -> Result<()
         if source.exists() {
             fs::copy(&source, dest_src.join(file_name))
                 .map_err(|e| format!("copy {}: {e}", source.display()))?;
+        } else {
+            return Err(format!(
+                "declared hand-maintained stage0 file names no file on disk: row {file_name:?} \
+                 resolves to {} which does not exist. The crate-layout authority \
+                 (v2.compiler.self_host.stage0_crate_layout) declares this row; either the row is \
+                 corrupt or the file was removed without retiring it.",
+                source.display()
+            ));
         }
     }
     for dir_name in HAND_MAINTAINED_STAGE0_DIRS {
         let source = stage0_src.join(dir_name);
         if source.is_dir() {
             copy_dir_recursive(&source, &dest_src.join(dir_name))?;
+        } else {
+            return Err(format!(
+                "declared hand-maintained stage0 dir names no directory on disk: row {dir_name:?} \
+                 resolves to {} which is not a directory. The crate-layout authority \
+                 (v2.compiler.self_host.stage0_crate_layout) declares this row; either the row is \
+                 corrupt or the directory was removed without retiring it.",
+                source.display()
+            ));
         }
     }
     Ok(())
@@ -1493,6 +1509,50 @@ mod tests {
         path
     }
 
+    /// Plants every declared hand-maintained row on disk, then removes exactly one, so the
+    /// accepted control and the refusal differ by a single row. `"rs"` — the corrupt row a
+    /// merge produced on integration/namespace-cut — is inert without this wall, because the
+    /// copy loop skipped a declared row naming nothing.
+    #[test]
+    fn declared_hand_maintained_row_must_name_an_existing_path() {
+        let root = temp_dir("declared-row-wall");
+        let src = root.join("src");
+        let dest = root.join("dest");
+        fs::create_dir_all(&src).expect("create src");
+        fs::create_dir_all(&dest).expect("create dest");
+        for file_name in HAND_MAINTAINED_STAGE0_FILES {
+            fs::write(src.join(file_name), "// planted\n").expect("plant file");
+        }
+        for dir_name in HAND_MAINTAINED_STAGE0_DIRS {
+            fs::create_dir_all(src.join(dir_name)).expect("plant dir");
+        }
+
+        copy_hand_maintained_support(&src, &dest).expect("complete population is accepted");
+
+        let victim = HAND_MAINTAINED_STAGE0_FILES
+            .first()
+            .expect("roster is non-empty");
+        fs::remove_file(src.join(victim)).expect("remove one declared file");
+        let err = copy_hand_maintained_support(&src, &dest)
+            .expect_err("a declared row naming no file must refuse");
+        assert!(
+            err.contains("names no file on disk") && err.contains(victim),
+            "refusal must locate the row: {err}"
+        );
+
+        let victim_dir = HAND_MAINTAINED_STAGE0_DIRS
+            .first()
+            .expect("dir roster is non-empty");
+        fs::write(src.join(victim), "// replanted\n").expect("restore file");
+        fs::remove_dir_all(src.join(victim_dir)).expect("remove one declared dir");
+        let err = copy_hand_maintained_support(&src, &dest)
+            .expect_err("a declared dir row naming no directory must refuse");
+        assert!(
+            err.contains("names no directory on disk") && err.contains(victim_dir),
+            "refusal must locate the dir row: {err}"
+        );
+    }
+
     #[test]
     fn empty_population_digest_refuses() {
         let err = tree_digest_for_basenames(Path::new("/tmp"), &[], "committed").unwrap_err();
@@ -1503,15 +1563,15 @@ mod tests {
 
     #[test]
     fn empty_emit_population_refuses_before_agreement() {
-        let reason =
-            validate_compared_populations(&["foo.rs".to_string()], &[]).expect("expected refusal");
+        let reason = validate_compared_populations(&["foo.rs".to_string()], &[], &BTreeMap::new())
+            .expect("expected refusal");
         assert!(reason.contains("zero generated surfaces"));
     }
 
     #[test]
     fn empty_committed_population_refuses_before_agreement() {
-        let reason =
-            validate_compared_populations(&[], &["foo.rs".to_string()]).expect("expected refusal");
+        let reason = validate_compared_populations(&[], &["foo.rs".to_string()], &BTreeMap::new())
+            .expect("expected refusal");
         assert!(reason.contains("committed generated population is empty"));
     }
 

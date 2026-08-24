@@ -1,0 +1,123 @@
+module test.claim.build_cache_configuration_observation_witness
+
+import std.types { String, NonEmptyStr, Bool }
+import std.nat { Nat }
+import std.measure { byte_size, byte_size_count }
+import gunbc.build_cache_instance {
+  ProcessIdentity,
+  BuildCacheStorageObserved, BuildCacheStorageRootConfigured,
+  BuildCacheStorageRootUnset, BuildCacheStorageObservationUnavailable,
+  BuildCacheCapacityObserved, BuildCacheCapacityConfigured,
+  BuildCacheCapacityConfiguredUngrounded, BuildCacheCapacityUnset,
+  BuildCacheCapacityObservationUnavailable,
+  ci_cache_instance, session_cache_instance,
+}
+
+data configuration_observation_witness_note: String = "THE DISCRIMINATING PAIRS protect the distinction the carriers exist to express. A successful process-environment read with no assignment is positive evidence that the setting is unset; an unavailable read says the host never answered. Collapsing them to an Option would make the empty-observation narrow writable. The subject-binding witness separately proves the observations retain both which of two same-implementation instances was read and which endpoint-owning process supplied the environment, so a session server's 50 GiB setting cannot stand in for the CI server on the same host. The suffixed-capacity control keeps configured text representable without fabricating its byte magnitude."
+
+fn owner_fixture(pid: Nat) -> ProcessIdentity {
+  ProcessIdentity {
+    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr,
+    pid: pid,
+    start_time: "79870020" as NonEmptyStr,
+  }
+}
+
+test fn storage_unset_and_storage_unavailable_are_distinct() -> Bool {
+  let instance = ci_cache_instance(host: "srv1")
+  let unset = BuildCacheStorageObserved {
+    instance: instance,
+    owner: owner_fixture(pid: 3975946),
+    configuration: BuildCacheStorageRootUnset,
+  }
+  let unavailable = BuildCacheStorageObservationUnavailable {
+    instance: instance,
+    owner: owner_fixture(pid: 3975946),
+    detail: "/proc owner environment read failed" as NonEmptyStr,
+  }
+  match unset {
+    BuildCacheStorageObserved { instance: _, owner: _, configuration: BuildCacheStorageRootUnset } =>
+      match unavailable {
+        BuildCacheStorageObservationUnavailable { instance: _, owner: _, detail: _ } => true
+        BuildCacheStorageObserved { instance: _, owner: _, configuration: _ } => false
+      }
+    BuildCacheStorageObserved { instance: _, owner: _, configuration: BuildCacheStorageRootConfigured { root: _ } } => false
+    BuildCacheStorageObservationUnavailable { instance: _, owner: _, detail: _ } => false
+  }
+}
+
+test fn capacity_unset_and_capacity_unavailable_are_distinct() -> Bool {
+  let instance = ci_cache_instance(host: "srv1")
+  let unset = BuildCacheCapacityObserved {
+    instance: instance,
+    owner: owner_fixture(pid: 3975946),
+    configuration: BuildCacheCapacityUnset,
+  }
+  let unavailable = BuildCacheCapacityObservationUnavailable {
+    instance: instance,
+    owner: owner_fixture(pid: 3975946),
+    detail: "/proc owner environment read failed" as NonEmptyStr,
+  }
+  match unset {
+    BuildCacheCapacityObserved { instance: _, owner: _, configuration: BuildCacheCapacityUnset } =>
+      match unavailable {
+        BuildCacheCapacityObservationUnavailable { instance: _, owner: _, detail: _ } => true
+        BuildCacheCapacityObserved { instance: _, owner: _, configuration: _ } => false
+      }
+    BuildCacheCapacityObserved { instance: _, owner: _, configuration: BuildCacheCapacityConfigured { capacity: _ } } => false
+    BuildCacheCapacityObserved { instance: _, owner: _, configuration: BuildCacheCapacityConfiguredUngrounded { configured_text: _ } } => false
+    BuildCacheCapacityObservationUnavailable { instance: _, owner: _, detail: _ } => false
+  }
+}
+
+test fn storage_observation_is_bound_to_the_deployed_instance() -> Bool {
+  let observed = BuildCacheStorageObserved {
+    instance: session_cache_instance(host: "srv1"),
+    owner: owner_fixture(pid: 3975946),
+    configuration: BuildCacheStorageRootConfigured {
+      root: "/var/lib/ctrl/sccache" as NonEmptyStr,
+    },
+  }
+  match observed {
+    BuildCacheStorageObserved { instance: instance, owner: owner, configuration: BuildCacheStorageRootConfigured { root: root } } =>
+      (instance.identity.instance_name as String) == "sccache-session"
+        && owner.pid == 3975946
+        && (root as String) == (instance.intended_storage as String)
+    BuildCacheStorageObserved { instance: _, owner: _, configuration: BuildCacheStorageRootUnset } => false
+    BuildCacheStorageObservationUnavailable { instance: _, owner: _, detail: _ } => false
+  }
+}
+
+test fn capacity_observation_carries_a_typed_byte_size() -> Bool {
+  let observed = BuildCacheCapacityObserved {
+    instance: session_cache_instance(host: "srv1"),
+    owner: owner_fixture(pid: 3975946),
+    configuration: BuildCacheCapacityConfigured { capacity: byte_size(count: 53687091200) },
+  }
+  match observed {
+    BuildCacheCapacityObserved { instance: instance, owner: owner, configuration: BuildCacheCapacityConfigured { capacity: capacity } } =>
+      (instance.identity.instance_name as String) == "sccache-session"
+        && owner.pid == 3975946
+        && byte_size_count(b: capacity) == 53687091200
+    BuildCacheCapacityObserved { instance: _, owner: _, configuration: BuildCacheCapacityConfiguredUngrounded { configured_text: _ } } => false
+    BuildCacheCapacityObserved { instance: _, owner: _, configuration: BuildCacheCapacityUnset } => false
+    BuildCacheCapacityObservationUnavailable { instance: _, owner: _, detail: _ } => false
+  }
+}
+
+test fn suffixed_capacity_stays_text_until_its_unit_grammar_is_grounded() -> Bool {
+  let observed = BuildCacheCapacityObserved {
+    instance: session_cache_instance(host: "srv1"),
+    owner: owner_fixture(pid: 3975946),
+    configuration: BuildCacheCapacityConfiguredUngrounded {
+      configured_text: "50G" as NonEmptyStr,
+    },
+  }
+  match observed {
+    BuildCacheCapacityObserved { instance: _, owner: _, configuration: BuildCacheCapacityConfiguredUngrounded { configured_text: text } } =>
+      (text as String) == "50G"
+    BuildCacheCapacityObserved { instance: _, owner: _, configuration: BuildCacheCapacityConfigured { capacity: _ } } => false
+    BuildCacheCapacityObserved { instance: _, owner: _, configuration: BuildCacheCapacityUnset } => false
+    BuildCacheCapacityObservationUnavailable { instance: _, owner: _, detail: _ } => false
+  }
+}

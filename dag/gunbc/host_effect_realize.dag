@@ -8,6 +8,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref, declaration_re
 import gunbc.host_effect {
   HostEffect, ShellCommand, RedfishAction, ConvergePlan,
   OsInstallActuatorToolchainEnsure, EnsureBuildCacheInstance, ProvisionCodexRuntime,
+  EnsureCompilePoolSlice,
   SetHostnameCas,
   ReadEffectivePosixPrincipal,
   SudoNopasswdExecuteProbe,
@@ -95,7 +96,7 @@ import gunbc.typed_argv_exec {
 }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.output_policy { OutcomeIsData }
-import gunbc.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu }
+import gunbc.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu, cpu_facts_threads, compute_host_ram_bytes_total }
 import product.placement_supply { HostIdentity }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
@@ -199,7 +200,9 @@ import gunbc.build_cache_provision_verdict {
   provision_build_cache_verdict,
 }
 import extdeps.cache.sccache { SccacheServerUnixSocket, SccacheServerTcpPort }
-import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec }
+import extdeps.exec.command { ArgvCommand, CommandTransport, LocalExec, argv_words }
+import extdeps.tools.stat { stat_inode_command }
+import extdeps.tools.findutils { find_symlink_target_glob_command }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.build_cache_ensure {
@@ -226,19 +229,19 @@ import gunbc.build_cache_endpoint_observe {
   ListenerNone,
   ListenerAmbiguous,
   ListenerUndecided,
-  boot_id_read_argv,
-  endpoint_path_kind_argv,
-  proc_net_unix_read_argv,
+  boot_id_read_command,
+  endpoint_path_kind_command,
+  proc_net_unix_read_command,
   EndpointInodeLookup,
   ListenInodeFound,
   NoListenEntryAtPath,
   InodeLookupUndecided,
   listen_inode_at_path,
   fd_holder_of_find_output,
-  owner_cgroup_argv,
-  owner_proc_stat_argv,
-  owner_principal_argv,
-  owner_executable_argv,
+  owner_cgroup_command,
+  owner_proc_stat_command,
+  owner_principal_command,
+  owner_executable_command,
   path_kind_of_stat_read,
   survey_build_cache_endpoint,
 }
@@ -255,16 +258,50 @@ import gunbc.build_cache_endpoint_path {
   stale_socket_unlink_command,
 }
 import gunbc.live_deploy.operations {
+  deploy_stage_dir_var,
+  deploy_stage_write_command,
+  deploy_stage_install_command,
   systemctl_daemon_reload_command,
   systemctl_enable_command,
   systemctl_restart_command,
+  systemctl_start_command,
 }
+import extdeps.jobserver { jobserver_config }
+import gunbc.host_layout {
+  CompilePoolPlacement,
+  CompilePoolSliceDeclared,
+  CompilePoolInRunnerSlots,
+  gunbc_compile_pool_placement,
+}
+import gunbc.fleet_host_budget {
+  CompilePoolResolution,
+  CompilePoolUnresolved,
+  compile_pool_bytes_for,
+}
+import gunbc.compile_pool_ensure {
+  EnsureCompilePoolAdmission,
+  EnsureCompilePoolAlreadyConverged,
+  EnsureCompilePoolAdmitted,
+  EnsureCompilePoolRefused,
+  CompilePoolEnsureRefusal,
+  EnsurePoolTopologyUndeclared,
+  EnsurePoolSizingUnresolved,
+  EnsureCachePlacementUnknown,
+  EnsurePoolSliceUnobservable,
+  EnsurePoolSliceNamedDoesNotMatch,
+  admit_ensure_compile_pool_slice,
+  compile_pool_ensure_is_converged,
+}
+import gunbc.compile_pool_observe { observe_compile_pool_slice }
+import gunbc.host_layout { gunbc_managed_compile_pool_slice }
+import extdeps.systemd.unit_file { SystemdUnitFile, serialize_systemd_unit_file }
+
 import gunbc.build_cache_instance { ci_cache_instance }
 import gunbc.srv3_boot_once_cd {
   srv3_boot_once_apply_read_back_sleep,
 }
 import extdeps.filesystem.filesystem_io
-import std.measure { second_count }
+import std.measure { second_count, ByteSize, byte_size_count }
 import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
 import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_install_media_artifact }
 import extdeps.provisioning.ubuntu_install_media_fetch {
@@ -331,6 +368,7 @@ type ResolvedHostEffectCell =
   | OsInstallActuatorToolchainOnHost { node: ComputeHost }
   | ProvisionBuildCacheOnHost { node: ComputeHost, desired: BuildCacheInstance }
   | ProvisionCodexRuntimeOnHost { node: ComputeHost }
+  | EnsureCompilePoolSliceOnHost { node: ComputeHost }
   | HostnameOnHost { node: ComputeHost, hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | HostnameReadOnHost { node: ComputeHost }
   | NbdProxySessionOnHost {
@@ -398,6 +436,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           ProvisionBuildCacheOnHost { node: n, desired: d }
         ProvisionCodexRuntime {} =>
           ProvisionCodexRuntimeOnHost { node: n }
+        EnsureCompilePoolSlice {} =>
+          EnsureCompilePoolSliceOnHost { node: n }
         Srv3ReceiptEmit { lines: lines } =>
           ReceiptEmitOnHost { node: n, lines: lines }
         Srv3BootOnceReadBackSleep =>
@@ -437,6 +477,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               ProvisionBuildCacheOnHost { node: n, desired: d }
             ProvisionCodexRuntime {} =>
               ProvisionCodexRuntimeOnHost { node: n }
+            EnsureCompilePoolSlice {} =>
+              EnsureCompilePoolSliceOnHost { node: n }
             Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
             Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
             Srv3SeededInstallMediaToolchainEnsure =>
@@ -503,6 +545,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           IncompatibleCell { reason: "host_effect: EnsureBuildCacheInstance is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         ProvisionCodexRuntime {} =>
           IncompatibleCell { reason: "host_effect: ProvisionCodexRuntime is in-band (per-host provider runtime bundle) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+        EnsureCompilePoolSlice {} =>
+          IncompatibleCell { reason: "host_effect: EnsureCompilePoolSlice is in-band (per-host systemd slice) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         Srv3NbdProxyServe { intent: _, lease_key: _ } =>
           IncompatibleCell { reason: "host_effect: Srv3NbdProxyServe is in-band (actuator host long-running session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         CodexSupervisedWorkerTurn { intent: _, lease_key: _ } =>
@@ -520,6 +564,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               IncompatibleCell { reason: "host_effect: EnsureBuildCacheInstance is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             ProvisionCodexRuntime {} =>
               IncompatibleCell { reason: "host_effect: ProvisionCodexRuntime is in-band (per-host provider runtime bundle) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            EnsureCompilePoolSlice {} =>
+              IncompatibleCell { reason: "host_effect: EnsureCompilePoolSlice is in-band (per-host systemd slice) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             Srv3InstallMediaFetch =>
               IncompatibleCell { reason: "host_effect: Srv3InstallMediaFetch is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             Srv3SeededInstallMediaRemaster =>
@@ -3673,6 +3719,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_provision_build_cache(effect_intent: intent)
     ProvisionCodexRuntimeOnHost { node: _ } =>
       realize_provision_codex_runtime(effect_intent: intent)
+    EnsureCompilePoolSliceOnHost { node: _ } =>
+      realize_ensure_compile_pool_slice(transport: transport, effect_intent: intent)
     HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
       realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
     HostnameReadOnHost { node: _ } =>
@@ -3851,6 +3899,8 @@ fn host_effect_apply_gated(
           realize_provision_build_cache(effect_intent: intent)
         ProvisionCodexRuntimeOnHost { node: _ } =>
           realize_provision_codex_runtime(effect_intent: intent)
+        EnsureCompilePoolSliceOnHost { node: _ } =>
+          realize_ensure_compile_pool_slice(transport: transport, effect_intent: intent)
         HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
           realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
         HostnameReadOnHost { node: _ } =>
@@ -3944,6 +3994,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             OsInstallActuatorToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ProvisionBuildCacheOnHost { node: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ProvisionCodexRuntimeOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            EnsureCompilePoolSliceOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             HostnameReadOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             NbdProxySessionOnHost { node: _, intent: _, lease_key: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
@@ -3977,8 +4028,8 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
 
 data provision_observes_before_it_acts_note: String = "THE PREFLIGHT IS NOW THE GATE, AND WHAT IT REPLACED WAS AN UNCONDITIONAL WRITE. Until this landed, realize_provision_build_cache had exactly one check ahead of it -- the catalog gate, which is pure id validation in a third module and never observes a host at all -- and then rendered the unit, installed it, and restarted it on every pass. The two authorities that were supposed to decide whether that was safe (gunbc.build_cache_ensure admit_ensure_build_cache_instance, gunbc.host_build_cache_provision placement_verdict) had zero production callers, so the refusal named as the remedy for a measured CI-capacity incident was computed by nothing. That is the rung inflation DESIGN section 4b calls worse than sitting low: the witnesses were green, and their greenness established that the fold was correct, not that the class was guarded.\n\nTHE ORDER IS OBSERVE, ADMIT, ACT, AND IT IS LOAD-BEARING RATHER THAN TIDY. Observing after acting would read back the state we just wrote, which is the same fabricated evidence gunbc.host_build_cache_provision build_cache_supervision_observation_note measured on srv3: a probe that greens on what it produced rather than on the state the lane exists to establish. Every read here happens BEFORE the first mutation, and the admission decides from those reads alone.\n\nWHAT THIS CHANGES ON A LIVE HOST, in the two arms that matter. A host whose managed unit already owns the endpoint AND IS OBSERVED LISTENING ON IT now converges WITHOUT reinstalling and restarting it (ownership alone is not enough, and was not enough here even before it was written down: gunbc.build_cache_ensure ensure_is_a_reconcile_not_an_install_note records the 2026-08-22 correction, under which our own unit holding its socket open without listening REFUSES with the unit named instead of converging over an unreachable cache) -- the most expensive possible no-op, which used to fire on every convergence pass and re-cold every compile on the host. And a host whose endpoint is owned by a runner slot -- srv1 on 2026-08-01, srv1-02 again on 2026-08-07 -- now REFUSES with the owner located, where it previously wrote a unit beside the stranded server and reported success."
 
-fn build_cache_host_read(argv: List<String>, transport: HostEffectTransport) -> HostRead {
-  match build_cache_host_read_observed(argv: argv, transport: transport) {
+fn build_cache_host_read(command: ArgvCommand, transport: HostEffectTransport) -> HostRead {
+  match build_cache_host_read_observed(command: command, transport: transport) {
     BuildCacheReadRan { observed: o } =>
       if o.success == true {
         HostReadText { text: o.stdout }
@@ -4005,14 +4056,18 @@ type BuildCacheReadResult
 
 data every_read_is_one_argv_note: String = "EVERY READ BELOW IS ONE ARGV, NO SHELL. That is not stylistic: this module's build-cache surface is a shell-to-dag census A5 row whose standing constraint is that its emitted shell may shrink and must not grow, so an observation added as a concat-built bash body would have grown precisely the surface #5828 exists to dissolve. Routing the reads through the typed argv seam instead means the observation lands in the direction the dissolve-on points, and the remaining concat-shell body -- the ensure step, still unconverted -- is strictly smaller as a share of what this effect does than it was."
 
+// IT TAKES A COMMAND RATHER THAN A WORD LIST, for the same reason bmc_netboot_run_bmc now does: a
+// List<String> parameter is a place an argv can be hand-spelled, and one of this function's callers
+// was doing exactly that ("stat", "-c", "%i", ...). The ssh arms still need the flat vector, which
+// they derive here with argv_words instead of receiving pre-flattened.
 fn build_cache_host_read_observed(
-  argv: List<String>,
+  command: ArgvCommand,
   transport: HostEffectTransport,
 ) -> BuildCacheReadResult {
   match transport {
     LocalShell =>
       match run_shell_command_capture(
-        command: ArgvCommand { argv: argv },
+        command: command,
         transport: LocalExec,
       ) {
         ProcessOutputPresent { text: t } =>
@@ -4028,8 +4083,8 @@ fn build_cache_host_read_observed(
             observed: ShellExecObserved { exit_code: code, success: false, stdout: "", stderr: err },
           }
       }
-    SshShell { ssh_host: _ } => build_cache_typed_argv_read(argv: argv, transport: transport)
-    FleetSsh { target: _, context: _ } => build_cache_typed_argv_read(argv: argv, transport: transport)
+    SshShell { ssh_host: _ } => build_cache_typed_argv_read(argv: argv_words(command: command), transport: transport)
+    FleetSsh { target: _, context: _ } => build_cache_typed_argv_read(argv: argv_words(command: command), transport: transport)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       BuildCacheReadRefused {
         reason: "host_effect_apply: EnsureBuildCacheInstance cannot observe an endpoint over EmitArtifactThenThinRun; typed mismatch.",
@@ -4057,7 +4112,7 @@ fn build_cache_path_kind_read(
   match instance.endpoint {
     SccacheServerTcpPort { port: _ } => PathKindNoFilesystemPath
     SccacheServerUnixSocket { path: p } =>
-      match build_cache_host_read_observed(argv: endpoint_path_kind_argv(path: p), transport: transport) {
+      match build_cache_host_read_observed(command: endpoint_path_kind_command(path: p), transport: transport) {
         BuildCacheReadRefused { reason: why } =>
           path_kind_of_stat_read(read: HostReadFailed { detail: why as NonEmptyStr }, exit_success: true)
         BuildCacheReadRan { observed: o } =>
@@ -4086,7 +4141,7 @@ fn build_cache_listen_inode_read(
       }
     SccacheServerUnixSocket { path: p } =>
       listen_inode_at_path(
-        read: build_cache_host_read(argv: proc_net_unix_read_argv(), transport: transport),
+        read: build_cache_host_read(command: proc_net_unix_read_command(), transport: transport),
         path: p,
       )
   }
@@ -4117,7 +4172,7 @@ fn build_cache_fd_holder_read(
 data holder_walk_runs_on_the_unlistened_socket_too_note: String = "WHEN THERE IS NO LISTEN ENTRY THE WALK STILL RUNS, against the inode read off the FILE rather than off /proc/net/unix, and that is the whole of clause (3). A socket with no LISTEN entry is either stale (nothing holds it) or held open by a process that is not listening (unlinking severs it). Those two states are indistinguishable without asking whether any descriptor resolves to the file's inode, so skipping the walk here because 'nothing is listening' would collapse them -- and collapse them in the direction that unlinks a live process's socket."
 
 fn build_cache_socket_inode_at_path(path: NonEmptyStr, transport: HostEffectTransport) -> NonEmptyStr? {
-  match build_cache_host_read_observed(argv: ["stat", "-c", "%i", "--", path as String], transport: transport) {
+  match build_cache_host_read_observed(command: stat_inode_command(path: path as String), transport: transport) {
     BuildCacheReadRefused { reason: _ } => none
     BuildCacheReadRan { observed: o } =>
       if o.success == true {
@@ -4143,8 +4198,8 @@ fn build_cache_socket_holder_read(inode: NonEmptyStr, transport: HostEffectTrans
         }
       }
     }
-    SshShell { ssh_host: _ } => build_cache_host_read(argv: socket_inode_holder_argv(inode: inode), transport: transport)
-    FleetSsh { target: _, context: _ } => build_cache_host_read(argv: socket_inode_holder_argv(inode: inode), transport: transport)
+    SshShell { ssh_host: _ } => build_cache_host_read(command: socket_inode_holder_command(inode: inode), transport: transport)
+    FleetSsh { target: _, context: _ } => build_cache_host_read(command: socket_inode_holder_command(inode: inode), transport: transport)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HostReadFailed {
         detail: "EnsureBuildCacheInstance cannot walk /proc over EmitArtifactThenThinRun; typed mismatch." as NonEmptyStr,
@@ -4152,15 +4207,25 @@ fn build_cache_socket_holder_read(inode: NonEmptyStr, transport: HostEffectTrans
   }
 }
 
-fn socket_inode_holder_argv(inode: NonEmptyStr) -> List<String> {
-  ["find", "/proc", "-maxdepth", "3", "-path", "*/fd/*", "-lname", concat("socket:?", concat(inode as String, "?"))]
+// THE `?` WILDCARDS ARE THE BRACKETS, and they are load-bearing rather than sloppy: -lname takes a
+// GLOB, so the literal brackets of `socket:[12345]` would be read as a character class and match
+// nothing. extdeps.tools.findutils carries that fact beside the flags; this function keeps the
+// QUESTION -- which descriptor anywhere in /proc still resolves to this socket's inode -- which is
+// the caller's, not findutils'.
+fn socket_inode_holder_command(inode: NonEmptyStr) -> ArgvCommand {
+  find_symlink_target_glob_command(
+    search_root: "/proc",
+    max_depth: 3,
+    path_glob: "*/fd/*",
+    link_target_glob: concat("socket:?", concat(inode as String, "?")),
+  )
 }
 
 fn build_cache_endpoint_reads(
   instance: BuildCacheInstance,
   transport: HostEffectTransport,
 ) -> BuildCacheEndpointReads {
-  let boot_id = build_cache_host_read(argv: boot_id_read_argv(), transport: transport)
+  let boot_id = build_cache_host_read(command: boot_id_read_command(), transport: transport)
   let path_kind = build_cache_path_kind_read(instance: instance, transport: transport)
   let listen_inode = build_cache_listen_inode_read(instance: instance, transport: transport)
   let listener = build_cache_fd_holder_read(listen_inode: listen_inode, instance: instance, transport: transport)
@@ -4171,10 +4236,10 @@ fn build_cache_endpoint_reads(
         path_kind: path_kind,
         listen_inode: listen_inode,
         listener: listener,
-        owner_cgroup: build_cache_host_read(argv: owner_cgroup_argv(pid: pid), transport: transport),
-        owner_proc_stat: build_cache_host_read(argv: owner_proc_stat_argv(pid: pid), transport: transport),
-        owner_principal: build_cache_host_read(argv: owner_principal_argv(pid: pid), transport: transport),
-        owner_executable: build_cache_host_read(argv: owner_executable_argv(pid: pid), transport: transport),
+        owner_cgroup: build_cache_host_read(command: owner_cgroup_command(pid: pid), transport: transport),
+        owner_proc_stat: build_cache_host_read(command: owner_proc_stat_command(pid: pid), transport: transport),
+        owner_principal: build_cache_host_read(command: owner_principal_command(pid: pid), transport: transport),
+        owner_executable: build_cache_host_read(command: owner_executable_command(pid: pid), transport: transport),
       }
     ListenerNone =>
       build_cache_reads_without_owner(boot_id: boot_id, path_kind: path_kind, listen_inode: listen_inode, listener: listener)
@@ -4234,7 +4299,7 @@ fn build_cache_unlink_then_ensure(
             applied: effect_intent,
           }
         StaleSocketUnlinkCommandReady { command: cmd } =>
-          match build_cache_host_read_observed(argv: cmd.argv, transport: transport) {
+          match build_cache_host_read_observed(command: cmd, transport: transport) {
             BuildCacheReadRefused { reason: why } =>
               NotConverged {
                 reason: join(["host_effect_apply: EnsureBuildCacheInstance could not run the admitted stale-socket unlink -- ", why], ""),
@@ -4333,6 +4398,315 @@ fn build_cache_ensure_step(
 }
 
 data already_converged_evidence_is_the_observation_note: String = "THE ALREADY-CONVERGED ARM RETURNS ShellEffectApplied WITH exit_code 0 AND NO SHELL HAVING RUN, and that is worth stating because it looks like a fabricated receipt and is not. HostEffectEvidence has two arms and neither names an observation, so the evidence carrier cannot yet distinguish 'a command ran and succeeded' from 'a read established that nothing needed to run'. What the receipt carries is the observation itself -- the unit found owning the endpoint -- rather than invented command output, so a reader sees WHY it converged. DISSOLVE-ON: a HostEffectEvidence arm for an observation-grounded convergence, at which point this arm names it and the exit_code 0 goes away. Until then the honest thing is to say so here rather than let the zero read as a process exit."
+
+// THE COMPILE-POOL SLICE GETS ITS OWN EFFECT RATHER THAN RIDING THE CACHE ENSURE, AND THE SEAM IS THE POINT.
+// gunbc.compile_pool_ensure admit_ensure_compile_pool_slice refuses on TOPOLOGY before it observes anything,
+// and gunbc_compile_pool_placement is CompilePoolInRunnerSlots today, so folding this admission into
+// realize_provision_build_cache_body as a precondition would make EnsureBuildCacheInstance refuse on every
+// host in the fleet. A lane that halts another lane to express a dependency has chosen the wrong seam: the
+// pool is a separate desired state with a separate unit file, so it is a separate effect whose refusal costs
+// nothing that was already converging. (Parent ruling, warm-tern-755, 2026-08-23.)
+//
+// WHAT IT ANSWERS TODAY, so this is not read as a description of a working fleet: EnsurePoolTopologyUndeclared,
+// on every host, naming gunbc_compile_pool_placement as the cause. That is the correct answer and the landing
+// state -- no host has a managed slice, and the flip of that row is the change this converger exists to make
+// possible. gunbc_compile_pool_placement's own dissolution trigger says to flip it in the same change that
+// converges the managed unit AND ITS SLICE; the unit had a converger and the slice had none.
+//
+// THE EFFECT CARRIES NO PAYLOAD, AND THAT IS DELIBERATE AFTER THE A5 LESSON. EnsureBuildCacheInstance carries
+// its BuildCacheInstance because the desired daemon is a row a realizer would otherwise have to guess. The
+// pool's desired state is not a row: the slice NAME comes from the topology and the SIZE is derived by
+// gunbc.fleet_host_budget compile_pool_bytes_for from the cited jobserver knobs. Putting either on the effect
+// would mint a second answer to a question that already has one authority, so the effect names the target host
+// and the derivation happens here from that host's own facts.
+// WHICH SLICE IS OBSERVED WHEN THE TOPOLOGY DECLARES NONE. Under CompilePoolInRunnerSlots there is no declared
+// slice to read, and the observation is a parameter the admission takes whether or not it consults it -- it
+// refuses on topology first. The subject is therefore the slice gunbc.host_layout names, which makes the read
+// a true statement about the host (that unit really is what a managed pool would be called there) rather than
+// a fabricated subject, and keeps the read unconditional so it cannot become a function of the answer it
+// feeds. It also produces a real finding for free: on a host where the topology says no pool is managed and
+// the slice nevertheless exists, the reading is there in the observation rather than being unasked. Note the
+// layout row and the topology row are two authorities on ONE question -- whether a managed pool is declared --
+// and they disagree today; that disagreement is a standing hazard recorded on this PR, not something this
+// function resolves.
+fn compile_pool_observation_subject(placement: CompilePoolPlacement) -> NonEmptyStr {
+  match placement {
+    CompilePoolSliceDeclared { slice_unit: declared } => declared as NonEmptyStr
+    CompilePoolInRunnerSlots => gunbc_managed_compile_pool_slice
+  }
+}
+
+fn compile_pool_ensure_refusal_detail(reason: CompilePoolEnsureRefusal) -> String {
+  match reason {
+    EnsurePoolTopologyUndeclared { detail: d } => d as String
+    EnsurePoolSizingUnresolved { detail: d } => d as String
+    EnsureCachePlacementUnknown { detail: d } => d as String
+    EnsurePoolSliceUnobservable { detail: d } => d as String
+    EnsurePoolSliceNamedDoesNotMatch { declared: dec, observed: obs } =>
+      join(
+        ["the declared compile-pool slice is ", dec as String, " but the host answers for ", obs as String],
+        "",
+      )
+  }
+}
+
+fn compile_pool_slice_system_path(slice_unit: NonEmptyStr) -> String {
+  concat("/etc/systemd/system/", slice_unit as String)
+}
+
+// THE BYTES INSTALLED ARE THE BYTES THE ADMISSION ADMITTED. EnsureCompilePoolAdmitted already carries the
+// SystemdUnitFile gunbc.build_cache_unit rendered from the derived size, so this serializes THAT value rather
+// than re-rendering from the same inputs. Re-rendering would be a second construction of one artifact, and
+// the failure it admits is not hypothetical: the admission could be granted against one size and the file
+// written from another with nothing between them to notice.
+//
+// Install then daemon-reload then START -- never restart. Stopping a slice kills every process in it
+// (systemd.slice(5)), so restarting the compile pool would terminate the compilers it exists to hold, which
+// is the opposite of converging it. `start` on an already-active slice re-applies the unit's resource
+// directives and kills nothing.
+fn compile_pool_slice_install_body(slice_unit: NonEmptyStr, slice_unit_file: SystemdUnitFile) -> String {
+  join([
+    "set -euo pipefail",
+    compile_pool_stage_directory_line(),
+    compile_pool_stage_trap_line(),
+    deploy_stage_write_command(
+      stage_name: slice_unit as String,
+      content: serialize_systemd_unit_file(file: slice_unit_file),
+    ),
+    deploy_stage_install_command(
+      stage_name: slice_unit as String,
+      mode: compile_pool_slice_file_mode,
+      dest: compile_pool_slice_system_path(slice_unit: slice_unit),
+    ),
+    systemctl_daemon_reload_command(privileged: true),
+    systemctl_start_command(unit: slice_unit, privileged: true),
+    "",
+  ], "\n")
+}
+
+data compile_pool_slice_file_mode: NonEmptyStr = "0644" as NonEmptyStr
+
+// THE STAGE-DIRECTORY ASSIGNMENT AND THE TRAP ARE THE ONLY AUTHORED LINES LEFT, AND THEY ARE THE TWO
+// gunbc.live_deploy.emit ALREADY DECLARES AS UNMODELLED. That module's deploy_stage_directory_let_step
+// builds the assignment as a modeled Let over ExprCmdSubst, but it yields a PipelineStep and this
+// realizer's transport takes a script body, so there is no serializer between them to reach for; the
+// trap has no grammar row at all (deploy_stage_trap_is_unmodelled_note). Both are spelled here from the
+// same deploy_stage_dir_var authority the staged-path words read, so the variable name is not a second
+// spelling even though the two lines are.
+//
+// EVERYTHING ELSE ROUTES THROUGH THE EXISTING AUTHORITY. The unit bytes reach the host through
+// deploy_stage_write_command and the privileged install through deploy_stage_install_command -- both
+// built from v2.extdeps.languages.bash_build nodes rather than assembled here -- so a slice unit name
+// or a unit body carrying a quote, a space or a metacharacter keeps its word boundary structurally
+// instead of by whatever quoting this module remembered to write. The first draft of this function did
+// assemble them by hand: a `cat >` heredoc for the body and a hand-spelled `sudo -n install`, which was
+// a SECOND authority for staging-and-installing a unit file beside the one live_deploy already owns.
+// Reusing it is the section 3 repair, and it is also what shrinks the residue to the two lines above.
+fn compile_pool_stage_directory_line() -> String {
+  join([deploy_stage_dir_var, "=\"$(mktemp -d)\""], "")
+}
+
+fn compile_pool_stage_trap_line() -> String {
+  join(["trap 'rm -rf \"$", deploy_stage_dir_var, "\"' EXIT"], "")
+}
+
+data compile_pool_slice_install_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.host_effect_realize.compile_pool_slice_install_body -- concat-built systemd slice install shell run over shell_exec_via_bash transport, the same shape and the same debt as build_cache_provision_shell_script beside it. DISSOLVES WHEN bash-emit (#5828) realizes a unit-file install as typed host-effect argv, at which point both bodies retire together rather than this one being converted alone.")
+
+fn compile_pool_ensure_admission_for(
+  node: ComputeHost,
+  transport: HostEffectTransport,
+) -> EnsureCompilePoolAdmission {
+  let placement = gunbc_compile_pool_placement
+  let instance = ci_cache_instance(host: node.identity)
+  let survey = survey_build_cache_endpoint(
+    instance: instance,
+    reads: build_cache_endpoint_reads(instance: instance, transport: transport),
+  )
+  admit_ensure_compile_pool_slice(
+    topology: placement,
+    sizing: compile_pool_sizing_for_host(node: node, placement: placement),
+    cache_placement: survey.placement,
+    observed: observe_compile_pool_slice(
+      transport: transport,
+      slice_unit: compile_pool_observation_subject(placement: placement),
+    ),
+  )
+}
+
+// The size is DERIVED here from the target host's own facts rather than travelling on the effect, through the
+// same compile_pool_bytes_for gunbc.ci_runner_placement uses to shrink the runner pool. The two must agree or
+// the host stops conserving, and they agree because there is one derivation, not because two call sites were
+// kept in step.
+fn compile_pool_sizing_for_host(node: ComputeHost, placement: CompilePoolPlacement) -> CompilePoolResolution {
+  match compute_host_primary_cpu(host: node) {
+    Absent =>
+      CompilePoolUnresolved {
+        reason: "compile pool unresolved: the target ComputeHost declares no primary CPU, so the jobserver token count that sizes the pool cannot be derived; fail-closed, no default size",
+      }
+    Present { value: cpu } =>
+      compile_pool_bytes_for(
+        placement: placement,
+        nproc: cpu_facts_threads(cpu: cpu),
+        host: compute_host_ram_bytes_total(host: node),
+        citation: jobserver_config,
+      )
+  }
+}
+
+// The admission runs TWICE and the second run is not a formality: it is the postcondition, re-derived from a
+// FRESH observation of the host rather than from the state we just wrote. A read-back that reused the
+// preflight observation would green on evidence it produced -- the exact defect
+// provision_observes_before_it_acts_note records from srv3 -- and the whole point is that the pre-state and
+// the post-state can differ. Convergence is claimed only when the second admission answers
+// EnsureCompilePoolAlreadyConverged, which is the same predicate the preflight uses to skip the write.
+fn compile_pool_slice_install_step(
+  node: ComputeHost,
+  slice_unit: NonEmptyStr,
+  sized: ByteSize,
+  slice_unit_file: SystemdUnitFile,
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let observed = run_shell_transport(
+    script: retained_srvn(
+      body: shell_exec_via_bash(body: compile_pool_slice_install_body(slice_unit: slice_unit, slice_unit_file: slice_unit_file)),
+      reason: "srvN compile-pool slice install (managed cgroup parent for cache-miss compilers)",
+    ),
+    transport: transport,
+  )
+  if observed.success == false {
+    NotConverged {
+      reason: join(
+        [
+          "host_effect_apply: EnsureCompilePoolSlice ran its install and the shell exited ",
+          to_string(observed.exit_code),
+          ": ",
+          if observed.stderr == "" { observed.stdout } else { observed.stderr },
+        ],
+        "",
+      ),
+      applied: effect_intent,
+    }
+  } else {
+    let after = compile_pool_ensure_admission_for(node: node, transport: transport)
+    if compile_pool_ensure_is_converged(admission: after) {
+      Converged {
+        evidence: ShellEffectApplied {
+          exit_code: observed.exit_code,
+          stdout: join(
+            [
+              "CompilePoolSliceReceipt: converged unit=",
+              slice_unit as String,
+              " memory.max=memory.high=",
+              to_string(byte_size_count(b: sized)),
+              " (re-observed after install; the admission answered already-converged)",
+            ],
+            "",
+          ),
+          stderr: observed.stderr,
+        },
+        applied: effect_intent,
+      }
+    } else {
+      NotConverged {
+        reason: join(
+          [
+            "host_effect_apply: EnsureCompilePoolSlice installed ",
+            slice_unit as String,
+            " and the read-back did not converge -- ",
+            compile_pool_admission_diagnostic(admission: after),
+          ],
+          "",
+        ),
+        applied: effect_intent,
+      }
+    }
+  }
+}
+
+fn compile_pool_admission_diagnostic(admission: EnsureCompilePoolAdmission) -> String {
+  match admission {
+    EnsureCompilePoolAlreadyConverged { slice_unit: u, sized_bytes: _ } =>
+      join(["the slice ", u as String, " is converged"], "")
+    EnsureCompilePoolAdmitted { slice_unit: u, sized_bytes: _, slice_unit_file: _ } =>
+      join(
+        ["the slice ", u as String, " is still admitted for writing, so the installed unit did not take effect on the host"],
+        "",
+      )
+    EnsureCompilePoolRefused { reason: r } => compile_pool_ensure_refusal_detail(reason: r)
+  }
+}
+
+fn realize_ensure_compile_pool_slice(
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match effect_intent.target {
+    BmcController { node: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: EnsureCompilePoolSlice requires a HostOs target; fail-closed.",
+        applied: effect_intent,
+      }
+    HostOs { node: node } =>
+      match transport {
+        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+          NotConverged {
+            reason: "host_effect_apply: EnsureCompilePoolSlice cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+            applied: effect_intent,
+          }
+        LocalShell => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
+        SshShell { ssh_host: _ } => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
+        FleetSsh { target: _, context: _ } => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
+      }
+  }
+}
+
+fn realize_ensure_compile_pool_slice_body(
+  node: ComputeHost,
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match compile_pool_ensure_admission_for(node: node, transport: transport) {
+    EnsureCompilePoolRefused { reason: r } =>
+      NotConverged {
+        reason: join(
+          [
+            "host_effect_apply: EnsureCompilePoolSlice refused before writing anything -- ",
+            compile_pool_ensure_refusal_detail(reason: r),
+          ],
+          "",
+        ),
+        applied: effect_intent,
+      }
+    EnsureCompilePoolAlreadyConverged { slice_unit: u, sized_bytes: b } =>
+      Converged {
+        evidence: ShellEffectApplied {
+          exit_code: 0,
+          stdout: join(
+            [
+              "CompilePoolSliceReceipt: already_converged unit=",
+              u as String,
+              " memory.max=memory.high=",
+              to_string(byte_size_count(b: b)),
+              " (observed on the host; no unit written, no start issued)",
+            ],
+            "",
+          ),
+          stderr: "",
+        },
+        applied: effect_intent,
+      }
+    EnsureCompilePoolAdmitted { slice_unit: u, sized_bytes: b, slice_unit_file: f } =>
+      compile_pool_slice_install_step(
+        node: node,
+        slice_unit: u,
+        sized: b,
+        slice_unit_file: f,
+        transport: transport,
+        effect_intent: effect_intent,
+      )
+  }
+}
 
 fn build_cache_already_converged(
   unit: NonEmptyStr,

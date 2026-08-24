@@ -1,0 +1,203 @@
+module gunbc.hermetic_mock_fidelity
+
+import std.types { String, List, Bool, Int }
+import gunbc.guarantee_rung_drop { GuaranteeRung, Mitigatable, StructurallyGuaranteed }
+import v2.std.algebra { fold_list }
+
+// A DISCOVERED ERROR CLASS, FILED AS DESIGN section 4b REQUIRES, AND SINCE REPAIRED: an
+// operation whose hermetic mock_response answered with ONE unconditional value, so every
+// hermetic caller received a success the operation never performed. The paragraphs below are
+// written in the PAST TENSE where they describe the defect, because the arms are deleted as of
+// 2026-08-23 and a present-tense recital of a repaired defect is the same premise contamination
+// as a present-tense recital of a deleted mechanism.
+//
+// THE INVALID STATE. `service shell.Exec` declared `operation Run` with a single mock arm,
+// `0 => { exit_code: 0, success: true, stdout: "", stderr: "" }`. The arm was keyed on an exit
+// status the mock itself supplied, so it was not a function of the input at all: in hermetic
+// mode `bash -s` running `exit 1` and `bash -s` running `true` returned the SAME value.
+// `operation RunArgv` and `operation Check` carried the same shape.
+//
+// THE HARM. Not a witness that fails -- a witness that PASSES against a fabricated exit status.
+// Every hermetically-executed claim downstream of a shell effect was asserting about the mock,
+// and a claim whose subject is "this fails closed" cannot be satisfied at all. That is DESIGN
+// section 5's central prohibition (no fabricated plausible output), and the floor's own CI
+// clause already names this exact case: mocking the refusal "would pass it against a fabricated
+// exit status, the exact fabricated-plausible-output failure the witness exists to catch".
+//
+// THE DISCRIMINATING FACTS, measured rather than reasoned -- required floor run 32645296251 on
+// main sha 183e59729995e2ac93a84aa721d8f0642bb27903, from the run's own per-identity output.
+// Two witnesses in ONE module, differing in one string:
+//   test.claim.host_effect_apply_witness.witness_shell_on_host_success_converges
+//     script "true"   -> host_effect_apply converged      -> PASSED
+//   test.claim.host_effect_apply_witness.witness_shell_on_host_failure_fails_closed
+//     script "exit 1" -> host_effect_apply converged too  -> KNOWN-RED (held)
+// Same call, same transport, same evidence, same code path. Only the script differs, and the
+// failing script behaves exactly as the succeeding one did. No new instrument was built to
+// observe this: it is two lines of a required run, and the pair is what makes it a finding
+// rather than a reading of the declaration.
+//
+// THE ARM FABRICATED THREE FACTS, NOT ONE, and this is the part a reading of the exit status
+// alone misses. The mock supplied every output field, so each field is a separate fabrication
+// with its own discriminating row -- and the third one reds in the OPPOSITE direction from the
+// other two, which is why "the exit-1 witnesses" is the wrong description of the population:
+//   exit status           test.claim.host_effect_apply_witness
+//                           .witness_shell_on_host_failure_fails_closed
+//                         script "exit 1" asserts NOT converged; the arm answers success.
+//   captured output       test.claim.deploy_access_privilege_witness
+//                           .witness_privileged_fixture_surfaces_stdout
+//                         a SUCCEEDING script asserts its stdout carries a marker; the arm's
+//                         stdout is "", so this row reds on a script the arm gets RIGHT.
+//   transport reachability test.claim.host_effect_apply_witness
+//                           .witness_ssh_shell_unreachable_fails_closed
+//                         script "true" over SshShell to 203.0.113.1 -- TEST-NET-3, reserved
+//                         unroutable -- asserts NOT converged. The arm answers success without
+//                         the transport being consulted at all.
+//
+// THE POPULATION AT THAT RUN, 10 of the 36 held reds, stated as a dated receipt rather than as a
+// live count (the drain lanes move it): host_effect_apply_witness 4, srv3_host_effect_apply_witness
+// 3, host_effect_plan_real_execution 2, deploy_access_privilege_witness 1. Every one was read at
+// source and every one asserts on a fact in the three-way list above; none is a separate defect
+// wearing the same symptom.
+//
+// THE RUNG. The class SAT below the floor -- `OutsideTheLadder`, because nothing refused,
+// nothing counted, nothing was logged, and the fabricated value was indistinguishable from a real
+// one at every consumer. With the arms deleted it sits at `Mitigatable`: the failure still occurs
+// (a hermetic caller of these operations gets no answer) but it is contained by a typed, located,
+// per-identity refusal that the floor counts. It is NOT `StructurallyGuaranteed` -- that ceiling
+// needs the ingest-time check named below, because nothing in the tree today refuses a re-added
+// unconditional arm. Deleting three arms is a repair, not a wall.
+//
+// THE REMEDY WAS APPLIED, 2026-08-23, BY OPERATOR RULING. The three unconditional arms in
+// `extdeps/shell/exec.dag` are DELETED. Hermetic execution of shell.Exec.Run / RunArgv / Check
+// now returns `HermeticEffectGround.NoMockResponse` -- typed, located, counted per identity on
+// the route-gap roster -- instead of a success the operation never performed. The rows below
+// therefore read `NoMockArm`: they are no longer a live defect roster, they are the record of a
+// closed class and the shape a re-added arm would have to take to reopen it.
+//
+// WHAT THE DELETION COST, stated rather than left for the run to reveal: every witness that
+// reached one of these three operations hermetically was passing (or being held red) against the
+// fabrication, and each now surfaces as a route gap. Those identities are enrolled in
+// `v2.workflow.floor_route_gap` in the same change, from the run's own per-identity output --
+// enrollment records that the floor has no route for them today, and the remedy for each is a
+// route, never an edit to what the witness asserts. The ten held reds this class was diagnosed
+// from are the reverse motion: they were held because the arm answered where the witness needed
+// a refusal, so they leave `floor_expected_red` as their subject stops being unreachable.
+//
+// WHY THIS ROW IS AN OBSERVATION AND NOT AN AUTHORITY. The discrimination fact below is
+// DERIVABLE from the operation's own declaration -- count the mock arms, ask whether any names
+// an input field -- so a hand-authored copy of it is a second representation (DESIGN section 2)
+// and will go stale the moment someone edits `extdeps/shell/exec.dag`. It is authored here
+// because nothing reads operation declarations for this question today. NEXT TRIGGER, and it is
+// the same trigger that closes the class: a check over the ingested operation declarations that
+// refuses an unconditional mock arm at ingest, at which point this roster derives from that
+// check and these rows delete.
+
+type MockArmDiscrimination
+  = UnconditionalArm
+  | InputDiscriminating
+  | NoMockArm
+
+// WHICH FACT THE ARM INVENTS, closed because a mock can only fabricate what the operation's own
+// output block declares. Typed rather than left in the header above, because the three are not
+// one symptom: they red in different directions, they have different consumers, and a remedy
+// that discriminated only on exit status would leave the other two standing.
+type FabricatedFact
+  = ExitStatus
+  | CapturedOutput
+  | TransportReachability
+
+type HermeticMockRow {
+  operation: String
+  discrimination: MockArmDiscrimination
+  fabricates: List<FabricatedFact>
+  rung: GuaranteeRung
+  ceiling: GuaranteeRung
+}
+
+// THE TRIGGER IS A PROPERTY OF THE FACT, NOT OF THE ROW, and moving it here is what makes an
+// untracked row UNWRITABLE rather than merely checked (DESIGN section 5: construction over
+// validation). A per-row `next_trigger: String` was authorable as `""`, so it needed a predicate
+// to catch that; derived per fact by a total function, a fabricating row cannot lack a trigger,
+// and the check that guarded the old field was deleted with it rather than left standing green
+// forever. The only authorable red left is a fabricating row naming NO fact, which is a
+// different defect and keeps its own check below.
+//
+// TWO OF THE THREE SHARE A TRIGGER AND THE THIRD CANNOT, which is the whole reason this is a
+// match rather than one string. An exit status and a captured stream are things a faithful mock
+// COULD serve: they are functions of the input the operation already declares. Reachability is
+// not. No mock can honestly answer "was 203.0.113.1 reachable" — the only truthful moves are to
+// consult the transport, which the hermetic floor forbids by construction, or to refuse. So a
+// remedy that made the arm vary with its input would close the first two and leave the third
+// exactly where it is, while looking like a fix.
+fn fabricated_fact_next_trigger(f: FabricatedFact) -> String {
+  match f {
+    ExitStatus => "a mock_response whose value varies with the operation's declared input, so the arm reports the status the script would produce rather than a constant"
+    CapturedOutput => "the same input-varying mock_response, extended to the declared output streams; an empty stdout is a fabricated observation exactly as a zero exit code is"
+    TransportReachability => "REFUSAL, not a better mock: hermetic execution of an operation whose subject is whether a remote endpoint answered must return HermeticEffectGround.NoMockResponse and reach the route-gap roster, because consulting the transport is forbidden here and any answer without consulting it is invented"
+  }
+}
+
+fn hermetic_mock_fidelity_rows() -> List<HermeticMockRow> {
+  [
+    HermeticMockRow {
+      operation: "shell.Exec.Run",
+      discrimination: NoMockArm {},
+      fabricates: [],
+      rung: Mitigatable {},
+      ceiling: StructurallyGuaranteed {}
+    },
+    HermeticMockRow {
+      operation: "shell.Exec.RunArgv",
+      discrimination: NoMockArm {},
+      fabricates: [],
+      rung: Mitigatable {},
+      ceiling: StructurallyGuaranteed {}
+    },
+    HermeticMockRow {
+      operation: "shell.Exec.Check",
+      discrimination: NoMockArm {},
+      fabricates: [],
+      rung: Mitigatable {},
+      ceiling: StructurallyGuaranteed {}
+    }
+  ]
+}
+
+fn mock_arm_is_fabricating(d: MockArmDiscrimination) -> Bool {
+  match d {
+    UnconditionalArm => true
+    InputDiscriminating => false
+    NoMockArm => false
+  }
+}
+
+// A FABRICATING ROW MUST NAME WHAT IT INVENTS -- the one check the construction above cannot
+// make unnecessary. Deriving the trigger per fact made an untracked row unwritable; it did not
+// make an UNDIAGNOSED one unwritable, because `fabricates: []` is still authorable and still
+// says "this operation lies" while saying nothing about where. That is the reading that made
+// this class look like ten exit-1 witnesses, and with the triggers now hanging off the facts it
+// is also the reading that would silently drop the reachability remedy.
+fn hermetic_mock_row_names_what_it_fabricates(r: HermeticMockRow) -> Bool {
+  !mock_arm_is_fabricating(d: r.discrimination) || fold_list(
+    xs: r.fabricates,
+    empty: false,
+    cons: fn(acc, f) { true }
+  )
+}
+
+fn hermetic_mock_fidelity_all_diagnosed() -> Bool {
+  fold_list(
+    xs: hermetic_mock_fidelity_rows(),
+    empty: true,
+    cons: fn(acc, r) { acc && hermetic_mock_row_names_what_it_fabricates(r: r) }
+  )
+}
+
+
+fn hermetic_mock_fabricating_count() -> Int {
+  fold_list(
+    xs: hermetic_mock_fidelity_rows(),
+    empty: 0,
+    cons: fn(acc, r) { if mock_arm_is_fabricating(d: r.discrimination) { acc + 1 } else { acc } }
+  )
+}
