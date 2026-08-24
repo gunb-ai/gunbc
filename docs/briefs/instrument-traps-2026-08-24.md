@@ -1127,3 +1127,50 @@ plan to build either — they are not ours to build. What exists is the knowledg
 escalate through has silent failure in both directions**, and the practice of naming which of the two
 happened. A second party whose sends still work is currently the only redundancy available, and that
 is a person, not a mechanism.
+
+## Verification does not generalise
+
+*My own, caught in review (`review 55425`) on gunbc#9113 — the document reporting the loader finding.
+Its front matter read:*
+
+> **Status of every claim: verified by reading the live tree at `bd84f669681`.**
+
+That was **true of the mechanism claims and false of the measurement figures.** I had verified three
+loader facts line by line — what the fallback arm does, what `pool_bare_census` is built over, what
+`[floor-bare-name-ambiguity]` actually reports — and then let one sentence extend that standing over
+`0 PoolAmbiguous` and `37389 scoped versus 733 pool-fallback`, which were **lane reports carrying no
+run, artifact, or repository receipt** and unverifiable from the tree I had named.
+
+The reviewer's phrasing of the harm is the precise one: those figures *"cannot be verified from the
+cited tree and are used to motivate the requested work."*
+
+### The rule, which is deep-ant-102's
+
+> **Standing earned on three checked facts does not extend to a fourth unchecked one in the same
+> sentence.**
+
+Verification attaches to *assertions*, not to documents, authors, or paragraphs. A blanket status
+line is a **quantifier over a set the reader cannot see** — and the moment one member of that set was
+taken on trust, the line became a stronger evidentiary claim than the evidence supports, which is
+exactly what §4b(1) forbids.
+
+The comparand that moved here was neither a tree nor a number. It was **which assertions the word
+"verified" ranged over.**
+
+### Two things about the repair, because the tempting fix was the wrong one
+
+**I could have gone and re-measured the two figures and cited my own run.** That would have removed
+the reviewer's objection and been the worse outcome: the document's entire ask is *nobody has this
+measurement, here is the one line that would produce it*, so quietly producing a partial version
+would have blurred the request into a half-answer. **Narrowing the claim is the honest repair;
+generating a receipt to rescue a sentence is the other kind.**
+
+**And the narrowed header had to demonstrate rather than assert its own irrelevance.** It now states
+that if every reported figure is wrong, the mechanism finding and the ask are unaffected — and, more
+usefully, that a wrong `0 PoolAmbiguous` would *strengthen* the argument, since the whole point of
+that section is that the counter **cannot report anything else for this class**. A narrowed claim
+that still needs its dropped evidence has not been narrowed, only hedged.
+
+*Kept because it happened in the front matter of a document about instruments answering narrower
+questions than they were asked, written by someone who had spent the day cataloguing the class, and
+was caught by a reviewer rather than by its author.*
