@@ -8,12 +8,12 @@ import gunbc.compile_diagnostic_census {
   census_total_count
 }
 import std.types { String, Bool, Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.interval { closed_interval, IntervalConstruction, IntervalReady, IntervalRefused }
 
-// The census compiles only the supplied source strings; it does not inspect
-// the live repository tree, so these controls are hermetic substrate inputs.
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+// Virtual sources resolve imports against the live repository tree; this probe
+// is therefore authoring-time evidence until a live-tree execution home exists.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
