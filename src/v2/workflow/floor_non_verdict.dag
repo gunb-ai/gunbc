@@ -34,7 +34,35 @@ import v2.std.text { String }
 // goes through the ordinary failure path and already gates. The absorption was never repo-wide,
 // and saying otherwise would overstate the defect this closes.)
 //
-// A GROWTH FREEZE, NOT A GATE ON THE POPULATION. The admission is that the ADDED set is empty:
+// WHAT THIS WALL CONFINES, AND WHAT IT DOES NOT. Stated first because the short name for this
+// module -- a growth freeze -- claims more than the mechanism delivers, and a reader who takes
+// the name literally will conclude that growth is REFUSED. It is not, in one direction.
+//
+// CONFINED, by execution, every run: the OBSERVED population must equal the ROSTER exactly. An
+// observed identity the roster does not carry refuses (unrostered debt); a rostered identity the
+// run did not observe refuses (stale exemption). Together those pin O = R.
+//
+// NOT CONFINED: the roster itself. Nothing here compares the roster authored at HEAD against the
+// roster admitted at the MERGE BASE, so an author whose change makes a NEW identity stop
+// producing a verdict may add its row IN THE SAME CHANGE. Observed then equals roster, both
+// arms pass, and the regression is admitted -- LEGALISED BY THE ROSTER THAT EXISTS TO BOUND IT.
+// The row becomes the permission, which is exactly the defect review 55361 identified for stale
+// rows, arriving through authorship rather than through survival.
+//
+// THIS IS A CONSEQUENCE OF THE SINGLE-RUN DESIGN AND NOT AN OVERSIGHT IN IT. The admission was
+// specified as `added = head_observed - base_observed`, which needs a SECOND floor run over the
+// base. Substituting the roster for base-observation is what makes the wall implementable in one
+// run -- and that substitution is sound exactly to the degree the roster cannot be grown freely.
+// So `R subset-of B` is the condition that makes the simplification safe, not an extra nicety on
+// top of it, and its absence is the honest cost of the cheap design.
+//
+// RUNG ON THAT AXIS: MITIGATABLE. Roster growth is confined by review diligence alone, which is
+// strictly weaker than execution, and this paragraph is the declaration rather than a reader's
+// inference. NEXT-RUNG TRIGGER: the floor reads the roster at the merge base and refuses when the
+// head roster is not a subset of it, established by execution against a discriminating red -- one
+// PR adding a row for an identity the base did not carry, refused.
+
+// THE ADMISSION AS IMPLEMENTED: the ADDED set is empty.
 //
 //     added  = head_non_verdict_identities - roster
 //     repaid = roster - head_non_verdict_identities

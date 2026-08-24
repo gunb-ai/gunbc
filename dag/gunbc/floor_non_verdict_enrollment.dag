@@ -139,6 +139,26 @@ data floor_non_verdict_dominant_cause_specimen: DeclarationRef = decl_ref(module
 // a real thrown witness into the observed set; that is the residual gap and it is named here
 // rather than papered over.
 
+// THE WALL HAS TWO AXES AND ONLY ONE OF THEM EXECUTES.
+//
+// OBSERVED-VS-ROSTER is walled by execution every run: the two sets must be equal, growth and
+// stale exemptions both refuse. ROSTER-VS-BASE-ROSTER is not walled at all. Nothing compares the
+// roster authored at HEAD against the one admitted at the MERGE BASE, so a change that makes a
+// new identity stop producing a verdict may add its row in the same change, satisfy both
+// executing arms, and be admitted -- the roster legalising the regression it exists to bound.
+//
+// That is the same shape review 55361 caught for stale rows (the row becomes the permission),
+// reached through authorship instead of through survival, and it is recorded here rather than
+// left for a reader to infer from the wall's name. It is also the honest price of the
+// single-run design: the admission was specified against a BASE OBSERVATION, and substituting
+// the roster for it is what makes the wall runnable in one pass -- sound exactly to the degree
+// the roster cannot be grown freely.
+//
+// RUNG ON THIS AXIS: MITIGATABLE -- confined by review diligence, which is strictly weaker than
+// execution. The class rung stays the minimum across axes and paths, which is mitigatable.
+
+data floor_non_verdict_roster_growth_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the required floor reads v2.workflow.floor_non_verdict's roster at the MERGE BASE and refuses when the head roster is not a subset of it, established by execution against a discriminating red -- one change adding a row for an identity the base roster did not carry, refused. Not satisfied by a review convention, and not satisfied by counting rows: the subset must be checked at identity grain for the same reason the observed-vs-roster admission is, since an addition and a deletion in one change leave every count unmoved.")
+
 data floor_non_verdict_seed_mirror_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: v1_compiler.cli_run non_verdict_admission is DERIVED from v2.workflow.floor_non_verdict_admission rather than written beside it -- the same trigger v1_compiler.required_regen_host carries for its hand-mirrored ordering -- at which point the two implementations become one and the minimum-across-paths rung stops being pinned by the seed. Not satisfied by the seed's unit test alone: a discriminating red proves the mirror is correct TODAY, which is what mitigatable means, and does not make a divergence unwritable.")
 
 data floor_non_verdict_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: known_red_runtime_errored and known_red_observation_unreadable are conjuncts of v1_compiler.claim_executor required_floor_outcome_is_clean, established by execution against a discriminating red -- one enrolled identity made to throw, the run refusing. Precondition, not a follow-up: the measured population is repaid to zero first (the unresolved-name majority by giving each witness the import its subject needs, or by deleting the witness), so the conjunct lands over an empty collection rather than converting a counted silence into an uncounted red.")
