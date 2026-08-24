@@ -607,14 +607,14 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
             Present { value: elem } => KernelTypeBuild { ty: elem, diagnostics: [] }
             Absent =>
               let rname = container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: receiver))
-              if !is_kernel_type(name: rname) { KernelTypeBuild { ty: receiver, diagnostics: [] } } else match container_param_name(kind_name: rname, index: 0) {
+              if !is_kernel_type(name: rname) { KernelTypeBuild { ty: receiver, diagnostics: [] } } else { match container_param_name(kind_name: rname, index: 0) {
                 Present { value: n } => KernelTypeBuild { ty: type_variable_node(id: n), diagnostics: [] }
                 Absent =>
                   KernelTypeBuild {
                     ty: missing_kernel_container_profile_type(kind_name: rname),
                     diagnostics: [kernel_container_profile_miss_diagnostic(kind_name: rname)]
                   }
-              }
+              } }
           }
       }
     ReceiverKey =>
@@ -625,14 +625,14 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
             Present { value: key } => KernelTypeBuild { ty: key, diagnostics: [] }
             Absent =>
               let rname = container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: receiver))
-              if !is_kernel_type(name: rname) { KernelTypeBuild { ty: receiver, diagnostics: [] } } else match container_param_name(kind_name: rname, index: 0) {
+              if !is_kernel_type(name: rname) { KernelTypeBuild { ty: receiver, diagnostics: [] } } else { match container_param_name(kind_name: rname, index: 0) {
                 Present { value: n } => KernelTypeBuild { ty: type_variable_node(id: n), diagnostics: [] }
                 Absent =>
                   KernelTypeBuild {
                     ty: missing_kernel_container_profile_type(kind_name: rname),
                     diagnostics: [kernel_container_profile_miss_diagnostic(kind_name: rname)]
                   }
-              }
+              } }
           }
       }
     ReceiverValue =>
@@ -643,14 +643,14 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
             Present { value: val } => KernelTypeBuild { ty: val, diagnostics: [] }
             Absent =>
               let rname = container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: receiver))
-              if !is_kernel_type(name: rname) { KernelTypeBuild { ty: receiver, diagnostics: [] } } else match container_param_name(kind_name: rname, index: 1) {
+              if !is_kernel_type(name: rname) { KernelTypeBuild { ty: receiver, diagnostics: [] } } else { match container_param_name(kind_name: rname, index: 1) {
                 Present { value: n } => KernelTypeBuild { ty: type_variable_node(id: n), diagnostics: [] }
                 Absent =>
                   KernelTypeBuild {
                     ty: missing_kernel_container_profile_type(kind_name: rname),
                     diagnostics: [kernel_container_profile_miss_diagnostic(kind_name: rname)]
                   }
-              }
+              } }
           }
       }
     NamedTemplate { name: n } => KernelTypeBuild { ty: nominal_type_ref(name: n), diagnostics: [] }
