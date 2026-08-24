@@ -35,7 +35,7 @@ import v2.std.compilers.lexing {
   TokenRule,
   lex_rule_set_token_class_member
 }
-import v2.std.collection { Absent, List, Map, Optional, Present, Set }
+import v2.std.collection { Absent, List, Map, Optional, PointwisePower, Present }
 import v2.std.logic { Bool, bool_boolean_algebra }
 import extdeps.languages.lean.overflow { lean_upstream_fixed_width_overflow_returns_rule }
 import std.algebra { Cons, Empty }
@@ -872,8 +872,8 @@ fn lean_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
 
 data lean_ingest_grammar_probe_authority: GrammarSchemaProbeBinding = lean_ingest_grammar_probe()
 
-fn lean_language_model_canonical_symbols() -> Set<Symbol> {
-  Set {
+fn lean_language_model_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       lean_catalog_surface_symbol(sym: sym) ||
         lean_lex_token_symbol(sym: sym) ||
