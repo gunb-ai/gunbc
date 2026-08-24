@@ -42,6 +42,7 @@ type OllamaEndpoint
   | ApiShow
   | ApiPull
   | ApiGenerate
+  | ApiPs
 
 fn ollama_endpoint_path(endpoint: OllamaEndpoint) -> String {
   match endpoint {
@@ -50,6 +51,7 @@ fn ollama_endpoint_path(endpoint: OllamaEndpoint) -> String {
     ApiShow => "/api/show"
     ApiPull => "/api/pull"
     ApiGenerate => "/api/generate"
+    ApiPs => "/api/ps"
   }
 }
 
@@ -64,6 +66,7 @@ fn ollama_endpoint_method(endpoint: OllamaEndpoint) -> OllamaHttpMethod {
     ApiShow => OllamaPost
     ApiPull => OllamaPost
     ApiGenerate => OllamaPost
+    ApiPs => OllamaGet
   }
 }
 

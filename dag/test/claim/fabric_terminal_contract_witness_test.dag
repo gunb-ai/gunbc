@@ -24,12 +24,16 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // assertion is that the Work identity they produce is IDENTICAL while the
 // demands remain distinct. If a provider fact ever leaks into Work, this
 // witness reds without anyone needing to notice the leak.
-data fixture_shape: Shape = Shape { hard: HardRequirements { threads: hardware_thread_count(8) } }
+data fixture_shape: Shape = Shape {
+  hard: HardRequirements { threads: hardware_thread_count(8) },
+  envelope: unstated_envelope(),
+}
 
 data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
   shape: fixture_shape,
   capabilities: "linux-arm64",
   trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
 }
 
 data fixture_contract: WorkContract = WorkContract {
@@ -76,15 +80,20 @@ data other_source_contract: WorkContract = WorkContract {
 // matching constraints disagreed about whether two things were the same work.
 
 data bigger_shape_requirements: ExecutionRequirements = ExecutionRequirements {
-  shape: Shape { hard: HardRequirements { threads: hardware_thread_count(64) } },
+  shape: Shape {
+    hard: HardRequirements { threads: hardware_thread_count(64) },
+    envelope: unstated_envelope(),
+  },
   capabilities: "linux-arm64",
   trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
 }
 
 data other_runtime_requirements: ExecutionRequirements = ExecutionRequirements {
   shape: fixture_shape,
   capabilities: "linux-amd64",
   trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
 }
 
 fn buy_terms(reservation: Int, ceiling: Int) -> BuyTerms {
@@ -218,6 +227,7 @@ data owned_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
   shape: fixture_shape,
   capabilities: "linux-arm64",
   trust_domain: "fleet-owned",
+  isolation: shared_kernel_sandbox_profile(),
   quantity_bound: 1,
   ready_at: "2026-08-18T00:00:00Z",
   quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(0), currency: Usd }),
@@ -231,6 +241,7 @@ data rented_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
   shape: fixture_shape,
   capabilities: "linux-arm64",
   trust_domain: "rented",
+  isolation: shared_kernel_sandbox_profile(),
   quantity_bound: 64,
   ready_at: "2026-08-18T00:04:00Z",
   quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(900), currency: Usd }),
