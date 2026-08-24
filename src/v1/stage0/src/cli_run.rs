@@ -15637,11 +15637,98 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
         .into_inner())
 }
 
+/// WHY THE OUTPUT POLICY CANNOT BE INSTALLED, AS A TYPED CAUSE.
+///
+/// Every arm here used to be a bare `return` or a `let … else { return }`: the policy was
+/// silently not installed and the run proceeded at the pre-funnel default, which is
+/// `Full` on every channel — the exact shape the funnel exists to replace. A run that
+/// never installed the policy is therefore indistinguishable from a run whose policy
+/// CHOSE `Full`, so the deficit's frequency was zero by construction and nothing ever
+/// ranked it for fixing (DESIGN §5, the absorbing fallback and its fabricated-plausible-
+/// output twin). The three causes are kept apart because their remedies are different:
+/// the authority is not in this run's source roots (fix the invocation), the authority is
+/// there but its entry point does not evaluate (fix the module), and it evaluates to
+/// something that is not the record of channel decisions (fix the seed/authority
+/// disagreement). Collapsing them into one message would be the not-applicable-versus-
+/// malformed conflation in the diagnostic that reports it.
+#[derive(Debug)]
+enum OutputPolicyInstallRefusal {
+    /// `dag/gunbc/output_policy.dag` did not resolve in the source roots this run was given.
+    AuthorityUnresolved {
+        entry: String,
+        source_roots: Vec<String>,
+        cause: String,
+    },
+    /// The module resolved, but `resolve_channel_policy` did not evaluate.
+    ChannelPolicyEvaluationFailed { cause: String },
+    /// It evaluated, to something other than the `ChannelPolicy` record.
+    ChannelPolicyNotARecord { observed_shape: &'static str },
+}
+
+/// The observed shape of a `Value`, for a refusal that must say what it got without
+/// printing an arbitrarily large value into the log.
+fn output_policy_value_shape(value: &v1_interpreter::Value) -> &'static str {
+    use v1_interpreter::Value;
+    match value {
+        Value::Null => "Null",
+        Value::Bool(_) => "Bool",
+        Value::Int(_) => "Int",
+        Value::Float(_) => "Float",
+        Value::Str(_) => "Str",
+        Value::List(_) => "List",
+        Value::Map(_) => "Map",
+        Value::Set(_) => "Set",
+        Value::Record { .. } => "Record",
+        Value::Variant { .. } => "Variant",
+        Value::Closure { .. } => "Closure",
+        Value::Fn { .. } => "Fn",
+        Value::Unit => "Unit",
+    }
+}
+
+/// Stop the line, located at the module and symbol that could not answer.
+///
+/// This is the same remedy the undecodable-channel arm below already takes — one refusal
+/// shape for one class, rather than a second control flow for a cause discovered earlier
+/// in the same install.
+fn refuse_output_policy_install(refusal: OutputPolicyInstallRefusal) -> ! {
+    let located = match refusal {
+        OutputPolicyInstallRefusal::AuthorityUnresolved {
+            entry,
+            source_roots,
+            cause,
+        } => format!(
+            "gunbc.output_policy ({entry}) did not resolve in this run's source roots \
+             [{roots}]: {cause}. Refusing rather than running with the policy uninstalled, \
+             which prints every channel at Full and is indistinguishable from a policy that \
+             chose Full. Remedy: invoke with a --source-root containing {entry}.",
+            roots = source_roots.join(", "),
+        ),
+        OutputPolicyInstallRefusal::ChannelPolicyEvaluationFailed { cause } => format!(
+            "gunbc.output_policy `resolve_channel_policy` did not evaluate: {cause}. \
+             Refusing rather than running with the policy uninstalled."
+        ),
+        OutputPolicyInstallRefusal::ChannelPolicyNotARecord { observed_shape } => format!(
+            "gunbc.output_policy `resolve_channel_policy` answered a {observed_shape}, not the \
+             ChannelPolicy record this seed decodes. The .dag authority and its seed \
+             realization disagree; refusing rather than running with the policy uninstalled."
+        ),
+    };
+    eprintln!("::error::output policy install refused: {located}");
+    std::process::exit(1);
+}
+
 pub fn install_output_policy(source_roots: &[String]) {
     let entry = "dag/gunbc/output_policy.dag";
     let (graph, indices) = match resolve_entry_graph_shared(source_roots, entry) {
         Ok(g) => g,
-        Err(_) => return,
+        Err(cause) => {
+            refuse_output_policy_install(OutputPolicyInstallRefusal::AuthorityUnresolved {
+                entry: entry.to_string(),
+                source_roots: source_roots.to_vec(),
+                cause,
+            })
+        }
     };
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     install_output_policy_in(&ctx, source_roots);
@@ -15675,10 +15762,16 @@ pub fn install_output_policy_in(ctx: &v1_interpreter::InterpContext, source_root
         false,
     ) {
         Ok(v) => v,
-        Err(_) => return,
+        Err(cause) => refuse_output_policy_install(
+            OutputPolicyInstallRefusal::ChannelPolicyEvaluationFailed {
+                cause: cause.to_string(),
+            },
+        ),
     };
     let Value::Record { fields, .. } = &policy else {
-        return;
+        refuse_output_policy_install(OutputPolicyInstallRefusal::ChannelPolicyNotARecord {
+            observed_shape: output_policy_value_shape(&policy),
+        });
     };
     let decision = |name: &str| -> OutputDecision {
         let observed = match ctx.field(fields, name) {
