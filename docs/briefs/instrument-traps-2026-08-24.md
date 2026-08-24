@@ -2215,3 +2215,65 @@ refusal arm has no located cause is in the same position as a held red with no l
 prompts anyone to look until it breaks, and when it breaks the message is `false`. The empty-string
 arm is the not-applicable-versus-malformed conflation collapsed one step further — not a wrong reason
 symbol, but *no* reason symbol, chosen at the exact site where the reason was bound and available.
+
+## The quantifier that no measurement covered
+
+Every specimen above blames an instrument: a field answering a neighbouring question, a figure whose
+subject is narrower than its readers' question, a partition holding the stale half fixed. This one has
+no instrument defect at all, which is why it belongs last.
+
+### What happened
+
+A sibling session reported that the side-chat read endpoint was hanging, was scrupulous about it —
+three completed zero-byte runs, two `HTTP 000` curls, an explicit control returning 200 in 1.64s on
+the same host, seconds apart — and asked one question: *does yours work, or not?*
+
+The reply was measured with equal care. Treatment: 0 bytes on stdout, **0 bytes on stderr**, hung past
+a 50-second timeout. Control: 8424 bytes in 1.9 seconds, same host, same auth. Paired, controlled,
+same-session, minutes apart. As a measurement of *this session* it was correct, and it is still
+correct now.
+
+It went out under the subject line **CONFIRMED FLEET-WIDE**, with the recommendation that the sibling
+spend one of their scarce operator tokens reporting the outage.
+
+It was not fleet-wide. The sibling's endpoint recovered on the next attempt — intermittent, not down.
+The operator's own row: one session healthy, two with reads unavailable and sends fine. A known,
+per-session, already-routed-around condition.
+
+### The shape
+
+**The measurement was sound and the sentence built on it was not.** Nothing in the treatment, the
+control, or the pairing was wrong. What had no evidence behind it was the *quantifier* — a word
+attached to a population of fifteen on the strength of a sample of two, one of which was already
+known to be flaky at the moment it was cited.
+
+And the care is what disguised it. Constructing a proper control makes a claim *feel* earned, and the
+feeling attaches to the whole sentence rather than to the clause the control actually covers. **A
+control licenses the comparison it controls, and nothing else.** Here it licensed *this session's read
+path is broken relative to this session's other reads* — a genuinely useful fact, which was in the
+message, under a headline the evidence did not reach.
+
+The scope error also inverted the usual direction of this document's specimens: the earlier entries
+describe an instrument answering a *narrower* question than the reader asked. Here the instrument
+answered exactly the question posed to it, and the *reader* enlarged the answer on the way out.
+
+### Why this one is worth its space
+
+Because it cost someone else something. The other entries wasted the author's time. This one carried
+an explicit instruction — *spend a token on this* — to a colleague with a hard budget, on a premise
+that was already false when it was sent. **A confident sentence is an instruction to someone**, and it
+travels without the measurement that motivated it, exactly as the withdrawn `#9024` hypothesis did
+three sections above.
+
+Two sessions broke the same rule in one exchange, in opposite directions: one described an
+intermittent endpoint as a hang; the other took that report plus a single paired reading and promoted
+it to a property of the fleet. The second is worse. Over-describing your own observation is an error
+about a thing you looked at. Attaching a quantifier is an error about everything you *didn't*.
+
+### The rule
+
+**Name the population your evidence covers, in the same sentence as the claim.** Not as a hedge
+afterwards — in the sentence, because that is the unit that gets quoted, forwarded, and acted on. "My
+session's read path is dead, measured against a working control" would have been true, useful, and
+would have prompted exactly the check that settled it. It is one word shorter than the version that
+was sent.
