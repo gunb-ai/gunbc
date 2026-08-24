@@ -1,7 +1,7 @@
 module test.claim.fabric_cell_converge
 
 import std.logic { Bool }
-import std.types { list_length, String, NonEmptyStr }
+import std.types { list_length, String, NonEmptyStr, Int }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
@@ -41,6 +41,8 @@ import gunbc.fabric_cell_converge {
   FabricCellSubstrateUnprovisioned,
   FabricCellSubstrateObservationRefused,
   fabric_cell_readback_without_observations,
+  fabric_cell_population_unobserved,
+  fabric_cell_observed_members,
   FabricCellHostReadback,
   fabric_cell_population,
   FabricCellPopulation,
@@ -383,4 +385,43 @@ test fn witness_fabric_cell_unread_expected_cell_refuses_despite_a_complete_fore
       }
     )
   )
+}
+
+fn population_is_observed_empty(p: FabricCellPopulation) -> Bool {
+  match p {
+    FabricCellPopulationObservationRefused { host: _, blocked: _ } => false
+    FabricCellPopulationObserved { host: _, observed: o } =>
+      list_length(items: fabric_cell_observed_members(observed: o)) == 0
+  }
+}
+
+fn population_blocked_count(p: FabricCellPopulation) -> Int {
+  match p {
+    FabricCellPopulationObservationRefused { host: _, blocked: b } => list_length(items: b)
+    FabricCellPopulationObserved { host: _, observed: _ } => 0
+  }
+}
+
+// A HOST THAT EXPECTS NO FABRIC CELLS HAS NOTHING UNREAD, and the unobserved constructor projected
+// the GLOBAL slot roster into every host before this row existed -- so planning srv4 fabricated an
+// srv3-06 unreadable-resource refusal and stopped the line over resources srv4 was never expected to
+// carry. That reached production: the CLI builds this population on every plan.
+//
+// The row asserts both halves, because fixing only the filter would leave the second: srv4 converges
+// OBSERVED-EMPTY (nothing expected, so nothing missing), while srv3 -- which does expect a cell --
+// still refuses with one disposition per expected address. A constructor that refused for srv4 would
+// be inventing an obligation, the mirror of a fabricated plausible output.
+//
+// AND IT PINS THE TWO ROUTES TOGETHER: the unobserved constructor and the observing fold must answer
+// the same thing for a host with no expected cells, since both derive the expected set from
+// fabric_cell_expected_slots. They disagreed before -- the fold was host-exact, the constructor was
+// not -- and a second row asserting only the constructor would not have noticed.
+test fn witness_fabric_cell_unobserved_is_host_exact_not_the_global_roster() -> Bool {
+  population_is_observed_empty(p: fabric_cell_population_unobserved(host: operator_host_srv4))
+    && population_blocked_count(p: fabric_cell_population_unobserved(host: operator_host_srv3)) == 3
+    && population_is_observed_empty(
+        p: fabric_cell_population(
+          readback: FabricCellHostReadback { host: operator_host_srv4, cell_readbacks: [] }
+        )
+      )
 }

@@ -663,13 +663,39 @@ fn fabric_cell_unreadable_dispositions_for_slot(
 
 data fabric_cell_no_observer_cause: String = "no fabric cell observer is wired: this host has not been read for fabric cell resources, and an unread host is not an empty one"
 
+// AN UNREAD HOST IS ONLY UNREAD FOR THE CELLS IT IS EXPECTED TO HAVE, and this function projected
+// the GLOBAL slot roster into every host until codex review 55439 caught it. Because that authority
+// holds exactly one member today, planning ANY host -- srv4, or a host with no fabric cells at all
+// -- fabricated an srv3-06 unreadable-resource refusal and stopped the line over resources that
+// host was never expected to carry. The CLI calls this on every plan, so the defect was in
+// production planning rather than latent (`gunbc.fleet_converge_plan_cli` `fleet_converge_plan_cli_main`).
+//
+// TWO SEPARATE ERRORS, and only fixing the filter would have left the second. The roster is now
+// host-filtered through the same fabric_cell_expected_slots the observing fold uses -- one authority
+// for "which cells does this host expect", not two. And a host expecting NO fabric cells converges
+// OBSERVED-EMPTY rather than refused: there is nothing unread about a host with nothing to read, and
+// answering Refused there is fabricating an obligation, which is the mirror of the fabricated
+// plausible output DESIGN section 5 forbids -- a refusal invented where no fact was missing.
+//
+// THE TWO ROUTES NOW AGREE BY CONSTRUCTION: fabric_cell_population_unobserved(srv4) and
+// fabric_cell_population(FabricCellHostReadback { host: srv4, cell_readbacks: [] }) both answer
+// observed-empty, because both derive the expected set from the same authority. Before this they
+// disagreed -- the observing fold was already host-exact and this constructor was not.
 fn fabric_cell_population_unobserved(host: HostIdentity) -> FabricCellPopulation {
-  FabricCellPopulationObservationRefused {
-    host: host,
-    blocked: fold(
-      fabric_execution_slot_identities(),
-      init: [],
-      f: (acc, slot) => concat(acc, fabric_cell_unreadable_dispositions_for_slot(slot: slot))
-    )
+  let expected = fabric_cell_expected_slots(host: host)
+  if list_length(items: expected) == 0 {
+    FabricCellPopulationObserved {
+      host: host,
+      observed: FabricCellObservedMembers { members: [] },
+    }
+  } else {
+    FabricCellPopulationObservationRefused {
+      host: host,
+      blocked: fold(
+        expected,
+        init: [],
+        f: (acc, slot) => concat(acc, fabric_cell_unreadable_dispositions_for_slot(slot: slot))
+      )
+    }
   }
 }
