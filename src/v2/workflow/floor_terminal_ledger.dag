@@ -249,6 +249,18 @@ type ClaimDisposition
   // THE CONTRADICTORY PAIRING, NAMED RATHER THAN ABSORBED: a budget terminal whose safety
   // outcome says the claim stayed WITHIN its limits. No measurement supports calling it either a
   // refusal or a completed overrun, so it is neither.
+  //
+  // §4b RUNG AND ITS TRIGGER, declared here rather than left to be rediscovered as a gap. This
+  // class sits at MITIGATABLE: the state is REPRESENTABLE and is caught by a check
+  // (`ledger_green_admission` refuses a ledger carrying it), not made unwritable. Making it
+  // unwritable by narrowing `BudgetRefused`'s carrier to the two coherent arms is REJECTED, and
+  // not for cost: `ClaimSafetyOutcome` is owned by `v2.workflow.required_floor` and reused here
+  // deliberately, so a narrowed two-arm twin declared beside it would be one concept forked by
+  // rigor -- §3 nicknaming -- and a fork gets consolidated later at someone else's cost.
+  // NEXT-RUNG TRIGGER: the safety axis declared as a family in its OWNING module, with the
+  // budget-bearing sub-family derived there rather than re-spelled here. At that point this arm
+  // has no constructor and this disposition, its refusal arm and their evidence dissolve
+  // together (operator ruling, 2026-08-24).
   | BudgetTerminalWithoutSafetyCause
   | HostToolUnresolvedBeforeVerdict
   | RouteGapBeforeVerdict
@@ -349,6 +361,28 @@ type LedgerGreenAdmission
   | EvidenceUnfinalized { reason: Symbol }
   | EvidenceReconciliationFailed { reconciliation: LedgerReconciliation }
   | EvidenceFooterCountDisagrees { footer_rows: Int, planned_rows: Int }
+  // A ROW THAT CONTRADICTS ITSELF REFUSES THE LEDGER, AND THE IDENTITIES ARE CARRIED so the
+  // refusal is LOCATED rather than merely typed -- a reader gets the rows to go and look at, not
+  // a count to go hunting with.
+  //
+  // Why it refuses rather than being counted: a naming arm that neither stops the line nor is
+  // reported would be a name that DESCRIBES a contradiction and PERMITS it, so its frequency is
+  // unobservable by construction and the deficit never ranks for fixing -- the absorbing
+  // fallback's quiet half. And every other judgment this function makes over such a row is
+  // meaningless: the row does not say what happened to the claim, so completeness over it is
+  // completeness in name.
+  | EvidenceCarriesIncoherentRow { rows: List<WitnessIdentity> }
+
+// THE ROWS WHOSE DISPOSITION IS THE CONTRADICTORY PAIRING, keyed by identity. A fold over the
+// SAME `claim_disposition` every other consumer reads, so this cannot disagree with the ledger's
+// own projection -- asking a second question of the row here would be a second authority over the
+// fact the disposition already answers.
+fn incoherent_ledger_rows(rows: List<ClaimTerminalRow>) -> List<WitnessIdentity> {
+  map(
+    filter(rows, r => claim_disposition(row: r) == BudgetTerminalWithoutSafetyCause),
+    r => r.identity
+  )
+}
 
 fn ledger_green_admission(
   ledger: TerminalLedger,
@@ -357,7 +391,15 @@ fn ledger_green_admission(
 ) -> LedgerGreenAdmission {
   match ledger.publication {
     LedgerPartial { reason: r } => EvidenceUnfinalized { reason: r }
-    LedgerFinalized { row_count: n, digest: _ } =>
+    LedgerFinalized { row_count: n, digest: _ } => {
+      // CHECKED AHEAD OF COMPLETENESS AND THE FOOTER, because those two ask whether the right
+      // rows are present and this one asks whether a row says anything at all. Reporting a
+      // population as complete while one of its members carries no readable outcome would
+      // publish the count as the answer to a question the count cannot reach.
+      let incoherent = incoherent_ledger_rows(rows: ledger.rows)
+      if incoherent.length() > 0 {
+        EvidenceCarriesIncoherentRow { rows: incoherent }
+      } else {
       if ledger_is_complete(r: reconciliation) {
         if n == planned.length() {
           EvidenceComplete
@@ -366,6 +408,7 @@ fn ledger_green_admission(
         }
       } else {
         EvidenceReconciliationFailed { reconciliation: reconciliation }
-      }
+      }}
+    }
   }
 }
