@@ -494,3 +494,54 @@ answer while you believe it measured the treatment. Trap 14 is the step before t
 decision not to measure at all, taken because a costless explanation was already available. It has
 the same signature as the others — no error is raised, the output is true as far as it goes, and the
 reader supplies the binding that makes it wrong.
+
+### Trap 14a — the sharper sub-form: your instrument cannot express the answer
+
+Instance 5 above was mine: an unmeasured assertion. Within the hour I produced a worse one, and it
+deserves separating because the rule from trap 14 would not have caught it — **I did measure.**
+
+I set out to check whether the floor names the six roster rows it reports as `now PASS and must be
+removed`. I searched a 337KB log by extracting `//[a-z_0-9/]+:[a-z_0-9]+`, the label format used by
+the per-claim `PASS`/`FAIL` lines. Zero matches. I concluded the floor counts them without naming
+them, called it a §5 violation — typed and counted but not located — reported it upward as a defect
+worth fixing, and another lane offered to fix it.
+
+The floor names all six:
+
+```
+required-floor: STALE-QUARANTINE test.claim.samsung_dram_module.generation_is_ddr4 is enrolled
+  as expected-red and PASSED — remove it from v2.workflow.floor_expected_red
+```
+
+Six lines, with remediation text, in the file I had already downloaded, emitted by a loop that sits
+beside seven siblings doing the same for `ROUTE-GAP`, `HOST-TOOL-UNRESOLVED`,
+`INTERRUPTED-BEFORE-VERDICT` and the rest. These carry **dotted qualified names**. My pattern
+required a `//`-prefixed, colon-separated label. It could not have matched a true positive.
+
+> **A search that returns nothing has told you about your pattern until you have shown the pattern
+> can match a true positive.**
+
+The failure is not carelessness about whether to measure; it is skipping the question of whether the
+instrument's vocabulary matches the subject's. A regex is a claim about *format*, and I was asking a
+question about *presence*. Zero results answered the format question, and I read the answer as
+presence — the same substitution trap 11 makes with a marker and trap 13 makes with a truncated
+dispatch, now one level further out: not the instrument reaching the wrong subject, but the
+**instrument being unable to represent the finding at all**, returning ⊥ that reads as *absent*.
+
+The positive control was free and I skipped it: grep for the bare token `STALE-QUARANTINE`, or for
+any known-present string, and confirm the harness can find something before trusting that it found
+nothing. One `grep -c` would have shown 6.
+
+**And the evidence that should have stopped me was already in view.** `[floor-known-red-causes]`
+prints per-item detail immediately below the counter line I was doubting. I read that as precedent
+for what *should* exist rather than as evidence about what *does* — an author who prints a per-cause
+census three lines down is not an author who omits a per-identity list. Corroborating structure was
+sitting adjacent to my conclusion and I used it to motivate the finding instead of to test it.
+
+**Cost, and why it is the real argument for the positive control:** the false finding was relayed
+upward inside four minutes and a second lane volunteered to fix a defect that does not exist. An
+unverified negative does not stay in one head; it recruits.
+
+**The salvage, which is the honest outcome:** all six stale rows are `test.claim.samsung_dram_module.*`
+— one module, six roster lines to delete, a real and trivial unblock. The correct finding was smaller
+than the invented one. That is the usual shape.
