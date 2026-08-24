@@ -62,64 +62,30 @@ fn systemctl_show_property_operation_argv_matches_transport(
 // ceiling. Reading only the limits therefore cannot tell an ABSENT slice from an UNBOUNDED one --
 // two states whose remedies are opposite (install it vs refuse and report the drift). LoadState is
 // the discriminator, so it is read first and the limits are read only under a loaded unit.
-fn systemctl_show_load_state_operation_argv(unit: NonEmptyStr) -> ArgvMaterialization {
-  shell_materialize_operation_argv(
-    systemctl_show_property_path,
-    systemctl_show_property_service,
-    systemctl_show_load_state_operation,
-    [operation_argv_bind_text(name: "unit", text: unit as String)]
-  )
-}
-
-data systemctl_show_load_state_operation: String = "ShowLoadState"
-
-fn systemctl_show_load_state_read_local(unit: NonEmptyStr) -> SystemdPropertyCapture {
-  let result = systemd.Systemctl.ShowLoadState(unit: unit)
-  systemctl_show_property_value_from_stdout(success: result.success, stdout: result.value)
-}
-
-fn systemctl_show_load_state_read_ssh(host: NonEmptyStr, unit: NonEmptyStr) -> SystemdPropertyCapture {
-  match systemctl_show_load_state_operation_argv(unit: unit) {
-    ArgvMaterialized { argv: argv } =>
-      systemctl_show_property_read_ssh_argv(host: host, argv: argv)
-    ArgvMaterializationRefused { at: _, cause: c } =>
-      SystemdPropertyCaptureRefused { reason: operation_argv_cause_label(cause: c) }
-  }
-}
-
-fn systemctl_show_load_state_read_fleet_ssh(
-  target: SshTarget,
-  context: FleetSshExecutionContext,
-  unit: NonEmptyStr,
-) -> SystemdPropertyCapture {
-  match systemctl_show_load_state_operation_argv(unit: unit) {
-    ArgvMaterialized { argv: argv } =>
-      systemd_property_capture_from_outcome(
-        outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv),
-      )
-    ArgvMaterializationRefused { at: _, cause: c } =>
-      SystemdPropertyCaptureRefused { reason: operation_argv_cause_label(cause: c) }
-  }
-}
-
+// It shares the transport dispatch, though, and that is the whole repair here: the block below was
+// authored against an API generation that never existed in this tree -- four names resolving nowhere
+// -- and it is rewired onto the one total entry point gunbc.host_operation_exec already exposes
+// rather than re-minting per-transport read helpers. The four arms live there once (DESIGN section 3:
+// the dispatch that selects a realization is itself realization), so this module carries the decoder
+// and nothing else, exactly as systemctl_show_property_read above does.
 fn systemctl_show_load_state_read(
   transport: HostEffectTransport,
   unit: NonEmptyStr,
 ) -> SystemdPropertyCapture {
-  match transport {
-    LocalShell => systemctl_show_load_state_read_local(unit: unit)
-    SshShell { ssh_host: h } => systemctl_show_load_state_read_ssh(host: h, unit: unit)
-    FleetSsh { target: t, context: c } => systemctl_show_load_state_read_fleet_ssh(target: t, context: c, unit: unit)
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      SystemdPropertyCaptureRefused {
-        reason: "systemctl show LoadState refused EmitArtifactThenThinRun transport",
-      }
+  match host_operation_exec(
+    transport: transport,
+    operation: SystemctlShowLoadState { unit: unit },
+  ) {
+    HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
+      systemctl_show_property_value_from_stdout(success: ok, stdout: out)
+    HostOperationRefused { operation: _, reason: why } =>
+      SystemdPropertyCaptureRefused { reason: why }
   }
 }
 
 fn systemctl_show_load_state_operation_argv_matches_transport(unit: NonEmptyStr) -> Bool {
   let authority = systemctl_show_load_state_argv(unit: unit)
-  match systemctl_show_load_state_operation_argv(unit: unit) {
+  match host_operation_materialize_argv(operation: SystemctlShowLoadState { unit: unit }) {
     ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
     ArgvMaterializationRefused { at: _, cause: _ } => false
   }
