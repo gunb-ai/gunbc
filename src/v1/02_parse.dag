@@ -900,12 +900,12 @@ fn node_inferred_to_outputs(rt: Node, source_indices: Map<String, NewlineIndex>)
     let all_children_typed = rt.children |> all(ch => match ch.inferred { Present { value: Resolved { node: _ } } => true  _ => false })
     if all_children_typed {
       rt.children
-        |> map(ch => make_field_node(name: authored_name_at(source_indices: source_indices, node: ch), type_expr: child_inferred_or_empty(ch: ch), cardinality: Required, default_value: ch.body, from_key: none, span: ch.span, name_span: node_name_span(n: ch)))
+        |> map(ch => make_field_node(name: authored_name_at(source_indices: source_indices, node: ch), type_expr: child_inferred_or_empty(ch: ch), cardinality: v1.std.core.Required, default_value: ch.body, from_key: none, span: ch.span, name_span: node_name_span(n: ch)))
     } else {
       []
     }
   } else {
-    [make_field_node(name: "value", type_expr: rt, cardinality: Required, default_value: none, from_key: none, span: rt.span, name_span: no_span())]
+    [make_field_node(name: "value", type_expr: rt, cardinality: v1.std.core.Required, default_value: none, from_key: none, span: rt.span, name_span: no_span())]
   }
 }
 
@@ -928,15 +928,15 @@ fn parse_dotted_ident_rest(tokens: TokenStream, acc: String, span: SourceSpan) -
 }
 
 fn occurrence_ancestors_push(
-  ancestors: FreeMonoid<OccurrenceId>,
-  occurrence: OccurrenceId
-) -> FreeMonoid<OccurrenceId> {
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
+  occurrence: std.occurrence_identity.OccurrenceId
+) -> FreeMonoid<std.occurrence_identity.OccurrenceId> {
   concat(ancestors, Cons { head: occurrence, tail: Empty })
 }
 
 fn stamp_parsed_node_list(
   nodes: List<Node>,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext,
   role: ParsedOccurrenceRole
 ) -> ParsedNodeListStampResult {
@@ -959,7 +959,7 @@ fn stamp_parsed_node_list(
 
 fn stamp_parsed_optional_node(
   node: Node?,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext,
   role: ParsedOccurrenceRole
 ) -> ParsedOptionalNodeStampResult {
@@ -982,7 +982,7 @@ fn stamp_parsed_optional_node(
 
 fn stamp_parsed_pattern(
   pattern: MatchPattern?,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext
 ) -> ParsedPatternStampResult {
   match pattern {
@@ -1031,7 +1031,7 @@ fn stamp_parsed_pattern(
       }
     Present { value: Wildcard } =>
       ParsedPatternStampResult {
-        pattern: Present { value: Wildcard },
+        pattern: Present { value: v1.std.core.Wildcard },
         ctx: ctx,
       }
     Absent =>
@@ -1041,7 +1041,7 @@ fn stamp_parsed_pattern(
 
 fn stamp_parsed_inferred(
   inferred: InferredNode?,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext
 ) -> ParsedOptionalNodeStampResult {
   match inferred {
@@ -1096,7 +1096,7 @@ fn parsed_occurrence_role_for_node(
 fn parse_context_record_occurrence(
   ctx: ParseContext,
   role: ParsedOccurrenceRole,
-  occurrence: OccurrenceId,
+  occurrence: std.occurrence_identity.OccurrenceId,
   containment: OccurrenceContainmentPath,
   diagnostic_span: SourceSpan
 ) -> ParseContext {
@@ -1143,7 +1143,7 @@ fn parse_context_record_occurrence(
 
 fn stamp_parsed_node_list_with_head_role(
   nodes: List<Node>,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext,
   head_role: ParsedOccurrenceRole,
   tail_role: ParsedOccurrenceRole
@@ -1172,7 +1172,7 @@ fn stamp_parsed_node_list_with_head_role(
 
 fn stamp_parsed_node_children(
   node: Node,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext,
   role: ParsedOccurrenceRole
 ) -> ParsedNodeListStampResult {
@@ -1223,7 +1223,7 @@ fn stamp_parsed_node_children(
 
 fn stamp_parsed_node(
   node: Node,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext,
   role: ParsedOccurrenceRole
 ) -> ParsedNodeStampResult {
@@ -2031,11 +2031,11 @@ fn parse_positional_variant_type_fields(tokens: TokenStream, ctx: ParseContext) 
   let field = make_field_node(
     name: "0",
     type_expr: r.type_expr,
-    cardinality: Required,
+    cardinality: v1.std.core.Required,
     default_value: none,
     from_key: none,
     span: r.type_expr.span,
-    name_span: kernel_span(name: "0")
+    name_span: v1.std.core.kernel_span(name: "0")
   )
   match eat(tokens: r.tokens, expected: ExpectComma) {
   EatConsumed { token: comma_tok, tokens: __ec } =>
@@ -2288,7 +2288,7 @@ fn parse_field_list_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
 
 fn parse_field(tokens: TokenStream, ctx: ParseContext) -> FieldResult {
   let start_span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy_field = make_field_node(name: "", type_expr: leaf_type_node(name: "", span: start_span), cardinality: Required, default_value: none, from_key: none, span: start_span, name_span: start_span)
+  let dummy_field = make_field_node(name: "", type_expr: leaf_type_node(name: "", span: start_span), cardinality: v1.std.core.Required, default_value: none, from_key: none, span: start_span, name_span: start_span)
   let r = expect_name(tokens: tokens)
   if has_err(err: r.err) { return FieldResult { field: dummy_field, tokens: r.tokens, ctx: ctx, err: r.err } }
   let name = r.name
@@ -3273,7 +3273,7 @@ fn parse_operation_modifiers_acc(tokens: TokenStream, ctx: ParseContext, acc: Li
   } else if kw == "readonly" {
     parse_operation_modifiers_acc(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, acc: list_push(acc, Readonly))
   } else if kw == "hermetic" {
-    parse_operation_modifiers_acc(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, acc: list_push(acc, Hermetic))
+    parse_operation_modifiers_acc(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, acc: list_push(acc, v1.std.core.Hermetic))
   } else {
     ModsResult { modifiers: acc, tokens: tokens, ctx: ctx, err: none }
   }
@@ -4059,7 +4059,7 @@ fn parse_caret_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
       let r2 = expect(tokens: tokens, expected: ExpectRParen)
       if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
       let call_span = make_file_span(file: span.file, start: span.start, end: r2.token.span.end)
-      let callee = make_named_expr_node(name: "discriminant", expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: call_span, name_span: kernel_span(name: "discriminant"))
+      let callee = make_named_expr_node(name: "discriminant", expr_data: ExprVar { binding_kind: none }, children: [], inferred: none, span: call_span, name_span: v1.std.core.kernel_span(name: "discriminant"))
       let call = make_call_expr(lhs: callee, args: [r.expr], span: call_span, source_indices: ctx.source_indices)
       ExprResult { expr: call, tokens: r2.tokens, ctx: ctx, err: none }
     }
@@ -4278,7 +4278,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -
             if is_uppercase_start(name: last_seg) {
               match field_access_spine(texpr: lhs, source_indices: ctx.source_indices) {
                 Present { value: spine } => {
-                  let r = parse_record_literal_named(tokens: tokens, ctx: ctx, name: spine.dotted, span: field_access_chain_span(texpr: lhs), name_span: kernel_span(name: spine.dotted))
+                  let r = parse_record_literal_named(tokens: tokens, ctx: ctx, name: spine.dotted, span: field_access_chain_span(texpr: lhs), name_span: v1.std.core.kernel_span(name: spine.dotted))
                   if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
                   PostfixResult { expr: r.expr, changed: true, tokens: r.tokens, ctx: r.ctx, err: none }
                 }
@@ -4804,7 +4804,7 @@ fn parse_variant_pattern(tokens: TokenStream, ctx: ParseContext, name: String) -
     if has_err(err: r.err) { return PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let r2 = expect(tokens: r.tokens, expected: ExpectRParen)
     if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-    let fb = make_field_binding_node(field_name: "0", binding: r.pattern, span: span, name_span: kernel_span(name: "0"))
+    let fb = make_field_binding_node(field_name: "0", binding: r.pattern, span: span, name_span: v1.std.core.kernel_span(name: "0"))
     PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [fb] }, tokens: r2.tokens, ctx: r.ctx, err: none }
   } else {
     PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [] }, tokens: tokens, ctx: ctx, err: none }
@@ -5202,7 +5202,7 @@ fn parse_string_interp(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
     Present { value: ShStrBegin } => {
       let prefix = tok.value.text
       let parts_init = if string_length(s: prefix) > 0 {
-        [Text { value: prefix }]
+        [v1.std.core.Text { value: prefix }]
       } else {
         []
       }
@@ -5232,7 +5232,7 @@ fn parse_interp_parts(tokens: TokenStream, ctx: ParseContext, parts: List<String
     Present { value: ShStrMid } => {
       let mid = interp_tok.value.text
       let mid_parts = if string_length(s: mid) > 0 {
-        list_push(new_parts, Text { value: mid })
+        list_push(new_parts, v1.std.core.Text { value: mid })
       } else {
         new_parts
       }
@@ -5241,7 +5241,7 @@ fn parse_interp_parts(tokens: TokenStream, ctx: ParseContext, parts: List<String
     Present { value: ShStrEnd } => {
       let suffix = interp_tok.value.text
       let final_parts = if string_length(s: suffix) > 0 {
-        list_push(new_parts, Text { value: suffix })
+        list_push(new_parts, v1.std.core.Text { value: suffix })
       } else {
         new_parts
       }

@@ -371,7 +371,7 @@ fn expected_variant_owner_instantiation(expected: Node?, name: String, scope: In
 fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: String, scope: InferScope, fallback: Node) -> Node {
   match expected {
     Present { value: exp } =>
-      if exp.return_cardinality == Required
+      if exp.return_cardinality == v1.std.core.Required
         && authored_name_at(source_indices: scope.type_env.source_indices, node: exp) == owner_name {
         match expected_variant_owner_instantiation(expected: expected, name: name, scope: scope) {
           Present { value: _ } => exp
@@ -657,7 +657,7 @@ fn declared_return_type_node(item: Node) -> Node {
 
 fn conformance_ground_kernel_scalar(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let plain_shape = n.connective == NoConnective && n.children |> count == 0
-  let required = n.return_cardinality == Required
+  let required = n.return_cardinality == v1.std.core.Required
   let kernel_named = is_kernel_type(name: authored_name_at(source_indices: source_indices, node: n))
   plain_shape && required && kernel_named
 }
@@ -666,7 +666,7 @@ fn conformance_ground_element_collection(n: Node, source_indices: Map<String, Ne
   let shaped_container = n.connective == NoConnective
     && node_is_element_collection(n: n, source_indices: source_indices)
     && node_is_keyed_collection(n: n, source_indices: source_indices) == false
-  let required = n.return_cardinality == Required
+  let required = n.return_cardinality == v1.std.core.Required
   let element_ground = match n.children |> first {
     Present { value: el } => conformance_ground_kernel_scalar(n: child_type_node(ch: el), source_indices: source_indices)
     Absent => false
@@ -3724,10 +3724,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             Absent => call_fold_acc_type
           }
         } else { call_fold_acc_type }
-        let method_resolution = if listed_import_required_bare_call_blocked(env: scope.type_env, name: func_name) {
-          KnownMethodResolution { semantics: none, result_type: none, diagnostics: [] }
-        } else {
-          resolve_known_method_node(
+        let method_resolution = resolve_known_method_node(
             receiver: method_receiver,
             receiver_type: resolve_method_receiver_type(receiver_type: first_arg_type, env: scope.type_env),
             method_name: func_name,
@@ -3735,7 +3732,6 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             service_registry: scope.service_registry,
             source_indices: scope.type_env.source_indices
           )
-        }
         let callee_is_body_binding = map_has(scope.body_locals, func_name)
         let is_known_method = !callee_is_body_binding && method_resolution.result_type != none
         if is_known_method && typed_args |> count > 0 {
@@ -8524,7 +8520,7 @@ fn transparent_alias_target_name(item: Node, source_indices: Map<String, Newline
       Present { value: Resolved { node: target } } =>
         let self_name = authored_name_at(source_indices: source_indices, node: item)
         let target_name = authored_name_at(source_indices: source_indices, node: target)
-        let target_shape_admits = target.connective == NoConnective && (target.children |> count) == 0 && (target.params |> count) == 0 && target.type_annotation == none && target.return_cardinality == Required
+        let target_shape_admits = target.connective == NoConnective && (target.children |> count) == 0 && (target.params |> count) == 0 && target.type_annotation == none && target.return_cardinality == v1.std.core.Required
         if !target_shape_admits {
           ""
         } else if target_name == "" || target_name == self_name {

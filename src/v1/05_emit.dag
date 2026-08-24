@@ -88,7 +88,7 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_indices: Map<String
       }
     ExprStringInterp =>
       let ps = expr.children |> map(child => match child.expr_data {
-        ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+        ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
         _ => Interpolation { expr: arg_value(n: child) }
       })
       emit_simple_string_interp(parts: ps, target: target, source_indices: source_indices)
@@ -2219,7 +2219,7 @@ fn emit_expr_field_access_shared(expr: Node, target: RenderTarget, emit_field: f
 
 fn extract_string_interp_parts(expr: Node) -> List<StringPart> {
   expr.children |> map(child => match child.expr_data {
-    ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+    ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
     _ => Interpolation { expr: arg_value(n: child) }
   })
 }

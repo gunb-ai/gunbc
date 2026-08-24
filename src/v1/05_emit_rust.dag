@@ -3125,7 +3125,7 @@ fn imported_names_in_use_line(line: String) -> List<String> {
       Absent => ""
     }
     let cleaned = replace(replace(replace(replace(after, "{", ""), "}", ""), ";", ""), "*", "")
-    cleaned |> split(delimiter: ",") |> map(s => trim(s)) |> filter(s => s != "")
+    cleaned |> split(delimiter: ",") |> map(s => std.algebra.trim(s)) |> filter(s => s != "")
   }
 }
 
@@ -7904,7 +7904,7 @@ fn emit_rust_expr_string_interp(expr: Node, registry: Map<String, ItemInfo>, sco
   match expr.expr_data {
     ExprStringInterp =>
       let ps = expr.children |> map(child => match child.expr_data {
-        ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+        ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
         _ => Interpolation { expr: arg_value(n: child) }
       })
       emit_typed_string_interp(parts: ps, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -10832,7 +10832,7 @@ fn emit_rest_url_line(transport: Node, op_name: String, source_indices: Map<Stri
         concat("let url = format!(\"{}", escape_string_literal_body(s: path_str), "\", self.base_url);")
       ExprStringInterp => {
         let parts = path_node.children |> map(child => match child.expr_data {
-          ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+          ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
           _ => Interpolation { expr: arg_value(n: child) }
         })
         let fmt_segments = parts |> map(p => match p {
@@ -11310,7 +11310,7 @@ fn emit_shell_argv_element(arg: Node, optional_params: Map<String, Bool>, source
       concat("\"", escape_string_literal_body(s: s), "\"")
     ExprStringInterp => {
       let parts = arg.children |> map(child => match child.expr_data {
-        ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+        ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
         _ => Interpolation { expr: arg_value(n: child) }
       })
       let fmt_segments = parts |> map(p => match p {
@@ -11456,7 +11456,7 @@ fn emit_file_path_line(path_template: Node, source_indices: Map<String, NewlineI
         concat("let file_path: String = \"", escape_string_literal_body(s: path_str), "\".to_string();")
       ExprStringInterp => {
         let parts = path_node.children |> map(child => match child.expr_data {
-          ExprLiteral { value: LitStr { value: text } } => Text { value: text }
+          ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
           _ => Interpolation { expr: arg_value(n: child) }
         })
         let fmt_str = parts
