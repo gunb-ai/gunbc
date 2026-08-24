@@ -130,6 +130,22 @@ module references further things the same commit dropped. **If your repair loop 
 way while you add more of the thing that seems missing, that is a broken seed, not a list of missing
 files.**
 
+## Fourth clause: two arms, two dispatches
+
+Running a before/after comparison **in one dispatch, with a checkout between the arms**, is the
+natural and efficient thing to do, and it silently destroys the comparison.
+
+Measured here, while deliberately trying to avoid exactly this class: the mid-run
+`git checkout <other-sha>` failed, its failure was swallowed, and the "before" arm therefore ran on
+the **same tree** as the "after" arm. Both reported identical shas. Identical shas were the result
+being sought, so the run looked like a clean pass — it was `measure() == measure()`, the tautological
+control DESIGN's oracle rule already names, produced by a comparison that had quietly lost its
+second operand.
+
+**Run each arm as its own dispatch, on its own tree, each asserting its own subject.** A comparison
+whose two arms share a process shares whatever went wrong in it, and the failure mode is silence: a
+lost operand does not report as a lost operand, it reports as agreement.
+
 ## The three clauses
 
 | | assert | catches | missed by the others |
@@ -137,8 +153,18 @@ files.**
 | 1 | **that** you measured | payload never ran | 2 and 3 see markers and a real tree |
 | 2 | **what** you measured | ran against the wrong tree | 1 sees every marker present |
 | 3 | the subject **stands alone** | subject was never viable | 1 and 2 both pass — #8282 passed both for two days |
+| 4 | the two arms are **two dispatches** | a comparison that lost an operand | 1–3 all pass per arm; the arms are simply the same arm |
 
-Each catches what the previous cannot, and none implies another.
+Each catches what the others cannot, and none implies another.
+
+**They are not four independent lessons.** They are four faces of one thing: *an instrument
+reporting an answer to a question it did not ask.* Clause 1's wrapper answers "did the dispatch
+succeed" when asked "did the payload run". Clause 2's ancestry check answers "can I see this in my
+history" when asked "is this in my tree". Clause 3's comparison answers "do these differ" when asked
+"does this work". Clause 4's single dispatch answers "are these equal" when it holds only one thing.
+In every case nothing lied and nothing errored — the artifact was simply answering something
+narrower than the reader was asking, which is why none of them has a failure arm and why each has to
+be guarded by asserting the missing question rather than by checking for an error.
 
 ## Neighbours already recorded, and how this differs
 
