@@ -39,6 +39,33 @@ import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_
 
 data witness_layer_roots: List<String> = ["dag", "src/v2"]
 
+// The v2 entry roster a v2-emission phase compiles. dag/std/abi.dag is deliberately the
+// SMALLEST entry in the tree (a four-module reference closure, nine emitted files) and
+// not the compiler's own 03_ingest, because an --entry compile is scoped in what it
+// EMITS and whole-tree in what it PARSES: every indexed module outside the closure enters
+// the name census, so the census parse reaches all of dag and src/v2 whichever entry is
+// named. Measured on 2026-08-23: abi 135s / 3,847 census modules, 03_ingest 349s. The
+// 2026-08-23 break that escaped every required phase -- a trailing annotation block under
+// dag/test/manual -- refuses on the small entry, so the large entry's extra 214s buys
+// emission coverage of the compiler's own closure rather than coverage of the class that
+// actually escaped. Widening this list is a row; it is a cost decision, not a Rust edit.
+data required_v2_emission_entries: List<String> = ["dag/std/abi.dag"]
+
+// ENROLMENT AUTHORITY: this phase is required in --required-ci on an operator ruling
+// relayed through the requesting session on 2026-08-23, at a measured +135s. The row
+// below is a DISSOLUTION condition -- how the gate ends -- and is not, and may not be
+// read as, the admission that created it; those are two different questions and only the
+// second is an operator's to grant (DESIGN, scaffold-admission doctrine).
+//
+// The standalone emission gate is NOT the terminal construction and must not become a
+// permanent fourth implementation of one transaction. It exists because the authentic
+// self-host product receipt is not yet required on every admitted candidate; when that
+// receipt IS required and carries this exact emission boundary — the same producer,
+// stopping before cargo — the standalone gate dissolves into it and this row, its host
+// reader and its phase delete together. Without that trigger, emission preflight,
+// self-host probe, product receipt and cargo census become four answers to one question.
+data required_v2_emission_dissolution: DissolutionCondition = unbound_dissolution(description: "the authentic self-host product receipt is required on every admitted candidate and carries this emission boundary (same producer, stopping before cargo); then the standalone --required-v2-emission phase, required_v2_emission_entries and their host reader delete together")
+
 data frontier_probe_witness_measure_receipt_note: String = "Measured durations cited on commit_gate SpanEnrolled cost_basis rows are WallClock: claim_batch performance receipts use wall_nanos (performance_receipt_from_witness), not the thread-CPU nanos that budget_completion_outcome gates on (operator msg_e24f4cab). Do not compare these figures to the per-witness eval CPU budget without stating the clock. The arm is named in std.measure ClockBasis, which is the single clock-basis authority; this sentence said WitnessCostWallEval until 2026-08-05, naming a second carrier that std.realization_schedule declared for one day and that witness_cost_clock_note records the dissolution of. The advice the sentence gives is exactly what the surviving carrier now enforces rather than advises: witness_row_cost_verdict answers BasisClockMismatch instead of comparing across clocks."
 
 data frontier_probe_witness_measure_receipt_read_failure: String = "target/frontier-probe-survey/matrix_readthrough_claim_batch_receipt.log"
