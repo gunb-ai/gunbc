@@ -264,14 +264,16 @@ import gunbc.live_deploy.operations {
   systemctl_start_command,
 }
 import extdeps.jobserver { jobserver_config }
-import gunbc.fleet_host_budget {
+import gunbc.host_layout {
   CompilePoolPlacement,
   CompilePoolSliceDeclared,
   CompilePoolInRunnerSlots,
+  gunbc_compile_pool_placement,
+}
+import gunbc.fleet_host_budget {
   CompilePoolResolution,
   CompilePoolUnresolved,
   compile_pool_bytes_for,
-  gunbc_compile_pool_placement,
 }
 import gunbc.compile_pool_ensure {
   EnsureCompilePoolAdmission,

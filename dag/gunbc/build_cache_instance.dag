@@ -10,7 +10,11 @@ import extdeps.cache.sccache { SccacheServerEndpoint, SccacheServerUnixSocket, s
 import gunbc.fleet_intent_network {
   operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
 }
-import gunbc.host_layout { gunbc_managed_compile_pool_slice }
+import gunbc.host_layout {
+  gunbc_managed_compile_pool_slice,
+  CompilePoolPlacement, CompilePoolSliceDeclared, CompilePoolInRunnerSlots,
+  gunbc_compile_pool_placement,
+}
 
 data build_cache_instance_scope_disposition: Disposition = SingleAuthority
 
@@ -34,7 +38,7 @@ type BuildCacheInstance {
   intended_principal: NonEmptyStr
   intended_storage: NonEmptyStr
   intended_capacity: ByteSize?
-  intended_compile_pool: NonEmptyStr
+  intended_compile_pool: CompilePoolPlacement
 }
 
 data build_cache_configuration_observation_note: String = "STORAGE ROOT AND CAPACITY ARE TWO OBSERVED CONFIGURATION AXES, and each observation is bound to both the exact deployed BuildCacheInstance and the ProcessIdentity whose environment was read. A path or byte count without both subjects could be replayed across hosts, across the CI and session instances that share one sccache implementation, or across two processes after pid reuse. The owner is the process already proven to hold the instance endpoint; a unit file would answer what systemd WOULD start, not how the live server is configured, and every host in the incident population currently runs a server systemd did not start.\n\nUNSET AND READ UNAVAILABLE ARE DIFFERENT OBSERVATIONS WITH DIFFERENT REMEDIES. Unset means the owner environment was read and carries no assignment; unavailable means the read did not answer, and must never narrow to unset. Endpoint or owner absence does not appear as a third arm here: without the prerequisite endpoint-owner observation there is no configuration subject, so these carriers are not constructed at all. That is not-applicability at the join rather than malformed configuration.\n\nCAPACITY ALSO RETAINS CONFIGURED TEXT THAT CANNOT YET BE GROUNDED AS BYTES. gunbc.build_cache_unit emits a plain decimal byte count, which has one exact decoding. sccache also accepts suffixed text such as its documented 10G default, but this repository has no cited rule deciding whether G denotes 10^9 or 2^30. Choosing either would fabricate a magnitude whose seven-percent difference could silently pass or refuse convergence. BuildCacheCapacityConfiguredUngrounded therefore carries the text verbatim; it narrows when extdeps.cache.sccache cites and models the accepted size grammar. The instance itself retains whether capacity intent is declared, so a later comparison can refuse intended_capacity Absent rather than freezing a vendor default as a decision.\n\nThese are carriers only: they mint no verified flag and perform no host read. A producer must read the endpoint owner's environment into one of these arms before runner activation can replace storage_verified and capacity_verified with typed observed-versus-intended comparisons."
@@ -284,7 +288,7 @@ fn ci_cache_instance(host: HostIdentity) -> BuildCacheInstance {
     intended_principal: "ghrunner" as NonEmptyStr,
     intended_storage: "/var/lib/ctrl/sccache-ci" as NonEmptyStr,
     intended_capacity: none,
-    intended_compile_pool: gunbc_managed_compile_pool_slice,
+    intended_compile_pool: gunbc_compile_pool_placement,
   }
 }
 
@@ -301,7 +305,7 @@ fn session_cache_instance(host: HostIdentity) -> BuildCacheInstance {
     intended_principal: "briansrls" as NonEmptyStr,
     intended_storage: "/var/lib/ctrl/sccache" as NonEmptyStr,
     intended_capacity: Present { value: gibibyte_to_byte_size(g: gibibyte(50)) },
-    intended_compile_pool: gunbc_managed_compile_pool_slice,
+    intended_compile_pool: gunbc_compile_pool_placement,
   }
 }
 

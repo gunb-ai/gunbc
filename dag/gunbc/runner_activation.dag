@@ -9,6 +9,9 @@ import gunbc.runner_host_deploy {
   RunnerCommandOrRefusal, RunnerCommandReady, RunnerCommandRefused,
   runner_enable_command_argv, runner_instance_names,
 }
+import gunbc.host_layout {
+  CompilePoolSliceDeclared, CompilePoolInRunnerSlots,
+}
 import gunbc.build_cache_instance {
   BuildCacheInstance, BuildCacheServerPlacement,
   ServerManagedUnitOwned, ServerRunnerOwned, ServerUnsupervised,
@@ -76,8 +79,15 @@ fn pool_receipt_is_for_host(p: HostCompilePoolReady, host: HostIdentity) -> Bool
   (p.host as String) == (host as String)
 }
 
+// A POOL RECEIPT CANNOT MATCH AN INSTANCE THAT DECLARES NO MANAGED POOL. intended_compile_pool
+// carries the placement itself rather than a bare slice name, so the CompilePoolInRunnerSlots arm
+// has no slice to compare against and answers false -- activation refuses rather than comparing a
+// receipt to a pool this fleet does not declare.
 fn pool_receipt_names_intended_pool(p: HostCompilePoolReady, r: BuildCacheInstanceReady) -> Bool {
-  (p.slice_unit as String) == (r.instance.intended_compile_pool as String)
+  match r.instance.intended_compile_pool {
+    CompilePoolSliceDeclared { slice_unit: u } => (p.slice_unit as String) == u
+    CompilePoolInRunnerSlots => false
+  }
 }
 
 fn admit_runner_activation(
