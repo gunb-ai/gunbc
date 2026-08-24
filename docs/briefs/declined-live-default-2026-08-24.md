@@ -289,3 +289,58 @@ EXECUTES and that the floor does not consult `reads_live_tree_effective`, agains
 above. At least one is stale. A stale authority about which mechanism gates the floor is the
 premise-contamination class this repository keeps correcting itself for, and it is worth its own
 look independent of how the fixture count comes out.
+
+---
+
+## The actual root: a two-valued carrier over a three-valued domain
+
+The sections above argue about what the *default* should be. That framing is wrong, and the
+reason surfaced from `deep-ant-102`'s account of how they misread the code rather than from the
+code itself.
+
+They read `let declared = parse_entry_live_tree_disposition(...)` and took the local's name at
+face value — *declared*, i.e. **was a disposition declared**. The bool does not mean that. It
+means **does this entry read the live tree**, defaulting to `true`. So the name answers a
+different question than the value, and the default that reverses the whole mechanism sits two
+files from where the branch is written.
+
+Their rule from it, which generalises past this case: **when a local is bound from a call and
+immediately branched on, the default inside that call IS the branch's semantics.** Inferring a
+callee's semantics from the caller's local name is the same shape as every other trap recorded
+this night — a name answering a narrower question than the reader asks of it.
+
+**But the misreading is a symptom, and the thing it is a symptom of is the root.** The domain has
+**three** states:
+
+```
+undeclared            (the author said nothing)
+ReadsLiveTree         (the author said yes)
+SubstrateInputsOnly   (the author said no)
+```
+
+and `parse_entry_live_tree_disposition` returns `Result<bool, String>` — **two**. The collapse
+happens *inside the function*, at `declared.unwrap_or(true)`, which is precisely where the
+`Option<bool>` that had all three states is discarded. Note the local is already `Option<bool>`
+one line earlier: the distinction exists, is correctly represented, and is thrown away on the
+return.
+
+That reframes the whole finding. The defect is **not** that someone picked the wrong default; it
+is that the carrier crossing the boundary cannot express the third state, so *every* consumer is
+forced to inherit one function's guess about which of two answers to fabricate. Two consumers want
+opposite things from it — selection wants unknown treated as *reads*, execution wants unknown
+treated as *decide properly* — and neither can have it, because by the time they see the value the
+question they needed answered is gone.
+
+**So the repair is not a changed default and not a refusal at the boundary.** It is to return the
+three-state value — `Option<bool>`, or better a named coproduct — and let each consumer decide.
+Selection keeps its fail-closed reading of `undeclared`, correctly and explicitly. Execution routes
+`undeclared` to the effect-reach derivation it already has and which is currently unreachable for
+exactly this population. No new mechanism is required: the derivation exists, the third state
+exists one line before it is destroyed, and the fix deletes the `unwrap_or` rather than adding
+anything.
+
+That is the §5 move — the invalid conflation stops being writable, rather than being defaulted
+carefully — and it is a strictly smaller change than the refusal arm proposed earlier in this
+brief, which would have made *undeclared* loud without making it **meaningful**. Earlier proposal
+superseded; this one supersedes it because it was reached by asking why the state was missing
+rather than what to do when it is.
