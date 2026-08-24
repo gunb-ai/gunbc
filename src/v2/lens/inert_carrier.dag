@@ -37,6 +37,7 @@ fn inert_carrier_rostered_names() -> List<String> {
 
 data empty_inert_carrier_names: List<String> = []
 
+
 fn list_contains_str(xs: List<String>, target: String) -> Bool {
   fold_list(
     xs: xs,
@@ -45,30 +46,148 @@ fn list_contains_str(xs: List<String>, target: String) -> Bool {
   )
 }
 
-fn count_not_in_roster(names: List<String>, roster: List<String>) -> Int {
+type InertCarrierFinding
+  = UnrosteredInertCarrier { carrier: String }
+  | StaleInertCarrierRow { carrier: String }
+
+type InertCarrierRosterVerdict
+  = InertCarrierRosterClean
+  | InertCarrierRosterDiverged { findings: List<InertCarrierFinding> }
+
+data empty_inert_carrier_findings: List<InertCarrierFinding> = []
+
+data inert_carrier_finding_remedy_note: String = "The two populations have OPPOSITE remedies, which is why they are two variants and not one located list. UnrosteredInertCarrier: the carrier is inert in the live tree and the roster does not admit it -- the repair is to give it a live consumer, or (if it is deliberately staged ahead of one) to author a roster row with a reason and a dissolution condition. StaleInertCarrierRow: the roster admits a carrier that is NO LONGER inert -- a consumer exists, so the repair is to DELETE the row. Applying either remedy to the other population is wrong in both directions: rostering a live carrier re-opens the admission the row exists to close, and deleting a row for an unrostered carrier removes nothing."
+
+fn names_not_in_roster(names: List<String>, roster: List<String>) -> List<String> {
   fold_list(
     xs: names,
-    empty: 0,
-    cons: fn(count, name) {
-      if list_contains_str(xs: roster, target: name) { count } else { count + 1 }
+    empty: empty_inert_carrier_names,
+    cons: fn(acc, name) {
+      if list_contains_str(xs: roster, target: name) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: name)
+      }
     }
   )
 }
 
-fn count_stale_roster(roster: List<String>, inert_names: List<String>) -> Int {
+fn stale_roster_names(roster: List<String>, inert_names: List<String>) -> List<String> {
   fold_list(
     xs: roster,
-    empty: 0,
-    cons: fn(count, entry) {
-      if list_contains_str(xs: inert_names, target: entry) { count } else { count + 1 }
+    empty: empty_inert_carrier_names,
+    cons: fn(acc, entry) {
+      if list_contains_str(xs: inert_names, target: entry) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: entry)
+      }
+    }
+  )
+}
+
+fn count_not_in_roster(names: List<String>, roster: List<String>) -> Int {
+  length(xs: names_not_in_roster(names: names, roster: roster))
+}
+
+fn count_stale_roster(roster: List<String>, inert_names: List<String>) -> Int {
+  length(xs: stale_roster_names(roster: roster, inert_names: inert_names))
+}
+
+fn inert_carrier_findings(names: List<String>, roster: List<String>) -> List<InertCarrierFinding> {
+  let unrostered = fold_list(
+    xs: names_not_in_roster(names: names, roster: roster),
+    empty: empty_inert_carrier_findings,
+    cons: fn(acc, name) { list_snoc_item(xs: acc, item: UnrosteredInertCarrier { carrier: name }) }
+  )
+  fold_list(
+    xs: stale_roster_names(roster: roster, inert_names: names),
+    empty: unrostered,
+    cons: fn(acc, entry) { list_snoc_item(xs: acc, item: StaleInertCarrierRow { carrier: entry }) }
+  )
+}
+
+fn inert_carrier_verdict_from_findings(findings: List<InertCarrierFinding>) -> InertCarrierRosterVerdict {
+  if is_empty(xs: findings) {
+    InertCarrierRosterClean
+  } else {
+    InertCarrierRosterDiverged { findings: findings }
+  }
+}
+
+fn inert_carrier_roster_verdict(names: List<String>, roster: List<String>) -> InertCarrierRosterVerdict {
+  inert_carrier_verdict_from_findings(findings: inert_carrier_findings(names: names, roster: roster))
+}
+
+fn inert_carrier_live_roster_verdict() -> InertCarrierRosterVerdict {
+  inert_carrier_roster_verdict(names: inert_carrier_names_live(), roster: inert_carrier_rostered_names())
+}
+
+fn inert_carrier_verdict_is_clean(v: InertCarrierRosterVerdict) -> Bool {
+  match v {
+    InertCarrierRosterClean => true
+    InertCarrierRosterDiverged { findings: _ } => false
+  }
+}
+
+fn inert_carrier_finding_carrier(f: InertCarrierFinding) -> String {
+  match f {
+    UnrosteredInertCarrier { carrier } => carrier
+    StaleInertCarrierRow { carrier } => carrier
+  }
+}
+
+fn inert_carrier_finding_is_unrostered(f: InertCarrierFinding) -> Bool {
+  match f {
+    UnrosteredInertCarrier { carrier: _ } => true
+    StaleInertCarrierRow { carrier: _ } => false
+  }
+}
+
+fn inert_carrier_finding_is_stale_row(f: InertCarrierFinding) -> Bool {
+  match f {
+    UnrosteredInertCarrier { carrier: _ } => false
+    StaleInertCarrierRow { carrier: _ } => true
+  }
+}
+
+fn inert_carrier_verdict_findings(v: InertCarrierRosterVerdict) -> List<InertCarrierFinding> {
+  match v {
+    InertCarrierRosterClean => empty_inert_carrier_findings
+    InertCarrierRosterDiverged { findings } => findings
+  }
+}
+
+fn inert_carrier_unrostered_names(v: InertCarrierRosterVerdict) -> List<String> {
+  fold_list(
+    xs: inert_carrier_verdict_findings(v: v),
+    empty: empty_inert_carrier_names,
+    cons: fn(acc, f) {
+      if inert_carrier_finding_is_unrostered(f: f) {
+        list_snoc_item(xs: acc, item: inert_carrier_finding_carrier(f: f))
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn inert_carrier_stale_row_names(v: InertCarrierRosterVerdict) -> List<String> {
+  fold_list(
+    xs: inert_carrier_verdict_findings(v: v),
+    empty: empty_inert_carrier_names,
+    cons: fn(acc, f) {
+      if inert_carrier_finding_is_stale_row(f: f) {
+        list_snoc_item(xs: acc, item: inert_carrier_finding_carrier(f: f))
+      } else {
+        acc
+      }
     }
   )
 }
 
 fn inert_carrier_clean_holds() -> Bool {
-  let names = inert_carrier_names_live()
-  count_not_in_roster(names: names, roster: inert_carrier_rostered_names()) == 0
-    && count_stale_roster(roster: inert_carrier_rostered_names(), inert_names: names) == 0
+  inert_carrier_verdict_is_clean(v: inert_carrier_live_roster_verdict())
 }
 
 fn inert_carrier_live_count() -> Int {
@@ -76,11 +195,11 @@ fn inert_carrier_live_count() -> Int {
 }
 
 fn inert_carrier_live_unrostered_count() -> Int {
-  count_not_in_roster(names: inert_carrier_names_live(), roster: inert_carrier_rostered_names())
+  length(xs: inert_carrier_unrostered_names(v: inert_carrier_live_roster_verdict()))
 }
 
 fn inert_carrier_live_stale_roster_count() -> Int {
-  count_stale_roster(roster: inert_carrier_rostered_names(), inert_names: inert_carrier_names_live())
+  length(xs: inert_carrier_stale_row_names(v: inert_carrier_live_roster_verdict()))
 }
 
 fn inert_carrier_live_declared_count() -> Int {
