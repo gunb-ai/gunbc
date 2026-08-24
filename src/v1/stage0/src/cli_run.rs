@@ -41849,6 +41849,45 @@ fn floor_value_shape(v: Option<&v1_interpreter::Value>) -> String {
 /// One nullary `.dag` Int authority, decoded. The floor's per-claim thresholds are authored in
 /// `v2.workflow.required_floor` and read here rather than re-spelled in Rust: the host owns when
 /// a budget is applied, never what it is.
+/// READ A `std.measure` MEASURE-TYPED CONSTANT AND RETURN ITS COUNT.
+///
+/// `Measure<Q, S, M> { count: M }` is a single-field record, so a `Millisecond` or `ByteSize`
+/// constant arrives here as `Record { count: Int }` and `floor_required_int` — which demands a bare
+/// `Int` — cannot read it. This is the host half of carrying units on the carrier rather than in a
+/// field name: the unit lives in the `.dag` type, and the host unwraps exactly one level to get the
+/// magnitude it compares.
+///
+/// SAME STRICTLY-POSITIVE WALL AS `floor_required_int`, and for the same reason: a zero ceiling is
+/// not a lenient policy, it refuses every subject before it measures one. The refusal names the
+/// shape it actually got, so a constant that stops being a Measure fails loudly here instead of
+/// being read as some other number.
+fn floor_required_measure_count(
+    ctx: &v1_interpreter::InterpContext,
+    func: &str,
+) -> Result<u64, String> {
+    let qualified = format!("v2.workflow.required_floor.{func}");
+    let value = v1_interpreter::run_in_context(ctx, &qualified, false)
+        .map_err(|e| format!("{qualified}: {e}"))?;
+    let v1_interpreter::Value::Record { fields, .. } = &value else {
+        return Err(format!(
+            "{qualified}: expected a std.measure Measure record, got {}",
+            floor_value_shape(Some(&value))
+        ));
+    };
+    let Some(count) = ctx.field(fields, "count") else {
+        return Err(format!(
+            "{qualified}: std.measure Measure record carries no `count` field"
+        ));
+    };
+    match count {
+        v1_interpreter::Value::Int(n) if *n > 0 => Ok(*n as u64),
+        other => Err(format!(
+            "{qualified}: expected a positive Int count, got {}",
+            floor_value_shape(Some(other))
+        )),
+    }
+}
+
 fn floor_required_int(ctx: &v1_interpreter::InterpContext, func: &str) -> Result<u64, String> {
     let qualified = format!("v2.workflow.required_floor.{func}");
     // STRICTLY POSITIVE, because the deleted admission decoder refused non-positive budgets and
@@ -42401,13 +42440,11 @@ pub fn run_required_floor(
     // hand-written mirror of `floor_preparation_outcome`, which is *mitigatable* and carries its
     // own dissolution obligation (`floor_preparation_host_mirror_dissolve_on`).
     let preparation_cpu_limit_ms =
-        floor_required_int(&hermetic, "required_floor_preparation_cpu_safety_limit_ms")?;
+        floor_required_measure_count(&hermetic, "required_floor_preparation_cpu_safety_limit")?;
     let preparation_wall_limit_ms =
-        floor_required_int(&hermetic, "required_floor_preparation_wall_safety_limit_ms")?;
-    let preparation_rss_growth_limit_bytes = floor_required_int(
-        &hermetic,
-        "required_floor_preparation_rss_growth_limit_bytes",
-    )?;
+        floor_required_measure_count(&hermetic, "required_floor_preparation_wall_safety_limit")?;
+    let preparation_rss_growth_limit_bytes =
+        floor_required_measure_count(&hermetic, "required_floor_preparation_rss_growth_limit")?;
     // Any ONE axis crossing stops the line: three independent bounds on one unit, never tiers.
     // There is no warn arm — a shared build that "ran long but was allowed to continue" is an
     // observation with no remedy attached, which is exactly what the deleted per-claim warn tier

@@ -8,6 +8,15 @@ import v2.std.integer { Int, int_gt }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.nat { Nat }
+import std.measure {
+  Millisecond,
+  ByteSize,
+  millisecond,
+  millisecond_count,
+  byte_size,
+  byte_size_count,
+}
 import std.types { NonEmptyStr }
 
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
@@ -622,9 +631,9 @@ type FloorPreparationOutcome =
     }
   | FloorPreparationRefused {
       phase: FloorPreparationPhase
-      observed_cpu: Int
-      observed_wall: Int
-      observed_rss_growth: Int
+      observed_cpu: Millisecond
+      observed_wall: Millisecond
+      observed_rss_growth: ByteSize
     }
 
 // FLAT-SCALAR UNIT FIELDS ON THE PREPARATION CARRIERS — A PEER OF THE `ClaimSafetyOutcome` ROW
@@ -645,18 +654,6 @@ type FloorPreparationOutcome =
 // THE BYTES AXIS IS NAMED SEPARATELY FROM THE MILLISECOND AXES because it dissolves onto a
 // DIFFERENT carrier (`ByteSize`, not `Millisecond`) and could therefore be discharged independently;
 // folding both into one sentence would let a half-done conversion close the whole row.
-// feature:v2-int-to-host-nat-measure-bridge
-// dissolve-on: see the typed row below, which is the authority; this pair is the rubric's
-// grep-visible tag for the same obligation, in the `feature:` + `dissolve-on:` form
-// `dag/product/placement_supply.dag` `SignalStrength` already uses for the identical situation
-// (a field name carrying a unit until the carrier can). ONE feature slug covers both axes because
-// both wait on the SAME missing capability -- the numeric-tower bridge -- not because they share a
-// carrier: `Millisecond` and `ByteSize` are different carriers, and the row below keeps them
-// separately enumerated so a half-done conversion cannot close the whole obligation.
-data preparation_flat_scalar_unit_fields_dissolve_on: DissolutionCondition = unbound_dissolution(
-  description: "dissolve-on: the MILLISECOND-valued scalars on the floor-preparation carriers convert from bare Int to std.measure Millisecond, and the BYTE-valued scalars convert to std.measure ByteSize, once a verified conversion exists between v2's inductive Peano tower (v2.std.integer.Int = GroupCompletion<v2.std.nat.Nat>) and the host-backed Nat std.measure is built on. MILLISECOND: FloorPreparationOutcome.PreparationWithinLimits.observed_cpu, .observed_wall; FloorPreparationOutcome.FloorPreparationRefused.observed_cpu, .observed_wall; floor_preparation_outcome parameters observed_cpu_ms, observed_wall_ms, cpu_limit_ms, wall_limit_ms; and the return types of required_floor_preparation_cpu_safety_limit_ms and required_floor_preparation_wall_safety_limit_ms. BYTES: FloorPreparationOutcome.PreparationWithinLimits.observed_rss_growth; FloorPreparationOutcome.FloorPreparationRefused.observed_rss_growth; floor_preparation_outcome parameters observed_rss_growth_bytes and rss_growth_limit_bytes; and the return type of required_floor_preparation_rss_growth_limit_bytes. Peer of flat_scalar_millisecond_fields_dissolve_on, which names only the ClaimSafetyOutcome scalars and does not reach these (per review 55296 on gunbc#9046)." as NonEmptyStr,
-)
-
 // THREE INDEPENDENT LIMITS FOR A DIFFERENT UNIT, and the reason they are not the claim numbers
 // is not that 5000ms is too small -- it is that 5000ms answers a DIFFERENT QUESTION. The claim
 // limits bound one witness's marginal evaluation; a shared build is one whole-corpus artifact
@@ -691,8 +688,8 @@ data preparation_flat_scalar_unit_fields_dissolve_on: DissolutionCondition = unb
 // THE CLOCK BASIS IS CPU, AND IT IS CHOSEN BY PURPOSE, never by whichever number read higher
 // (`required_floor_cost_basis`, and the same rule the claim pair follows): a shared preparation
 // build is pure in-process work on one thread, so CPU is what a runaway shows up on.
-fn required_floor_preparation_cpu_safety_limit_ms() -> Int {
-  1080000
+fn required_floor_preparation_cpu_safety_limit() -> Millisecond {
+  millisecond(count: 1080000)
 }
 
 // The SAME resource and the same tenth, read on the wall clock and then deliberately LOOSENED to a
@@ -700,8 +697,8 @@ fn required_floor_preparation_cpu_safety_limit_ms() -> Int {
 // legitimately descheduled by a co-tenant self-hosted runner for stretches that would wrongly read
 // as a runaway if judged on the CPU-tight figure. Never a mechanical copy of the CPU figure -- the
 // operator named "DO NOT set CPU and wall to the same 5000ms" as exactly the move to stop making.
-fn required_floor_preparation_wall_safety_limit_ms() -> Int {
-  2160000
+fn required_floor_preparation_wall_safety_limit() -> Millisecond {
+  millisecond(count: 2160000)
 }
 
 // THE THIRD AXIS EXISTS BECAUSE THE FIRST TWO CANNOT SEE IT. A shared build's characteristic harm
@@ -718,8 +715,8 @@ fn required_floor_preparation_wall_safety_limit_ms() -> Int {
 // preparation phase is bidding to be the largest task in a shared slice, which is the condition for
 // being selected for the kill, and it is the same authority that already forbids whole-tree local
 // builds outright.
-fn required_floor_preparation_rss_growth_limit_bytes() -> Int {
-  3221225472
+fn required_floor_preparation_rss_growth_limit() -> ByteSize {
+  byte_size(count: 3221225472)
 }
 
 // THE DERIVATION. Any one axis crossing refuses the phase -- the three limits are independent
@@ -729,42 +726,42 @@ fn required_floor_preparation_rss_growth_limit_bytes() -> Int {
 // attached, which is what the deleted per-claim warn tier already cost this module once.
 fn floor_preparation_outcome(
   phase: FloorPreparationPhase,
-  observed_cpu_ms: Int,
-  observed_wall_ms: Int,
-  observed_rss_growth_bytes: Int,
-  cpu_limit_ms: Int,
-  wall_limit_ms: Int,
-  rss_growth_limit_bytes: Int,
+  observed_cpu: Millisecond,
+  observed_wall: Millisecond,
+  observed_rss_growth: ByteSize,
+  cpu_limit: Millisecond,
+  wall_limit: Millisecond,
+  rss_growth_limit: ByteSize,
 ) -> FloorPreparationOutcome {
-  if int_gt(a: observed_cpu_ms, b: cpu_limit_ms) {
+  if millisecond_count(m: observed_cpu) > millisecond_count(m: cpu_limit) {
     FloorPreparationRefused {
       phase: phase,
-      observed_cpu: observed_cpu_ms,
-      observed_wall: observed_wall_ms,
-      observed_rss_growth: observed_rss_growth_bytes,
+      observed_cpu: observed_cpu,
+      observed_wall: observed_wall,
+      observed_rss_growth: observed_rss_growth,
     }
   } else {
-    if int_gt(a: observed_wall_ms, b: wall_limit_ms) {
+    if millisecond_count(m: observed_wall) > millisecond_count(m: wall_limit) {
       FloorPreparationRefused {
         phase: phase,
-        observed_cpu: observed_cpu_ms,
-        observed_wall: observed_wall_ms,
-        observed_rss_growth: observed_rss_growth_bytes,
+        observed_cpu: observed_cpu,
+        observed_wall: observed_wall,
+        observed_rss_growth: observed_rss_growth,
       }
     } else {
-      if int_gt(a: observed_rss_growth_bytes, b: rss_growth_limit_bytes) {
+      if byte_size_count(b: observed_rss_growth) > byte_size_count(b: rss_growth_limit) {
         FloorPreparationRefused {
           phase: phase,
-          observed_cpu: observed_cpu_ms,
-          observed_wall: observed_wall_ms,
-          observed_rss_growth: observed_rss_growth_bytes,
+          observed_cpu: observed_cpu,
+          observed_wall: observed_wall,
+          observed_rss_growth: observed_rss_growth,
         }
       } else {
         PreparationWithinLimits {
           phase: phase,
-          observed_cpu: observed_cpu_ms,
-          observed_wall: observed_wall_ms,
-          observed_rss_growth: observed_rss_growth_bytes,
+          observed_cpu: observed_cpu,
+          observed_wall: observed_wall,
+          observed_rss_growth: observed_rss_growth,
         }
       }
     }
@@ -809,8 +806,8 @@ type SharedBuildProvenance =
 // by claim. A per-row fraction would change whenever the roster changes, making a row's
 // admissibility depend on how many unrelated consumers happen to be enrolled.
 type FloorRunCost {
-  preparation_or_shared_build: Int
-  claim_marginal: Int
+  preparation_or_shared_build: Millisecond
+  claim_marginal: Millisecond
 }
 
 // INDEPENDENT BLOCKING OUTCOMES, ASSERTED IN ONE PLACE SO NO CALLER RE-DERIVES IT. Either term can

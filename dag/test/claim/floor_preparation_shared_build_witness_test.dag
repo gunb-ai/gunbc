@@ -19,10 +19,11 @@ import v2.workflow.required_floor {
   BuiltByPreparation,
   AlreadyWarmOnEntry,
   floor_run_blocks,
-  required_floor_preparation_cpu_safety_limit_ms,
-  required_floor_preparation_wall_safety_limit_ms,
-  required_floor_preparation_rss_growth_limit_bytes,
+  required_floor_preparation_cpu_safety_limit,
+  required_floor_preparation_wall_safety_limit,
+  required_floor_preparation_rss_growth_limit,
 }
+import std.measure { millisecond, byte_size, millisecond_count }
 
 data receipt_note: String = "THE MEASURED RECEIPT THIS WITNESS DERIVES FROM, and the one number in it that is NOT a threshold. test.claim.qualified_spelling_identity_witness_test.qualified_spelling_takes_the_shared_layer was charged 57193ms CPU against a 5000ms required_floor_claim_cpu_safety_limit_ms while its sibling, reaching the identical shared computation milliseconds later, measured 5ms. The shared bare-reference edge index build behind that charge is memoized once per index (edge_index_construction { builds: 1 }, two census misses over two roots against ONE index address), so the defect was never duplication -- it was that a subject-level artifact was billed to whichever claim touched it first. The figures used below are OCCURRENCE observations exercising each branch of the derivation; the LIMITS are read from v2.workflow.required_floor, which derives them from the resource each protects (CI job budget, host memory cap), never from what any build was measured to cost."
 
@@ -32,15 +33,15 @@ data receipt_note: String = "THE MEASURED RECEIPT THIS WITNESS DERIVES FROM, and
 test fn w_shared_build_within_limits_does_not_block() -> Bool {
   match floor_preparation_outcome(
     phase: BareReferenceEdgeIndexBuild,
-    observed_cpu_ms: 28441,
-    observed_wall_ms: 28441,
-    observed_rss_growth_bytes: 1073741824,
-    cpu_limit_ms: required_floor_preparation_cpu_safety_limit_ms(),
-    wall_limit_ms: required_floor_preparation_wall_safety_limit_ms(),
-    rss_growth_limit_bytes: required_floor_preparation_rss_growth_limit_bytes(),
+    observed_cpu: millisecond(count: 28441),
+    observed_wall: millisecond(count: 28441),
+    observed_rss_growth: byte_size(count: 1073741824),
+    cpu_limit: required_floor_preparation_cpu_safety_limit(),
+    wall_limit: required_floor_preparation_wall_safety_limit(),
+    rss_growth_limit: required_floor_preparation_rss_growth_limit(),
   ) {
     PreparationWithinLimits { phase: _, observed_cpu: cpu, observed_wall: _, observed_rss_growth: _ } =>
-      (cpu == 28441)
+      millisecond_count(m: cpu) == 28441
     FloorPreparationRefused { phase: _, observed_cpu: _, observed_wall: _, observed_rss_growth: _ } => false
   }
 }
@@ -51,12 +52,12 @@ test fn w_cpu_axis_alone_refuses() -> Bool {
   floor_preparation_outcome_blocks(
     floor_preparation_outcome(
       phase: BareReferenceEdgeIndexBuild,
-      observed_cpu_ms: 1080001,
-      observed_wall_ms: 1080001,
-      observed_rss_growth_bytes: 1,
-      cpu_limit_ms: required_floor_preparation_cpu_safety_limit_ms(),
-      wall_limit_ms: required_floor_preparation_wall_safety_limit_ms(),
-      rss_growth_limit_bytes: required_floor_preparation_rss_growth_limit_bytes(),
+      observed_cpu: millisecond(count: 1080001),
+      observed_wall: millisecond(count: 1080001),
+      observed_rss_growth: byte_size(count: 1),
+      cpu_limit: required_floor_preparation_cpu_safety_limit(),
+      wall_limit: required_floor_preparation_wall_safety_limit(),
+      rss_growth_limit: required_floor_preparation_rss_growth_limit(),
     )
   ) == true
 }
@@ -65,12 +66,12 @@ test fn w_wall_axis_alone_refuses() -> Bool {
   floor_preparation_outcome_blocks(
     floor_preparation_outcome(
       phase: SharedModuleIndexBuild,
-      observed_cpu_ms: 1,
-      observed_wall_ms: 2160001,
-      observed_rss_growth_bytes: 1,
-      cpu_limit_ms: required_floor_preparation_cpu_safety_limit_ms(),
-      wall_limit_ms: required_floor_preparation_wall_safety_limit_ms(),
-      rss_growth_limit_bytes: required_floor_preparation_rss_growth_limit_bytes(),
+      observed_cpu: millisecond(count: 1),
+      observed_wall: millisecond(count: 2160001),
+      observed_rss_growth: byte_size(count: 1),
+      cpu_limit: required_floor_preparation_cpu_safety_limit(),
+      wall_limit: required_floor_preparation_wall_safety_limit(),
+      rss_growth_limit: required_floor_preparation_rss_growth_limit(),
     )
   ) == true
 }
@@ -79,12 +80,12 @@ test fn w_rss_axis_alone_refuses() -> Bool {
   floor_preparation_outcome_blocks(
     floor_preparation_outcome(
       phase: ModulePathIndexBuild,
-      observed_cpu_ms: 1,
-      observed_wall_ms: 1,
-      observed_rss_growth_bytes: 3221225473,
-      cpu_limit_ms: required_floor_preparation_cpu_safety_limit_ms(),
-      wall_limit_ms: required_floor_preparation_wall_safety_limit_ms(),
-      rss_growth_limit_bytes: required_floor_preparation_rss_growth_limit_bytes(),
+      observed_cpu: millisecond(count: 1),
+      observed_wall: millisecond(count: 1),
+      observed_rss_growth: byte_size(count: 3221225473),
+      cpu_limit: required_floor_preparation_cpu_safety_limit(),
+      wall_limit: required_floor_preparation_wall_safety_limit(),
+      rss_growth_limit: required_floor_preparation_rss_growth_limit(),
     )
   ) == true
 }
@@ -94,12 +95,12 @@ data phase_is_carried_note: String = "THE REFUSAL MUST NAME WHICH SHARED BUILD C
 test fn w_refusal_carries_its_phase() -> Bool {
   match floor_preparation_outcome(
     phase: BareReferenceEdgeIndexBuild,
-    observed_cpu_ms: 1080001,
-    observed_wall_ms: 1,
-    observed_rss_growth_bytes: 1,
-    cpu_limit_ms: required_floor_preparation_cpu_safety_limit_ms(),
-    wall_limit_ms: required_floor_preparation_wall_safety_limit_ms(),
-    rss_growth_limit_bytes: required_floor_preparation_rss_growth_limit_bytes(),
+    observed_cpu: millisecond(count: 1080001),
+    observed_wall: millisecond(count: 1),
+    observed_rss_growth: byte_size(count: 1),
+    cpu_limit: required_floor_preparation_cpu_safety_limit(),
+    wall_limit: required_floor_preparation_wall_safety_limit(),
+    rss_growth_limit: required_floor_preparation_rss_growth_limit(),
   ) {
     PreparationWithinLimits { phase: _, observed_cpu: _, observed_wall: _, observed_rss_growth: _ } => false
     FloorPreparationRefused { phase: p, observed_cpu: _, observed_wall: _, observed_rss_growth: _ } =>
@@ -117,12 +118,12 @@ test fn w_preparation_limit_is_not_the_claim_limit() -> Bool {
   floor_preparation_outcome_blocks(
     floor_preparation_outcome(
       phase: BareReferenceEdgeIndexBuild,
-      observed_cpu_ms: 28441,
-      observed_wall_ms: 28441,
-      observed_rss_growth_bytes: 1,
-      cpu_limit_ms: required_floor_preparation_cpu_safety_limit_ms(),
-      wall_limit_ms: required_floor_preparation_wall_safety_limit_ms(),
-      rss_growth_limit_bytes: required_floor_preparation_rss_growth_limit_bytes(),
+      observed_cpu: millisecond(count: 28441),
+      observed_wall: millisecond(count: 28441),
+      observed_rss_growth: byte_size(count: 1),
+      cpu_limit: required_floor_preparation_cpu_safety_limit(),
+      wall_limit: required_floor_preparation_wall_safety_limit(),
+      rss_growth_limit: required_floor_preparation_rss_growth_limit(),
     )
   ) == false
 }
@@ -133,9 +134,9 @@ test fn w_refused_preparation_blocks_though_every_claim_is_healthy() -> Bool {
   floor_run_blocks(
     preparation: FloorPreparationRefused {
       phase: BareReferenceEdgeIndexBuild,
-      observed_cpu: 1080001,
-      observed_wall: 1,
-      observed_rss_growth: 1,
+      observed_cpu: millisecond(count: 1080001),
+      observed_wall: millisecond(count: 1),
+      observed_rss_growth: byte_size(count: 1),
     },
     claim: CompletedWithinSafetyLimits,
   ) == true
@@ -145,13 +146,13 @@ test fn w_over_limit_claim_blocks_though_preparation_was_inside_its_envelope() -
   floor_run_blocks(
     preparation: PreparationWithinLimits {
       phase: BareReferenceEdgeIndexBuild,
-      observed_cpu: 28441,
-      observed_wall: 28441,
-      observed_rss_growth: 1073741824,
+      observed_cpu: millisecond(count: 28441),
+      observed_wall: millisecond(count: 28441),
+      observed_rss_growth: byte_size(count: 1073741824),
     },
     claim: CompletedPastSafetyLimit {
-      observed_cpu: 57193,
-      observed_wall: 57193,
+      observed_cpu: millisecond(count: 57193),
+      observed_wall: millisecond(count: 57193),
       preemption: CooperativelyPollable,
     },
   ) == true
@@ -161,9 +162,9 @@ test fn w_both_within_their_own_limits_does_not_block() -> Bool {
   floor_run_blocks(
     preparation: PreparationWithinLimits {
       phase: BareReferenceEdgeIndexBuild,
-      observed_cpu: 28441,
-      observed_wall: 28441,
-      observed_rss_growth: 1073741824,
+      observed_cpu: millisecond(count: 28441),
+      observed_wall: millisecond(count: 28441),
+      observed_rss_growth: byte_size(count: 1073741824),
     },
     claim: CompletedWithinSafetyLimits,
   ) == false
