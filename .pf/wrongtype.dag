@@ -1,0 +1,5 @@
+module cauc_prim_type
+
+import std.types { Int }
+
+fn f() -> Int { atom_identity_hash(7) }

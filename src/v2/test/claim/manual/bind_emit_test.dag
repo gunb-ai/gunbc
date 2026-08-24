@@ -61,7 +61,7 @@ fn bind_emit_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn bind_emit_inferred_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map { lookup: bind_emit_facts_lookup }
+    facts: PartialFunction { lookup: bind_emit_facts_lookup }
   }
 }
 
