@@ -255,3 +255,39 @@ findings: trap 9 is *a status can be honest and narrow*; trap 11 is *your own in
 output can be contaminated by your own instrument's input*. Fixing 9 does not fix 11, and I
 found 11 only because the void reading was so obviously wrong — had the payload merely been
 slow, I would have read the false green and reported a passing test that never ran.
+
+---
+
+## Trap 12 — the witness went where its siblings live, at a grain blind to the case
+
+Contributed by vivid-boar-345 on gunbc#9058, found twice in one day by the same lane, and
+recorded here because it is an instrument trap in the strict sense: the measurement was placed
+correctly by every convention except the one that decides whether it can measure anything.
+
+Repairing an empty-record spelling fork, they wrote the natural witness row beside its
+siblings — a `decl_facts` assertion that both empty spellings carry one shape — and **it passed
+on the pre-change binary.** `concept_decl_node` marshals a `NoConnective` item through
+`unit_type_node`, which is a `TypeNode { connective: Conj }` with zero children: byte-identical
+to what an empty record marshals to. So the row was permanently green *whichever way the parser
+answered*. It would have shipped as coverage for precisely the thing it cannot see.
+
+They caught it by running the RED arm first. Nothing else would have — the row is green after
+the fix, green before it, and green under any mutation of the behaviour it names.
+
+**Their generalization, which is the part worth keeping:** *where the behaviour is, not where
+the neighbours are.* The pull toward the siblings' grain is strong and it is usually right; it
+is wrong exactly when the sibling grain marshals away the distinction under test. `decl_facts`
+returns a declaration's CHILDREN, and both the seal and the empty/unit distinction live in its
+PROPERTIES — so the whole family of questions about properties is invisible at the grain the
+family of witnesses uses. Their replacement asserts through a sealed empty pair instead, because
+the seal is the one thing that still differs between a nominal empty record and an alias to unit;
+pre-change exactly one of seven rows red, post-change seven green.
+
+**Why this is trap 11's sibling and not a repeat of it.** Trap 11 is *the channel carrying your
+answer also carried your question*. Trap 12 is *the instrument's resolution is coarser than the
+distinction you are asking about* — and in both, the output is TRUE and the reader supplies the
+missing binding. The distinguishing question is cheap and should be asked of every new witness
+before it is enrolled: **can this row go red?** Not *does it pass* — DESIGN §4b already says a
+check whose RED is unauthorable is a decoration, worse than absent because it is cited as
+coverage. Trap 12 is what that rule looks like when the unauthorable-RED is caused not by the
+corpus but by the marshalling in the assertion's own read path.
