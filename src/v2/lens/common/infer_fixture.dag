@@ -92,8 +92,8 @@ fn claim_inferred_facts(
   )
 }
 
-fn claim_inferred_facts_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
-  Map {
+fn claim_inferred_facts_map(facts: InferredFacts) -> PartialFunction<Node, InferredFacts> {
+  PartialFunction {
     lookup: fn(_) {
       Present { value: facts }
     }
