@@ -7,7 +7,6 @@ use self::DocSourceKind::*;
 use self::FermiDepth::*;
 use self::HttpMethod::*;
 use self::TopologyNodeKind::*;
-pub use crate::std_algebra::PartialFunction;
 pub use crate::std_algebra::{algebra_type_param_names, kernel_algebra_profile};
 pub use crate::std_algebra::{FinitePowerSet, FinitelySupportedFunction, FreeMonoid};
 use crate::v1_rt;
