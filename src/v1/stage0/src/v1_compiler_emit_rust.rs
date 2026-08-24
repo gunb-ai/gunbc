@@ -25884,68 +25884,54 @@ pub fn find_struct_name_by_fields(
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> Option<String> {
     {
-        let candidates =
-            struct_candidates_by_field_names(field_names.clone(), type_summaries.clone());
-        if ((candidates.clone().len() as i64) <= 1) {
+        let candidates = anonymous_record_struct_candidates(
+            field_names.clone(),
+            field_type_hints.clone(),
+            type_summaries.clone(),
+        );
+        if ((candidates.clone().len() as i64) == 1) {
             match candidates.clone().first().cloned() {
                 Some(s) => Some(s.name.clone()),
                 None => None,
             }
         } else {
-            {
-                let typed_candidates = Rc::new({
-                    let mut __result = Vec::new();
-                    for cand in candidates.iter().cloned() {
-                        if {
-                            let mut __all = true;
-                            for fname in Rc::new(v1_rt::sorted_map_keys(&field_type_hints))
-                                .iter()
-                                .cloned()
-                            {
-                                if !(match v1_rt::map_get(&field_type_hints, fname.clone()) {
-                                    Some(hint_type) => match v1_rt::map_get(
-                                        &cand.field_type_map.clone(),
-                                        fname.clone(),
-                                    ) {
-                                        Some(cand_type) => (cand_type.clone() == hint_type.clone()),
-                                        None => true,
-                                    },
-                                    None => true,
-                                }) {
-                                    __all = false;
-                                    break;
-                                }
+            None
+        }
+    }
+}
+
+pub fn anonymous_record_struct_candidates(
+    field_names: Rc<Vec<String>>,
+    field_type_hints: Rc<HashMap<String, String>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Rc<Vec<Rc<TypeSummary>>> {
+    let candidates = struct_candidates_by_field_names(field_names, type_summaries);
+    if (candidates.len() as i64) <= 1 {
+        candidates
+    } else {
+        let typed_candidates = Rc::new({
+            let mut result = Vec::new();
+            for cand in candidates.iter().cloned() {
+                if v1_rt::sorted_map_keys(&field_type_hints).iter().all(
+                    |fname| match v1_rt::map_get(&field_type_hints, fname.clone()) {
+                        Some(hint_type) => {
+                            match v1_rt::map_get(&cand.field_type_map, fname.clone()) {
+                                Some(cand_type) => cand_type == hint_type,
+                                None => true,
                             }
-                            __all
-                        } {
-                            __result.push(cand);
                         }
-                    }
-                    __result
-                });
-                if ((typed_candidates.clone().len() as i64) == 1) {
-                    match typed_candidates.clone().first().cloned() {
-                        Some(s) => Some(s.name.clone()),
-                        None => None,
-                    }
-                } else {
-                    match Rc::new({
-                        let mut __sorted: Vec<_> = candidates.iter().cloned().collect();
-                        __sorted.sort_by(|a: &Rc<TypeSummary>, b: &Rc<TypeSummary>| {
-                            let __ka = (|c: Rc<TypeSummary>| c.name.clone())(a.clone());
-                            let __kb = (|c: Rc<TypeSummary>| c.name.clone())(b.clone());
-                            __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
-                        });
-                        __sorted
-                    })
-                    .first()
-                    .cloned()
-                    {
-                        Some(s) => Some(s.name.clone()),
-                        None => None,
-                    }
+                        None => true,
+                    },
+                ) {
+                    result.push(cand);
                 }
             }
+            result
+        });
+        if typed_candidates.len() == 1 {
+            typed_candidates
+        } else {
+            candidates
         }
     }
 }
@@ -26197,28 +26183,37 @@ pub fn emit_typed_record_lit(
                                     }
                                 }
                                 None => {
-                                    let vals = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for f in fields.iter().cloned() {
-                                            __result.push(emit_typed_expr(
-                                                field_init_node_value(f.clone()),
-                                                registry.clone(),
-                                                scope.clone(),
-                                                depth.clone(),
-                                                shared_types.clone(),
-                                                emit_info.clone(),
-                                                1024,
-                                            ));
-                                        }
-                                        __result
-                                    });
-                                    v1_rt::concat(
+                                    let resolution_candidates = anonymous_record_struct_candidates(
+                                        lit_field_names.clone(),
+                                        field_type_hints.clone(),
+                                        emit_info.type_summaries.clone(),
+                                    );
+                                    if resolution_candidates.len() > 1 {
+                                        "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")".to_string()
+                                    } else {
+                                        let vals = Rc::new({
+                                            let mut __result = Vec::new();
+                                            for f in fields.iter().cloned() {
+                                                __result.push(emit_typed_expr(
+                                                    field_init_node_value(f.clone()),
+                                                    registry.clone(),
+                                                    scope.clone(),
+                                                    depth.clone(),
+                                                    shared_types.clone(),
+                                                    emit_info.clone(),
+                                                    1024,
+                                                ));
+                                            }
+                                            __result
+                                        });
                                         v1_rt::concat(
-                                            "(".to_string(),
-                                            vals.clone().join(&", ".to_string()),
-                                        ),
-                                        ")".to_string(),
-                                    )
+                                            v1_rt::concat(
+                                                "(".to_string(),
+                                                vals.clone().join(&", ".to_string()),
+                                            ),
+                                            ")".to_string(),
+                                        )
+                                    }
                                 }
                             }
                         }

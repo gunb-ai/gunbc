@@ -10027,14 +10027,12 @@ fn struct_candidates_by_field_names(field_names: List<String>, type_summaries: M
   )
 }
 
-fn find_struct_name_by_fields(field_names: List<String>, field_type_hints: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> String? {
+data anonymous_record_struct_resolution_note: String = "gunbc dashboard node://adhoc-e47d0143-6a2. An anonymous record literal has no authored nominal identity, so the Rust emitter may name a struct only when the literal's field shape (and, when necessary, its inferred field-type hints) identifies exactly one TypeSummary. The old find_struct_name_by_fields fallback sorted multiple shape candidates alphabetically and selected the first whenever hints left zero OR multiple candidates. That made declaration spelling/order decide the runtime type. anonymous_record_struct_candidates is now the single candidate authority: an unambiguous typed refinement replaces the broader shape set; otherwise the full shape ambiguity survives. Consumers may project a name only from a singleton. emit_typed_record_lit distinguishes that ambiguity from a genuinely structural record with no nominal candidate: multiple candidates emit compile_error! at the construction site, while zero candidates retain the tuple realization. No diagnostic carrier is minted because this is the Rust realization's late anonymous-head decision and its existing output contract is String; compile_error! is the emitter's established refusal vocabulary at this seam."
+
+fn anonymous_record_struct_candidates(field_names: List<String>, field_type_hints: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> List<TypeSummary> {
   let candidates = struct_candidates_by_field_names(field_names: field_names, type_summaries: type_summaries)
-  if candidates |> count <= 1 {
-    match candidates |> first {
-      Present { value: s } => Present { value: s.name }
-      Absent => none
-    }
-  } else {
+  if candidates |> count <= 1 { candidates }
+  else {
     let typed_candidates = candidates |> filter(cand =>
       sorted_map_keys(field_type_hints) |> all(fname =>
         match map_get(field_type_hints, fname) {
@@ -10047,18 +10045,18 @@ fn find_struct_name_by_fields(field_names: List<String>, field_type_hints: Map<S
         }
       )
     )
-    if typed_candidates |> count == 1 {
-      match typed_candidates |> first {
-        Present { value: s } => Present { value: s.name }
-        Absent => none
-      }
-    } else {
-      match candidates |> sort_by(c => c.name) |> first {
-        Present { value: s } => Present { value: s.name }
-        Absent => none
-      }
-    }
+    if typed_candidates |> count == 1 { typed_candidates } else { candidates }
   }
+}
+
+fn find_struct_name_by_fields(field_names: List<String>, field_type_hints: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> String? {
+  let candidates = anonymous_record_struct_candidates(field_names: field_names, field_type_hints: field_type_hints, type_summaries: type_summaries)
+  if candidates |> count == 1 {
+    match candidates |> first {
+      Present { value: s } => Present { value: s.name }
+      Absent => none
+    }
+  } else { none }
 }
 
 fn find_unique_struct_name_by_fields(field_names: List<String>, type_summaries: Map<String, TypeSummary>) -> String? {
@@ -10140,10 +10138,15 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                 rust_shared_wrap_ctor(inner_expr: struct_lit)
               } else { struct_lit }
             Absent =>
-              let vals = fields |> map(f =>
-                emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
-              )
-              concat("(", vals |> join(separator: ", "), ")")
+              let resolution_candidates = anonymous_record_struct_candidates(field_names: lit_field_names, field_type_hints: field_type_hints, type_summaries: emit_info.type_summaries)
+              if resolution_candidates |> count > 1 {
+                "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")"
+              } else {
+                let vals = fields |> map(f =>
+                  emit_typed_expr(texpr: field_init_node_value(n: f), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+                )
+                concat("(", vals |> join(separator: ", "), ")")
+              }
           }
         }
       } else {
