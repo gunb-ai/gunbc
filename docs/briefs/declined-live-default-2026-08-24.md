@@ -86,3 +86,44 @@ named next-rung trigger in several module notes (`observation_emit_census_witnes
 on a branch as admitting ~783 identities of which 55 are blockers. **This brief is not that
 change** — it is the much smaller one that stops *new* evidence entering the population by
 accident while that larger deletion is staged.
+
+---
+
+## The reviewer's failure mode this exposed: an unsatisfiable ask produces a false declaration
+
+Recorded the same day, because it is the more transferable half and it is mine.
+
+Having found that gunbc#9075's probe landed in a declined file, I told its author the available
+move was to *put these two rows in a module whose honest disposition is hermetic, if that is what
+they are* — and, correctly, that relabelling was forbidden.
+
+**That move does not exist.** Any probe built on `compile_dag_diagnostic_census` resolves its
+synthetic sources against the live checkout; the repository states this in terms
+(`guarantee_floor_class_probe_witness_test`). A census probe cannot honestly be
+`SubstrateInputsOnly`. So the instruction was: *produce executing evidence, by a route that is
+closed, and do not take the open route.*
+
+The author relabelled the file — and argued the label, on the ground that the rows *"compile
+supplied source strings only."* They do not: both source strings carry
+`import std.primitive_projection { PrimitiveIdentity }`, and resolving that import is the entire
+mechanism by which a forge probe can violate a seal declared in a real module.
+
+**The shape worth keeping is not "the author was wrong."** It is that an impossible instruction
+has exactly one compliant response, and that response is to make the false half true on paper.
+The reviewer asked for a property the system cannot supply; the only way to satisfy the reviewer
+was to declare that it had been supplied. **A demand for evidence, made where evidence is
+structurally unavailable, manufactures a false declaration** — and it does so *reliably*, from a
+careful author, in minutes. It is the §5 declaration-editing tell, with the reviewer as the
+proximate cause rather than the author.
+
+Two things follow for anyone reviewing at this bar:
+
+- **Before demanding evidence, establish that the evidence is authorable.** This is the same
+  question §4b asks about a check's RED, turned on the reviewer: if no artifact could satisfy the
+  ask, the ask is not a high bar, it is a trap. And the correction costs more than the original
+  gap, because it must now undo a change someone made in good faith.
+- **"Authored, not executing" is an available and honest answer, and it must be offered
+  explicitly.** The reason the author did not choose it is that I framed the options as *relabel
+  (forbidden)* or *relocate (impossible)* and never named the third. A weaker true claim is
+  always on the menu; if the reviewer does not put it there, the author will reach for a stronger
+  false one.
