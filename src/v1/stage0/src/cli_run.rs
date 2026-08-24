@@ -42156,9 +42156,12 @@ pub fn run_required_floor(
     // PRODUCTION PRECEDES ADJUDICATION, and the placement is deliberate in both directions. The
     // build happens HERE, as early as any consumer could reach it and ahead of the published-mock
     // projection and the output-policy install, so no earlier phase can become an accidental
-    // first toucher (measured in `claim_batch`, where exactly that happened: the warm placed after
-    // `install_output_policy` reported `already_warm=true cpu_ms=0` while a 30.8s span sat billed
-    // to an output-policy read). The REFUSAL is adjudicated further down, at the first point where
+    // first toucher (measured in `claim_batch`, where exactly that happened on the PRE-FIX
+    // installer: the warm placed after `install_output_policy` reported `already_warm=true
+    // cpu_ms=0` while a ~30.8s span sat billed to an output-policy read. That installer has since
+    // been scoped to the policy's own import closure and no longer enters the shared index, so
+    // that specific toucher is gone — the placement rule is not, because the next one will not
+    // announce itself either). The REFUSAL is adjudicated further down, at the first point where
     // `hermetic` exists to read the three `.dag` limits — so every reported outcome carries the
     // observation it was computed against, and a refusal with no observation has no spelling.
     //

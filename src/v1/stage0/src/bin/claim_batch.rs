@@ -578,15 +578,23 @@ fn run() -> Result<ExitCode, ExitCode> {
     // index is a fact of the SUBJECT, not of any witness: memoized once per index, and in the
     // required floor it was charged in full to whichever claim resolved an entry first.
     //
-    // PLACED BEFORE `install_output_policy`, AND THAT ORDERING IS THE WHOLE POINT — MEASURED.
-    // With the warm sitting after it (the first placement tried here) the phase line reported
-    // `already_warm=true cpu_ms=0`: `install_output_policy` resolves `dag/gunbc/output_policy.dag`
-    // through `resolve_entry_graph_shared` -> `process_shared_index` and had already built the
-    // index, so this harness had an ACCIDENTAL first toucher of its own — a 30.8s span billed to
-    // an output-policy read, owned by nothing and bounded by nothing. That is why claim_batch
-    // never reproduced the floor's 57s witness row: not because the cost was absent, but because
-    // a non-claim happened to pay it. Warming here makes the payer explicit and the same in both
-    // harnesses, which is what lets the order-reversal control mean anything at all.
+    // PLACED AHEAD OF EVERY CONSUMER, which is the invariant; `install_output_policy` below is no
+    // longer one of them, and the history is worth keeping because it is how the seam was found.
+    //
+    // WHAT WAS MEASURED HERE, ON THE PRE-FIX INSTALLER: with the warm sitting AFTER
+    // `install_output_policy`, the phase line reported `already_warm=true cpu_ms=0` while a ~30.8s
+    // span sat billed to an output-policy read. That installer resolved
+    // `dag/gunbc/output_policy.dag` through `resolve_entry_graph_shared` -> `process_shared_index`,
+    // so a five-decision policy read was this harness's ACCIDENTAL FIRST TOUCHER of the corpus
+    // index — a cost owned by nothing and bounded by nothing. That is why `claim_batch` never
+    // reproduced the floor's witness row: not because the cost was absent, but because a non-claim
+    // happened to pay it.
+    //
+    // THAT INSTALLER IS NOW FIXED (`Scope the early output-policy read to its own closure`,
+    // still-koi-527): it resolves the policy's own import closure and never enters the shared
+    // index. So the ordering against it is no longer load-bearing, and this comment does not claim
+    // it is. The warm stays HERE because the invariant is "before any consumer", not "before that
+    // one" — and because the next accidental first toucher will not announce itself either.
     let edge_index_warm =
         v1_compiler::cli_run::warm_bare_reference_edge_index(&process_shared_index(&source_roots))
             .map_err(|e| {
