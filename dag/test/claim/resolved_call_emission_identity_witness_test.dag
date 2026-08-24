@@ -75,3 +75,12 @@ fn w_unavailable_declaration_retains_exact_call_identity() -> Bool {
     func_name: "declared_call"
   ) == SourceDeclarationCall { owner_module_path: "test.fixture.owner", decl_name: "declared_call" }
 }
+
+fn w_resolved_signature_owner_selects_runtime_primitive() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.resolved_signature_owner_probe\nimport std.types { Int, String, Map }\nfn probe(m: Map<String, Int>) -> Map<String, Int> { map_insert(m, \"key\", 1) }\n",
+    "src/test_claim_resolved_signature_owner_probe.rs",
+    ["v1_rt::rc_map_insert("],
+    ["call target identity was not established"]
+  )
+}
