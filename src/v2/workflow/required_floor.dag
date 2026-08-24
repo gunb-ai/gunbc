@@ -627,6 +627,28 @@ type FloorPreparationOutcome =
       observed_rss_growth: Int
     }
 
+// FLAT-SCALAR UNIT FIELDS ON THE PREPARATION CARRIERS — A PEER OF THE `ClaimSafetyOutcome` ROW
+// ABOVE, NOT COVERED BY IT (review 55296, BLOCKING, and correctly so). The existing
+// `flat_scalar_millisecond_fields_dissolve_on` enumerates the `ClaimSafetyOutcome` scalars BY NAME,
+// so it does not reach the carriers below; and `floor_preparation_host_mirror_dissolve_on` covers a
+// RUNG CLIMB (host mirroring the derivation), not units. A tracked obligation that names the wrong
+// symbols is not coverage, which is why this is a new row rather than a sentence added to either.
+//
+// THE DEBT IS THE SAME CLASS AND SO IS THE REASON IT IS NOT FIXED INLINE. `std.measure`
+// `Millisecond = Measure<Time, Milli, Nat>` and `ByteSize = Measure<Memory, One, Nat>` are built on
+// v1's host-backed `Nat`, while this module's `Int` is v2's inductive Peano tower
+// (`v2.std.integer` over `v2.std.nat`, `Nat = Zero | Succ { prev: Nat }`). No verified bridge
+// between the two numeric towers exists anywhere in this corpus, so converting these here would
+// mean authoring that bridge for the first time, unverified, inside an attribution change — the
+// cross-representation mismatch class this repository's own incident history warns against.
+//
+// THE BYTES AXIS IS NAMED SEPARATELY FROM THE MILLISECOND AXES because it dissolves onto a
+// DIFFERENT carrier (`ByteSize`, not `Millisecond`) and could therefore be discharged independently;
+// folding both into one sentence would let a half-done conversion close the whole row.
+data preparation_flat_scalar_unit_fields_dissolve_on: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: the MILLISECOND-valued scalars on the floor-preparation carriers convert from bare Int to std.measure Millisecond, and the BYTE-valued scalars convert to std.measure ByteSize, once a verified conversion exists between v2's inductive Peano tower (v2.std.integer.Int = GroupCompletion<v2.std.nat.Nat>) and the host-backed Nat std.measure is built on. MILLISECOND: FloorPreparationOutcome.PreparationWithinLimits.observed_cpu, .observed_wall; FloorPreparationOutcome.FloorPreparationRefused.observed_cpu, .observed_wall; floor_preparation_outcome parameters observed_cpu_ms, observed_wall_ms, cpu_limit_ms, wall_limit_ms; and the return types of required_floor_preparation_cpu_safety_limit_ms and required_floor_preparation_wall_safety_limit_ms. BYTES: FloorPreparationOutcome.PreparationWithinLimits.observed_rss_growth; FloorPreparationOutcome.FloorPreparationRefused.observed_rss_growth; floor_preparation_outcome parameters observed_rss_growth_bytes and rss_growth_limit_bytes; and the return type of required_floor_preparation_rss_growth_limit_bytes. Peer of flat_scalar_millisecond_fields_dissolve_on, which names only the ClaimSafetyOutcome scalars and does not reach these (per review 55296 on gunbc#9046)." as NonEmptyStr,
+)
+
 // THREE INDEPENDENT LIMITS FOR A DIFFERENT UNIT, and the reason they are not the claim numbers
 // is not that 5000ms is too small -- it is that 5000ms answers a DIFFERENT QUESTION. The claim
 // limits bound one witness's marginal evaluation; a shared build is one whole-corpus artifact
