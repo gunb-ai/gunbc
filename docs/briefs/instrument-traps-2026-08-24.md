@@ -117,6 +117,31 @@ measured, publish the gap, not the figure with a warning stapled to it. A caveat
 that every future reader do work; the readers here were two sessions that had just spent a
 night refusing exactly that kind of request in code.
 
+## 9. A timeout kills the payload and the shell reports success
+
+`timeout N ctrl-build -- <payload>; echo done` exits **0** when the timeout fires. The shell
+answers *did the last command in my pipeline succeed*, and you asked *did the payload
+complete*. Those differ exactly when a timeout kills the thing you care about.
+
+**The remedy is a planted completion marker, and it is better than vigilance** — the payload's
+last statement echoes a sentinel, and its ABSENCE is what you read. That is positive evidence
+you cannot fail to notice, rather than an omission you have to spot. *(Found independently by
+silent-gull-867, who caught a real truncated dispatch with it while a bare exit code read as
+success. Credit theirs.)*
+
+## 10. ctrl-build cleans `target/` on every dispatch — so splitting an overrunning job is worse
+
+Every remote dispatch runs `git clean -x -d --force`, which removes `target/`. So a cold
+release build is paid **per dispatch**, not once.
+
+This inverts the obvious remedy. A job that overruns the wall looks like it should be split
+into N smaller dispatches; that costs **N cold builds** instead of amortising one, and usually
+overruns worse. Either fit it in a single long dispatch or choose a different shape — do not
+shard it.
+
+Measured on a 70-module standalone-compile sweep: a cold build plus seventy compiles does not
+fit a 55-minute wall, and no split of it would have.
+
 ---
 
 ## The shape they share
