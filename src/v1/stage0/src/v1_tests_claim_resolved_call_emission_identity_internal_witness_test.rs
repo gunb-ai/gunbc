@@ -2,6 +2,7 @@
 // Source module: v1.tests.claim.resolved_call_emission_identity_internal_witness_test
 
 pub use crate::std_induction::SubValueRelation;
+use crate::std_induction::SubValueRelation::*;
 pub use crate::v1_compiler_infer::{
     merge_func_env_views_by_owner, resolved_call_target_from_declaration_lookup,
     selective_func_env_view,
