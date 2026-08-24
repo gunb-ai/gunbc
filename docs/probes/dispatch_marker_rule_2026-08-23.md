@@ -682,7 +682,40 @@ names, and it came back empty too.
 PROBE_LINES_TOTAL=171    liveness, so a zero is visible as a zero rather than inferred from absence
 ```
 
-That is the same move as a liveness assertion on a grep, applied one layer up.
+That is the same move as a liveness assertion on a grep, applied one layer up — and it is the only
+remedy in this document that does not depend on the reader being suspicious. Every check-something
+rule fails against a tired author with an explanation ready; making the two states **unspellable as
+each other at the point of production** has no such failure mode. It is DESIGN §5's
+construction-over-validation applied to instruments rather than to programs, which is why it sits
+above the rest.
+
+## One defect presenting as two, sequentially — and the location lie
+
+The inverse of the section above. There, one subject presents as two measurements. Here, **one defect
+presents as two defects, in sequence**, and the second is typeset so as to be misread.
+
+A carrier name needs rows in two different maps before a method call on it works, and each map
+answers a different question:
+
+| map | question | refusal if absent |
+|---|---|---|
+| `dag/std/algebra.dag` `kernel_algebra_profile_value` | does this receiver have a **method surface**? | *"establishes no method surface"*, naming the receiver |
+| `dag/std/types.dag` `container_template_alias_rows` | does this spelling **resolve as a container**? | *"variant `Present` not found in type `<payload>`"*, naming the payload's **declaration line** |
+
+Fixing the first makes its error vanish and surfaces the second — which reads as a separate,
+pre-existing defect. It was not; it was the same missing carrier, one layer over.
+
+**What makes this its own row is the location lie.** The second refusal is not merely answering a
+narrower question — it is answering *accurately about a place that is not where the defect is*. A
+reader who trusts the pointer goes to the payload type's declaration and finds nothing wrong with it,
+**because nothing is wrong with it**.
+
+> A refusal that appears only after you fixed an adjacent one, pointing at a declaration far from the
+> call site, is the next layer of the same carrier until proven otherwise.
+
+**The sequencing is the tell, not the message.** And the corollary costs a cycle in either direction:
+both maps need a regen round before *either* fix is observable, so a run that still refuses is not
+evidence the fix was wrong.
 
 ## Two failures with one symptom and opposite remedies: lag vs miss
 
