@@ -239,7 +239,7 @@ pub fn binding_candidates_from_supplied_declarations(
 ) -> Rc<OccurrenceCandidatePopulationBuild> {
     supplied_candidates.iter().cloned().fold(Rc::new(OccurrenceCandidatePopulationBuild {
     candidates: Rc::new(vec![]),
-    seen_candidate_ids: v1_rt::rc_empty_map::<i64, OccurrenceId>(),
+    seen_candidate_ids: panic!("call target identity was not established before Rust emission")(),
     refusal: None,
 }), |build: Rc<OccurrenceCandidatePopulationBuild>, candidate_occurrence: OccurrenceId| match build.refusal.clone() {
     Some(_) => build.clone(),
@@ -382,7 +382,7 @@ pub fn resolve_reference_occurrence_binding_validated(
     refusal: refusal.clone(),
 }),
     None => Rc::new(OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided {
-    result: occurrence_binding_from_candidates(binding_occurrence_from_reference(reference.clone()), build.candidates.clone()),
+    result: crate::std_occurrence_binding::occurrence_binding_from_candidates(binding_occurrence_from_reference(reference.clone()), build.candidates.clone()),
 }),
 }
             }
@@ -395,7 +395,9 @@ pub fn resolve_reference_occurrence_binding(
     occurrence: OccurrenceId,
     supplied_candidates: Rc<Vec<OccurrenceId>>,
 ) -> Rc<OccurrenceReferenceBindingOutcome> {
-    match (*occurrence_transport_validate(transport.clone())).clone() {
+    match (*crate::std_occurrence_identity::occurrence_transport_validate(transport.clone()))
+        .clone()
+    {
         OccurrenceTransportValidation::OccurrenceTransportRefused {
             refusal: refusal, ..
         } => Rc::new(

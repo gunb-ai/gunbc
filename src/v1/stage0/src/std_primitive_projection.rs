@@ -188,7 +188,7 @@ pub fn primitive_projection_row(
 ) -> Rc<PrimitiveProjection> {
     Rc::new(PrimitiveProjection {
         primitive: primitive.clone(),
-        declaration: decl_ref(module_path.clone(), decl_name.clone()),
+        declaration: crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
         fidelity: fidelity.clone(),
     })
 }
@@ -270,7 +270,10 @@ pub fn primitive_projection_row_for_declaration(
         |acc: _, row: Rc<PrimitiveProjection>| match acc.clone() {
             Some(_) => acc.clone(),
             None => {
-                if declaration_ref_eq(row.declaration.clone(), declaration.clone()) {
+                if crate::std_decl_ref::declaration_ref_eq(
+                    row.declaration.clone(),
+                    declaration.clone(),
+                ) {
                     Some(row.clone())
                 } else {
                     acc.clone()
