@@ -160,6 +160,61 @@ the first version declared.
 
 The sum is unchanged; what changes is that each row is about the work it is named for.
 
+## What forces these terms — and why the frequency is about to change
+
+Raised by smart-ram-730 against this PR: the terms measured here are forced by the loader's
+**fallback** arm, which is exceptional today and becomes ordinary after the namespace cut
+(#8282) deletes the import headers that make the scoped resolve hit. The structural point is
+right and it makes this a forecast as well as an attribution fix. **The term it names is wrong,
+and the corrected version is a stronger claim, so it is recorded rather than adopted.**
+
+The loader's arm is:
+
+```
+// build_both_closure_edge_index -> bare_reference_pull_paths_for_source
+let target_module = match resolve_in(&census) {
+    Some(m) => Some(m),
+    None    => resolve_in(&pool_bare_census(index)?),   // the fallback
+};
+```
+
+**The fallback does NOT force the 14.24s parse.** `bare_reference_pull_paths_for_source` calls
+`tree_bare_census_for_root` at its top, before the resolve loop that contains this arm, and that
+census forces `pool_parse` unconditionally for every bare-eligible file under a source root. By
+the time the fallback is reached the pool is warm, so `pool_bare_census`'s own
+`let pool = pool_parse(index)?` is always a memo hit. The parse is paid by the scoped census on
+the path that SUCCEEDS, not by the fallback.
+
+**What the fallback uniquely forces is a fourth census, and this probe never measured it.**
+`pool_bare_census` builds `build_symbol_index_census_nodes` over EVERY pool module — all 3875,
+against the 2818 and 1893 of the two root censuses — so it is the largest of the three symbol
+indexes the loader can construct, and it is the only one no successful resolve pays for. Its
+magnitude is **unmeasured here**: it is forcible in isolation (below), but this change is an
+attribution repair and measuring a fourth term would have meant a rerun the finding does not
+need. Its existence and its input size are read from the producer, not estimated.
+
+**The frequency change is real but it is bounded, and "far more often" would overstate it.**
+`pool_bare_census` is memoized on the index like every other pool term, so however often the
+fallback fires, the census is built at most once per index. The cut therefore moves this cost
+from *conditionally paid* to *reliably paid* — 0-or-1 becomes 1 — rather than multiplying it by
+a fallback count. That is a genuine regression to forecast and it is a different one from a
+frequency multiplier; the quantity that grows without bound is the corpus the census is
+denominated in, not the number of times it runs.
+
+So the honest forecast, with no invented number: **after the cut, every index that resolves any
+bare name without a declared edge pays one whole-pool symbol-index build in addition to its
+per-root censuses.** How many names resolve without a declared edge post-cut is currently
+uncounted, and nothing here estimates it.
+
+## This row can be forced in isolation
+
+`pool_parse` is not only observable as a residue of whichever consumer ran first. It has a
+`force_pool_parse_for_test` entry point and `"pool_parse"` is a resettable cache arm on
+`MultiEntryIndex`, so the row can be driven cold and timed on its own — which is how the 14.24s
+here was taken, with the pool forced ahead of the censuses so each census could be measured
+alone. A cost row that cannot be forced independently is a row that cannot be verified; this one
+can, which is what makes it an authority rather than a relabelling.
+
 ## What is NOT claimed
 
 **This change makes nothing faster.** It is instrumentation, and calling it a cost repair would
