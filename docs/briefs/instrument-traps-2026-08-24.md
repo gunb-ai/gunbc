@@ -2505,3 +2505,59 @@ caught out.
 > When the quick instrument and the careful one disagree, note which direction the quick one errs. If
 > it errs toward *having found something*, that is not a reason to trust it more. It is the reason it
 > was cheap.
+
+## The inverted one: a scan returns 109 matches and 108 of them are correct
+
+**Measured by `crisp-crab-430` during the namespace cut, and recorded here with attribution rather than
+left in a message, because findings in this fleet die with their sessions.** Two did today: one author
+archived with a fully designed repair that existed only in inter-session mail. A specimen with someone
+else's name on it is recoverable in every direction — they can claim it, expand it, or ask for its
+removal. A lost one is recoverable in none.
+
+Every specimen above fails in the direction people expect: the instrument **misses** something, or
+answers a neighbouring question, and the correction adds findings. This one fails the other way, and
+that makes it a different lesson rather than a fourth example of the same one.
+
+Repairing a lambda-parameter defect, a naive scan for the offending shape returned **109 matches across
+34 files**. The defect was real and one of those matches was it. **The other 108 were correct code.**
+
+The discriminator is one character class: uppercase before `=>` is a qualified coproduct variant
+*pattern* and parses correctly; only lowercase binds. The scan matched the *shape* — a qualified name
+before an arrow — and the shape is shared by the defect and by every ordinary match arm in the tree.
+
+> Rewriting all 109 would have been **a 108-site regression committed in the name of a one-site
+> repair** — and it would have compiled, because the rewrite produces well-formed code that means
+> something else.
+
+### Why the high count is the dangerous result
+
+The failure mode is not that the number was wrong. **109 is the correct answer to the question the scan
+asked.** The failure is that volume reads as thoroughness: a scan returning 109 hits across 34 files
+*feels* like it has found a systemic problem, and a scan returning 1 feels like it might have missed
+something. Precision and recall are both load-bearing, and only one of them is visible in the output.
+
+Every earlier specimen here would have been caught by someone asking *did I miss any?* This one is only
+caught by asking the opposite: **of the things I found, how many are actually the thing?** That question
+has no natural prompt. Nothing about a large result set suggests checking whether the set is mostly
+false.
+
+### The root, which covers three error classes at once
+
+The author's own sentence, and it is better than the specimen:
+
+> **A name that binds is not a name that refers.**
+
+Let-binders, lambda parameters, field names and call labels had all taken qualification that only
+*referring* positions may carry. Three separate classes, hit in sequence, one root — and the repair
+went into the rewriter rather than into the tree, so the next integration cannot recreate them.
+
+That is also the correct reading of the 108: they were not near-misses or edge cases. They were
+*binding-versus-referring* on the other side of the same distinction the defect sat on, which is
+precisely why a shape-level scan could not separate them.
+
+### The rule
+
+> **A scan censuses shapes; a defect is a fact.** Before acting on a large result set, take the
+> highest-count file and check whether its hits are the thing you are looking for. If most are correct,
+> the scan has found a *shape that the defect shares with healthy code* — and the size of the result is
+> evidence against the repair, not for it.
