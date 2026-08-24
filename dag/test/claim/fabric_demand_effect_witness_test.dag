@@ -156,7 +156,7 @@ fn effect_label(e: DemandCommandEffect<NonEmptyStr>) -> NonEmptyStr {
       "still-required-attempt-continues"
     WorkStillRequiredNothingRunning { population: _, remaining: _ } =>
       "still-required-nothing-running"
-    WorkReleasedAttemptStops { population: _, work: _, release: _ } =>
+    WorkReleasedAttemptStops { population: _, work: _, release_plan: _ } =>
       "released-attempt-stops"
     WorkReleasedNothingRunning { population: _, work: _ } => "released-nothing-running"
   }
@@ -192,7 +192,7 @@ fn effect_population(e: DemandCommandEffect<NonEmptyStr>) -> List<Demand<NonEmpt
     DemandAdmitted { population: p, directive: _ } => p
     WorkStillRequiredAttemptContinues { population: p, remaining: _, attempt: _ } => p
     WorkStillRequiredNothingRunning { population: p, remaining: _ } => p
-    WorkReleasedAttemptStops { population: p, work: _, release: _ } => p
+    WorkReleasedAttemptStops { population: p, work: _, release_plan: _ } => p
     WorkReleasedNothingRunning { population: p, work: _ } => p
   }
 }
@@ -204,7 +204,7 @@ fn released_reservations(e: DemandCommandEffect<NonEmptyStr>) -> List<Reservatio
     WorkStillRequiredAttemptContinues { population: _, remaining: _, attempt: _ } => []
     WorkStillRequiredNothingRunning { population: _, remaining: _ } => []
     WorkReleasedNothingRunning { population: _, work: _ } => []
-    WorkReleasedAttemptStops { population: _, work: _, release: rel } =>
+    WorkReleasedAttemptStops { population: _, work: _, release_plan: rel } =>
       concat([rel.money_reservation], rel.resource_reservations)
   }
 }

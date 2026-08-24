@@ -70,7 +70,7 @@ type DemandCommandEffect<P>
   | WorkReleasedAttemptStops {
       population: List<Demand<P>>,
       work: FabricIdentity<P, WorkKey>,
-      release: ReleaseDirective<P>,
+      release_plan: ReleaseDirective<P>,
     }
   | WorkReleasedNothingRunning {
       population: List<Demand<P>>,
@@ -136,7 +136,7 @@ fn withdrawal_effect<P>(
           WorkReleasedAttemptStops {
             population: population,
             work: w,
-            release: release_directive_for(g: g),
+            release_plan: release_directive_for(g: g),
           }
       }
   }
