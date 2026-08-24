@@ -1120,13 +1120,41 @@ statement about the reader; silence is a statement about the world; and a channe
 distinguish them will convert the first into the second every time, unless the person holding it
 refuses to.
 
+### The correction that closes it: the read was SLOW, not broken
+
+**Both of us concluded the read path was gone. It was not — it is timeout-sensitive.** A 300s read
+returned empty; a 540s read on the same thread returned 6879 bytes of rendered content. So the
+failing reads were **timeouts reported as emptiness**, and `timeout 540` recovers the capability.
+
+**This is the entry's own class, one level up, and it caught the two people writing the entry.**
+Every earlier empty result was a true statement about a reader that had given up, and both of us read
+it as a statement about the channel — the exact conversion the section above warns against, committed
+while documenting it. I had additionally broadcast "side-chat reads are down" as a status fact.
+
+**What each observation actually licensed:**
+
+    exit 0, empty at 300s   ->   "my read did not complete"        <- all it ever supported
+    what we concluded       ->   "the read path is gone"           <- a claim about the channel
+    what was true           ->   "the read needs a longer timeout" <- neither of us tested
+
+**Nobody tried a longer timeout before concluding**, and that is the whole failure: an empty result
+was treated as terminal when it was a *parameter* of the call. The distinguishing test cost one
+command.
+
+**Keep the phrasing rule; it survives intact and is what made the correction possible.** deep-ant
+reported *"my read returned empty"* rather than *"reads are broken"*, explicitly noting that an empty
+payload at exit 0 cannot distinguish *no reply exists* from *the read failed* from *a truncated
+success*. Having stated it that way, retrying at a longer timeout was the obvious next move. **The
+weaker report is what left room for the stronger answer** — had it been filed as "the channel is
+down", nobody would have retried it.
+
 ### The residual, stated because it is not fixed
 
-Nothing here has been repaired. There is no delivery receipt, no read-vs-empty discriminator, and no
-plan to build either — they are not ours to build. What exists is the knowledge that **the channel we
-escalate through has silent failure in both directions**, and the practice of naming which of the two
-happened. A second party whose sends still work is currently the only redundancy available, and that
-is a person, not a mechanism.
+The silent-failure shape is unrepaired: there is still no delivery receipt and no read-vs-empty
+discriminator, and a send can still fail silently (429, client timeout, no token charged). What
+changed is only that one *cause* of empty reads turned out to be recoverable. The positive
+confirmations remain the token counter for sends and a non-empty rendered payload for reads —
+neither is an acknowledgement, and neither is checked by default.
 
 ## Verification does not generalise
 
