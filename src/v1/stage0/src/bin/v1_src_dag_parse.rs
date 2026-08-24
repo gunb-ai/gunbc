@@ -24,6 +24,25 @@ const SCAFFOLD_NOTE: &str = "SCAFFOLD \u{2014} dissolve-on: when src/v1 .dag is 
 // authority. RENAME TRIGGER: the next change that regenerates that workflow for its own
 // reasons carries the rename with it.
 
+// HOW TO REACH IT WHEN A PARSE REFUSAL IS UNATTRIBUTED, recorded here because it was
+// rediscovered the hard way and the rediscovery cost two lanes an evening. The composed
+// `--required-ci` phase prints its refusals with no position, and the annotation diagnostics
+// carry BYTE OFFSETS rather than line numbers, so reading a CI log tells you the rule fired and
+// not where. This binary prints ONE LINE PER REFUSAL NAMING THE FILE, which is enough to bisect.
+//
+// It does not need a whole-tree local compile (OOM in a session container, swap disabled) and it
+// does not need a place in the CI queue. Build and run it in ONE remote dispatch, because the
+// runners are amd64 and a binary built there will not execute in an arm64 session:
+//
+//   ctrl-build --remote -- bash -lc \
+//     'cargo build --release -p v1-compiler --bin v1_src_dag_parse && ./target/release/v1_src_dag_parse'
+//
+// ~4 minutes cold, seconds warm. USE IT WITH A DISCRIMINATING CONTROL: a clean sweep from an
+// instrument nobody falsified is worth nothing -- a bin that read no files would report the same
+// thing. Append one unattached trailing `//` line to any `.dag`, re-run, and confirm exactly one
+// refusal naming exactly that file before believing a green. Then restore the file: a probe that
+// leaves its subject mutated turns the next measurement into a lie.
+
 use std::process::ExitCode;
 
 fn main() -> ExitCode {

@@ -281,7 +281,7 @@ fn typescript_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data typescript_add_inferred_tree: InferredTree = InferredTree {
   root: typescript_add_emitted_root,
-  facts: Map {
+  facts: PartialFunction {
     lookup: typescript_add_facts_lookup
   }
 }

@@ -66,8 +66,7 @@ pub use crate::v1_compiler_emit::{
     is_tco_identity_passthrough, lookup_item, module_emit_scope, order_typed_call_args,
     render_node_type, render_tuple_parts, rust_literal_for_pattern, scope_after_expr,
     seed_bindings, service_fallback_transport, service_field_ctors, service_field_decls,
-    tco_reassign_core, transport_binding_refusal_fact, typed_named_arg_matches,
-    unwrap_single_field_product,
+    tco_reassign_core, transport_binding_refusal_fact, unwrap_single_field_product,
 };
 pub use crate::v1_compiler_emit::{
     BlockEmitState, BoundOperation, EmitterOutcome, FileResultChannel, FileResultField, FileVerb,
@@ -2551,10 +2550,11 @@ pub fn render_rust_alias_rhs_type(
                     None => match rust_opaque_kernel_alias_carrier(name.clone()) {
                         Some(carrier) => carrier.clone(),
                         None => {
+                            let leaf = qualified_last_segment(name.clone());
                             let rendered =
-                                rust_render_type_leaf_name(name.clone(), variant_to_enum.clone());
+                                rust_render_type_leaf_name(leaf.clone(), variant_to_enum.clone());
                             render_rust_shared_type_if_needed(
-                                name.clone(),
+                                leaf.clone(),
                                 rendered.clone(),
                                 shared_types.clone(),
                             )
@@ -7448,6 +7448,189 @@ pub fn reference_derived_candidate_authored(
         ))
 }
 
+pub fn rust_identifier_tokens(s: String) -> Rc<Vec<String>> {
+    {
+        let spaced = v1_rt::replace(
+            v1_rt::replace(
+                v1_rt::replace(
+                    v1_rt::replace(
+                        v1_rt::replace(
+                            v1_rt::replace(
+                                v1_rt::replace(
+                                    v1_rt::replace(
+                                        v1_rt::replace(s.clone(), "<".to_string(), " ".to_string()),
+                                        ">".to_string(),
+                                        " ".to_string(),
+                                    ),
+                                    ",".to_string(),
+                                    " ".to_string(),
+                                ),
+                                "(".to_string(),
+                                " ".to_string(),
+                            ),
+                            ")".to_string(),
+                            " ".to_string(),
+                        ),
+                        "[".to_string(),
+                        " ".to_string(),
+                    ),
+                    "]".to_string(),
+                    " ".to_string(),
+                ),
+                "&".to_string(),
+                " ".to_string(),
+            ),
+            ":".to_string(),
+            " ".to_string(),
+        );
+        let unpunctuated = v1_rt::replace(
+            v1_rt::replace(
+                v1_rt::replace(
+                    v1_rt::replace(
+                        v1_rt::replace(
+                            v1_rt::replace(
+                                v1_rt::replace(
+                                    v1_rt::replace(
+                                        v1_rt::replace(
+                                            spaced.clone(),
+                                            ";".to_string(),
+                                            " ".to_string(),
+                                        ),
+                                        "{".to_string(),
+                                        " ".to_string(),
+                                    ),
+                                    "}".to_string(),
+                                    " ".to_string(),
+                                ),
+                                ".".to_string(),
+                                " ".to_string(),
+                            ),
+                            "=".to_string(),
+                            " ".to_string(),
+                        ),
+                        "\n".to_string(),
+                        " ".to_string(),
+                    ),
+                    "\t".to_string(),
+                    " ".to_string(),
+                ),
+                "\x0d".to_string(),
+                " ".to_string(),
+            ),
+            "*".to_string(),
+            " ".to_string(),
+        );
+        let untokened = v1_rt::replace(
+            v1_rt::replace(
+                v1_rt::replace(
+                    v1_rt::replace(
+                        v1_rt::replace(unpunctuated.clone(), "!".to_string(), " ".to_string()),
+                        "?".to_string(),
+                        " ".to_string(),
+                    ),
+                    "|".to_string(),
+                    " ".to_string(),
+                ),
+                "+".to_string(),
+                " ".to_string(),
+            ),
+            "#".to_string(),
+            " ".to_string(),
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for t in Rc::new({
+                let mut __result = Vec::new();
+                for t in Rc::new(
+                    untokened
+                        .clone()
+                        .split(&" ".to_string())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                {
+                    __result.push(v1_rt::trim(t.clone()));
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                if (t.clone() != "".to_string()) {
+                    __result.push(t);
+                }
+            }
+            __result
+        })
+    }
+}
+
+pub fn collect_type_node_realized_surface_names(
+    n: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Rc<Vec<String>> {
+    rust_identifier_tokens(render_rust_type(
+        n.clone(),
+        shared_types.clone(),
+        source_indices.clone(),
+        emit_info.clone(),
+    ))
+}
+
+pub fn collect_item_realized_surface_names(
+    item: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Rc<Vec<String>> {
+    {
+        let from_ann = match item.type_annotation.clone() {
+            Some(t) => collect_type_node_realized_surface_names(
+                t.clone(),
+                shared_types.clone(),
+                source_indices.clone(),
+                emit_info.clone(),
+            ),
+            None => Rc::new(vec![]),
+        };
+        let from_params = Rc::new({
+            let mut __result = Vec::new();
+            for p in item.params.clone().iter().cloned() {
+                __result.extend(
+                    (*collect_type_node_realized_surface_names(
+                        param_node_type_expr(p.clone()),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let from_inferred = match item.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                collect_type_node_realized_surface_names(
+                    rt.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                    emit_info.clone(),
+                )
+            }
+            _ => Rc::new(vec![]),
+        };
+        unique_strings(v1_rt::concat(
+            from_ann.clone(),
+            v1_rt::concat(from_params.clone(), from_inferred.clone()),
+        ))
+    }
+}
+
 pub fn reference_derived_use_lines(
     items: Rc<Vec<Rc<Node>>>,
     unlisted_type_names: Rc<Vec<String>>,
@@ -7460,6 +7643,8 @@ pub fn reference_derived_use_lines(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
+    shared_types: Rc<BTreeSet<String>>,
+    emitted_source: String,
 ) -> Rc<Vec<String>> {
     {
         let module_source = match Rc::new({
@@ -7535,6 +7720,23 @@ pub fn reference_derived_use_lines(
             }
             __result
         }));
+        let realized_surface_names = unique_strings(Rc::new({
+            let mut __result = Vec::new();
+            for item in items.iter().cloned() {
+                __result.extend(
+                    (*collect_item_realized_surface_names(
+                        item.clone(),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }));
+        let emitted_source_tokens = rust_identifier_tokens(emitted_source.clone());
         let candidates = Rc::new({
             let mut __result = Vec::new();
             for name in Rc::new({
@@ -7542,17 +7744,20 @@ pub fn reference_derived_use_lines(
                 for name in unique_strings(v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
-                            type_surface_names.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
+                                type_surface_names.clone(),
+                            ),
+                            field_surface_names.clone(),
                         ),
-                        field_surface_names.clone(),
+                        variant_payload_structs.clone(),
                     ),
-                    variant_payload_structs.clone(),
+                    realized_surface_names.clone(),
                 ))
                 .iter()
                 .cloned()
                 {
-                    if (reference_derived_candidate_authored(
+                    if ((reference_derived_candidate_authored(
                         module_source.clone(),
                         name.clone(),
                         emit_info.type_summaries.clone(),
@@ -7561,6 +7766,15 @@ pub fn reference_derived_use_lines(
                         let mut __found = false;
                         for h in emitter_attested_anon_heads.iter().cloned() {
                             if (h.clone() == name.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    }) || {
+                        let mut __found = false;
+                        for t in emitted_source_tokens.iter().cloned() {
+                            if (t.clone() == name.clone()) {
                                 __found = true;
                                 break;
                             }
@@ -7846,6 +8060,62 @@ pub fn emit_module_full(
             }),
             collect_phantom_zst_marker_names(typed_module.items.clone(), scope.type_env.clone()),
         );
+        let module_import_items = module_imports(m.clone());
+        let this_module_name = authored_name(scope.type_env.clone(), m.clone());
+        let wire_context_items = v1_rt::concat(
+            typed_module.items.clone(),
+            contracts_items_for_module(
+                this_module_name.clone(),
+                typed_modules.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                module_index.clone(),
+            ),
+        );
+        let wire_context_imports = v1_rt::concat(
+            module_import_items.clone(),
+            contracts_imports_for_module(
+                this_module_name.clone(),
+                typed_modules.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                module_index.clone(),
+            ),
+        );
+        let wire_contract_item = Rc::new({
+            let mut __result = Vec::new();
+            for i in wire_context_items.iter().cloned() {
+                if (is_data_def_item(i.clone())
+                    && (authored_name_at(scope.type_env.clone().source_indices.clone(), i.clone())
+                        == "wire_contract".to_string()))
+                {
+                    __result.push(i);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned();
+        let items_str = Rc::new({
+            let mut __result = Vec::new();
+            for item in typed_module.items.clone().iter().cloned() {
+                __result.push(emit_typed_item(
+                    item.clone(),
+                    authored_name(scope.type_env.clone(), m.clone()),
+                    registry.clone(),
+                    scope.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                    wire_contract_item.clone(),
+                    scoped_data_items.clone(),
+                    wire_context_items.clone(),
+                    wire_context_imports.clone(),
+                    export_sets.clone(),
+                    typed_modules.clone(),
+                    module_index.clone(),
+                ));
+            }
+            __result
+        })
+        .join(&"\n\n".to_string());
         let prelude = emit_prelude(prelude_imported_names.clone(), local_type_names.clone());
         let imports_str = emit_imports(
             module_imports(m.clone()),
@@ -7921,6 +8191,8 @@ pub fn emit_module_full(
             typed_modules.clone(),
             scope.type_env.clone().source_indices.clone(),
             module_index.clone(),
+            shared_types.clone(),
+            items_str.clone(),
         );
         let merged_imports = dedupe_rust_import_lines(v1_rt::concat(
             v1_rt::concat(dag_import_lines.clone(), carrier_import_lines.clone()),
@@ -8041,26 +8313,6 @@ pub fn emit_module_full(
             }
             __result
         });
-        let module_import_items = module_imports(m.clone());
-        let this_module_name = authored_name(scope.type_env.clone(), m.clone());
-        let wire_context_items = v1_rt::concat(
-            typed_module.items.clone(),
-            contracts_items_for_module(
-                this_module_name.clone(),
-                typed_modules.clone(),
-                scope.type_env.clone().source_indices.clone(),
-                module_index.clone(),
-            ),
-        );
-        let wire_context_imports = v1_rt::concat(
-            module_import_items.clone(),
-            contracts_imports_for_module(
-                this_module_name.clone(),
-                typed_modules.clone(),
-                scope.type_env.clone().source_indices.clone(),
-                module_index.clone(),
-            ),
-        );
         let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(
             wire_context_items.clone(),
             wire_context_imports.clone(),
@@ -8084,42 +8336,6 @@ pub fn emit_module_full(
                 local_enum_uses.clone().join(&"\n".to_string()),
             )
         };
-        let wire_contract_item = Rc::new({
-            let mut __result = Vec::new();
-            for i in wire_context_items.iter().cloned() {
-                if (is_data_def_item(i.clone())
-                    && (authored_name_at(scope.type_env.clone().source_indices.clone(), i.clone())
-                        == "wire_contract".to_string()))
-                {
-                    __result.push(i);
-                }
-            }
-            __result
-        })
-        .first()
-        .cloned();
-        let items_str = Rc::new({
-            let mut __result = Vec::new();
-            for item in typed_module.items.clone().iter().cloned() {
-                __result.push(emit_typed_item(
-                    item.clone(),
-                    authored_name(scope.type_env.clone(), m.clone()),
-                    registry.clone(),
-                    scope.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                    wire_contract_item.clone(),
-                    scoped_data_items.clone(),
-                    wire_context_items.clone(),
-                    wire_context_imports.clone(),
-                    export_sets.clone(),
-                    typed_modules.clone(),
-                    module_index.clone(),
-                ));
-            }
-            __result
-        })
-        .join(&"\n\n".to_string());
         let phantom_zst_markers =
             emit_module_phantom_zst_markers(typed_module.items.clone(), scope.type_env.clone());
         let phantom_section = if (phantom_zst_markers.clone() == "".to_string()) {
@@ -12066,9 +12282,23 @@ pub fn emit_faithful_text_carrier_import_lines(
         let needs_partial_function = {
             let mut __found = false;
             for item in items.iter().cloned() {
-                if (module_item_references_type_name(
+                if module_item_references_type_name(
                     item.clone(),
                     "PartialFunction".to_string(),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        let needs_finitely_supported_function = {
+            let mut __found = false;
+            for item in items.iter().cloned() {
+                if (module_item_references_type_name(
+                    item.clone(),
+                    "FinitelySupportedFunction".to_string(),
                     source_indices.clone(),
                 ) || module_item_references_type_name(
                     item.clone(),
@@ -12163,6 +12393,19 @@ pub fn emit_faithful_text_carrier_import_lines(
                 "use crate::std_algebra::PartialFunction;".to_string(),
             )])
         };
+        let finitely_supported_function = if (!needs_finitely_supported_function.clone()
+            || rust_import_name_already_resolved(
+                imported_names.clone(),
+                local_type_names.clone(),
+                "FinitelySupportedFunction".to_string(),
+            )) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![v1_rt::concat(
+                rust_visibility_prefix(),
+                "use crate::std_algebra::FinitelySupportedFunction;".to_string(),
+            )])
+        };
         let memory = if (!needs_measure_phantoms.clone()
             || rust_import_name_already_resolved(
                 imported_names.clone(),
@@ -12194,12 +12437,15 @@ pub fn emit_faithful_text_carrier_import_lines(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(free_monoid.clone(), char_line.clone()),
-                            non_empty_str.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(free_monoid.clone(), char_line.clone()),
+                                non_empty_str.clone(),
+                            ),
+                            int_line.clone(),
                         ),
-                        int_line.clone(),
+                        partial_function.clone(),
                     ),
-                    partial_function.clone(),
+                    finitely_supported_function.clone(),
                 ),
                 memory.clone(),
             ),
@@ -21037,10 +21283,10 @@ pub fn emit_typed_call(
                     1024,
                 );
                 let type_name = if (base_arg.inferred.clone() != None) {
-                    authored_name_at(
+                    qualified_last_segment(authored_name_at(
                         scope.type_env.clone().source_indices.clone(),
                         resolved_type(base_arg.clone()),
-                    )
+                    ))
                 } else {
                     "compile_error!(\"with call missing resolved record type\")".to_string()
                 };
@@ -22060,6 +22306,7 @@ pub fn emit_typed_fold_lambda(
     lambda_expr: Rc<Node>,
     acc_type_str: String,
     elem_type_str: String,
+    elem_borrowed: bool,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
@@ -22111,7 +22358,7 @@ pub fn emit_typed_fold_lambda(
                 }
                 __result
             });
-            let param_strs = lambda_param_type_strs(
+            let param_strs_raw = lambda_param_type_strs(
                 ps.clone(),
                 pn.clone(),
                 fallback_types.clone(),
@@ -22121,6 +22368,32 @@ pub fn emit_typed_fold_lambda(
                 true,
                 scope.type_env.clone(),
             );
+            let param_strs = if elem_borrowed.clone() {
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for pair in Rc::new(
+                        param_strs_raw
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .enumerate()
+                            .map(|(i, v)| (i as i64, v))
+                            .collect::<Vec<_>>(),
+                    )
+                    .iter()
+                    .cloned()
+                    {
+                        __result.push(if (pair.0.clone() == 1) {
+                            "_".to_string()
+                        } else {
+                            pair.1.clone()
+                        });
+                    }
+                    __result
+                })
+            } else {
+                param_strs_raw.clone()
+            };
             let params_str = param_strs.clone().join(&", ".to_string());
             let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), pn.clone());
             let body_str = emit_typed_expr(
@@ -22594,19 +22867,6 @@ pub fn emit_rust_fold_method_call(
             },
             None => "compile_error!(\"missing fold init argument\")".to_string(),
         };
-        let fold_fn = match args.clone().iter().cloned().skip(1 as usize).next() {
-            Some(a) => emit_typed_fold_lambda(
-                arg_value(a.clone()),
-                lambda_acc_type_str.clone(),
-                fold_elem_type_str.clone(),
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                fold_emit_info.clone(),
-            ),
-            None => "compile_error!(\"missing fold function argument\")".to_string(),
-        };
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
         let elem_unused = match args.clone().iter().cloned().skip(1 as usize).next() {
             Some(a) => fold_lambda_element_unused(
@@ -22614,6 +22874,20 @@ pub fn emit_rust_fold_method_call(
                 scope.type_env.clone().source_indices.clone(),
             ),
             None => false,
+        };
+        let fold_fn = match args.clone().iter().cloned().skip(1 as usize).next() {
+            Some(a) => emit_typed_fold_lambda(
+                arg_value(a.clone()),
+                lambda_acc_type_str.clone(),
+                fold_elem_type_str.clone(),
+                elem_unused.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                fold_emit_info.clone(),
+            ),
+            None => "compile_error!(\"missing fold function argument\")".to_string(),
         };
         let iter_template = if elem_unused.clone() {
             v1_rt::replace(
@@ -23148,7 +23422,10 @@ pub fn emit_rust_with_method_call(
                 if (rt_is_error.clone() || (rt.ident_span.clone() == None)) {
                     "compile_error!(\"with method missing resolved record type\")".to_string()
                 } else {
-                    authored_name_at(scope.type_env.clone().source_indices.clone(), rt.clone())
+                    qualified_last_segment(authored_name_at(
+                        scope.type_env.clone().source_indices.clone(),
+                        rt.clone(),
+                    ))
                 }
             }
             _ => "compile_error!(\"with method missing resolved record type\")".to_string(),

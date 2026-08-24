@@ -141,7 +141,7 @@ fn typescript_pr3_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data typescript_pr3_inferred_tree: InferredTree = InferredTree {
   root: typescript_pr3_emitted_root,
-  facts: Map { lookup: typescript_pr3_facts_lookup }
+  facts: PartialFunction { lookup: typescript_pr3_facts_lookup }
 }
 
 fn anchor_typescript_pr3_emit_accepts() -> Outcome<Medium<String>> {
