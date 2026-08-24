@@ -225,7 +225,7 @@ pub fn render_subject_annotation_blocks(
     subject: OccurrenceId,
 ) -> Option<String> {
     {
-        let texts = source_annotation_graph_rows(graph.clone())
+        let texts = crate::std_source_annotation::source_annotation_graph_rows(graph.clone())
             .iter()
             .cloned()
             .fold(Rc::new(vec![]), |acc: _, row: Rc<SourceAnnotationDebt>| {
@@ -329,7 +329,7 @@ pub fn keyed_annotation_rows(
         if !eligible_names_unique(eligible.clone()) {
             None
         } else {
-            source_annotation_graph_rows(graph.clone())
+            crate::std_source_annotation::source_annotation_graph_rows(graph.clone())
                 .iter()
                 .cloned()
                 .fold(
@@ -372,7 +372,7 @@ pub fn bind_annotations(
     captures: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
     source_length: i64,
 ) -> Rc<AnnotationAttachmentResult> {
-    attach_annotations(
+    crate::std_source_annotation::attach_annotations(
         captures.iter().cloned().fold(
             Rc::new(vec![]),
             |acc: Rc<Vec<Rc<NormalizedAnnotationCapture>>>,
@@ -395,7 +395,7 @@ pub fn admit_source_annotations(
     captures: Rc<Vec<Rc<UnboundAnnotationCapture>>>,
     source_length: i64,
 ) -> Rc<AdmittedSourceAnnotations> {
-    match (*admit_annotations(bind_annotations(
+    match (*crate::std_source_annotation::admit_annotations(bind_annotations(
         transport.clone(),
         captures.clone(),
         source_length.clone(),
@@ -411,8 +411,8 @@ pub fn admit_source_annotations(
         AnnotationAdmission::AnnotationsRefused {
             refusals: refusals, ..
         } => Rc::new(AdmittedSourceAnnotations {
-            graph: source_annotation_graph_empty(),
-            diagnostics: non_empty_refusals_all(refusals.clone())
+            graph: crate::std_source_annotation::source_annotation_graph_empty(),
+            diagnostics: crate::std_source_annotation::non_empty_refusals_all(refusals.clone())
                 .iter()
                 .cloned()
                 .fold(

@@ -409,7 +409,12 @@ pub fn kernel_algebra_profile_value() -> Rc<HashMap<String, AlgebraProfile>> {
                     v1_rt::rc_map_insert(
                         v1_rt::rc_map_insert(
                             v1_rt::rc_map_insert(
-                                v1_rt::rc_empty_map::<String, AlgebraProfile>(),
+                                panic!(
+                                    "call target identity was not established before Rust emission"
+                                )(
+                                    panic!("malformed arg: missing value"),
+                                    panic!("malformed arg: missing value"),
+                                ),
                                 "Int".to_string(),
                                 AlgebraProfile::OrderedRingProfile,
                             ),

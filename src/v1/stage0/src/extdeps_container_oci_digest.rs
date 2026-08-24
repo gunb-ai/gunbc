@@ -251,7 +251,7 @@ pub fn parse_oci_content_digest_wire(raw: String) -> Option<Rc<OciContentDigest>
     match oci_wire_digest_parts(raw.clone()) {
         Some(parts) => {
             if (parts.algorithm.clone() == "sha256".to_string()) {
-                match sha256_hex_digest(parts.encoded.clone()) {
+                match crate::std_content_hash::sha256_hex_digest(parts.encoded.clone()) {
                     Some(digest) => {
                         Some(Rc::new(OciContentDigest::OciSha256Digest(digest.clone())))
                     }
@@ -259,7 +259,7 @@ pub fn parse_oci_content_digest_wire(raw: String) -> Option<Rc<OciContentDigest>
                 }
             } else {
                 if (parts.algorithm.clone() == "sha512".to_string()) {
-                    match sha512_hex_digest(parts.encoded.clone()) {
+                    match crate::std_content_hash::sha512_hex_digest(parts.encoded.clone()) {
                         Some(digest) => {
                             Some(Rc::new(OciContentDigest::OciSha512Digest(digest.clone())))
                         }
@@ -287,7 +287,7 @@ pub fn parse_oci_content_digest_wire(raw: String) -> Option<Rc<OciContentDigest>
 }
 
 pub fn oci_sha256_content_digest(hex: String) -> Option<Rc<OciContentDigest>> {
-    match sha256_hex_digest(hex.clone()) {
+    match crate::std_content_hash::sha256_hex_digest(hex.clone()) {
         Some(digest) => Some(oci_content_digest_from_validated_sha256(digest.clone())),
         None => None,
     }

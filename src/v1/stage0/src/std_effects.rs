@@ -125,7 +125,9 @@ pub fn key_source_eq(left: Rc<KeySource>, right: Rc<KeySource>) -> bool {
             _ => false,
         },
         KeySource::CompositeKey { fields: fa, .. } => match (*right.clone()).clone() {
-            KeySource::CompositeKey { fields: fb, .. } => string_list_eq(fa.clone(), fb.clone()),
+            KeySource::CompositeKey { fields: fb, .. } => {
+                crate::std_realization_schedule::string_list_eq(fa.clone(), fb.clone())
+            }
             _ => false,
         },
     }
@@ -284,7 +286,7 @@ pub fn derive_effect_shape(
         HttpMethod::POST => Rc::new(EffectShape::CreateEffect {
             cause: Rc::new(CreateCause::PostAlways),
         }),
-        HttpMethod::DELETE => match last_path_param(path.clone()) {
+        HttpMethod::DELETE => match crate::std_http_path::last_path_param(path.clone()) {
             Some(p) => Rc::new(EffectShape::DeleteEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
@@ -294,7 +296,7 @@ pub fn derive_effect_shape(
                 }),
             }),
         },
-        HttpMethod::PUT => match last_path_param(path.clone()) {
+        HttpMethod::PUT => match crate::std_http_path::last_path_param(path.clone()) {
             Some(p) => Rc::new(EffectShape::UpsertEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
@@ -304,7 +306,7 @@ pub fn derive_effect_shape(
                 }),
             }),
         },
-        HttpMethod::PATCH => match last_path_param(path.clone()) {
+        HttpMethod::PATCH => match crate::std_http_path::last_path_param(path.clone()) {
             Some(p) => Rc::new(EffectShape::UpsertEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),

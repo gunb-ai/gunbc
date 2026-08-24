@@ -208,7 +208,11 @@ pub fn keyed_roster_insert<K: Clone, V: Clone>(
             first: evidence.first.clone(),
             duplicate: evidence.duplicate.clone(),
         }),
-        None => match keyed_row_find(rows.clone(), incoming.row_key.clone(), key_eq.clone()) {
+        None => match crate::std_keyed_row::keyed_row_find(
+            rows.clone(),
+            incoming.row_key.clone(),
+            key_eq.clone(),
+        ) {
             Some(existing) => Rc::new(KeyedRosterInsert::KeyedRosterDuplicateKey {
                 key: incoming.row_key.clone(),
                 existing: existing.clone(),
@@ -226,7 +230,11 @@ pub fn keyed_roster_insert_into_unique<K: Clone, V: Clone>(
     incoming: Rc<KeyedRow<K, V>>,
     key_eq: impl Fn(K, K) -> bool + Clone,
 ) -> Rc<KeyedRosterInsert<K, V>> {
-    match keyed_row_find(rows.clone(), incoming.row_key.clone(), key_eq.clone()) {
+    match crate::std_keyed_row::keyed_row_find(
+        rows.clone(),
+        incoming.row_key.clone(),
+        key_eq.clone(),
+    ) {
         Some(existing) => Rc::new(KeyedRosterInsert::KeyedRosterDuplicateKey {
             key: incoming.row_key.clone(),
             existing: existing.clone(),
