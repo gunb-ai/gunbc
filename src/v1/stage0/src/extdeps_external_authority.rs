@@ -78,7 +78,7 @@ pub fn external_model_scope_citations(
 }
 
 pub fn external_subject_ref_eq(a: Rc<ExternalSubjectRef>, b: Rc<ExternalSubjectRef>) -> bool {
-    crate::std_decl_ref::declaration_ref_eq(a.declaration.clone(), b.declaration.clone())
+    declaration_ref_eq(a.declaration.clone(), b.declaration.clone())
 }
 
 pub fn fact_authority_override_ref_note() -> String {

@@ -96,11 +96,11 @@ pub fn flatten_parent_envs(
         });
         let dedup = ordered.iter().cloned().fold(
             Rc::new(FlattenAccum {
-                seen: panic!("call target identity was not established before Rust emission")(),
+                seen: v1_rt::rc_empty_map::<String, bool>(),
                 out: Rc::new(vec![]),
             }),
             |acc: Rc<FlattenAccum>, p: Rc<ResolvedFuncEnv>| {
-                if crate::v1_compiler_infer_types::emit_map_has(acc.seen.clone(), p.name.clone()) {
+                if emit_map_has(acc.seen.clone(), p.name.clone()) {
                     acc.clone()
                 } else {
                     Rc::new(FlattenAccum {
@@ -169,11 +169,7 @@ pub fn lookup_resolved_sig_unique_across_parents(
                 None => acc.clone(),
             },
         );
-        match (*crate::v1_compiler_infer_occurrence_binding::module_path_owner_binding_decide(
-            scan.owners.clone(),
-        ))
-        .clone()
-        {
+        match (*module_path_owner_binding_decide(scan.owners.clone())).clone() {
             ModulePathBindingProjection::ModulePathBindingMiss => {
                 Rc::new(FuncSigLookup::FuncSigUnresolved)
             }
@@ -185,11 +181,7 @@ pub fn lookup_resolved_sig_unique_across_parents(
             }
             ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => {
                 Rc::new(FuncSigLookup::FuncSigAmbiguous {
-                    candidates:
-                        crate::v1_compiler_infer_occurrence_binding::ambiguity_labels_from_decide(
-                            scan.owners.clone(),
-                            name.clone(),
-                        ),
+                    candidates: ambiguity_labels_from_decide(scan.owners.clone(), name.clone()),
                 })
             }
         }
@@ -288,7 +280,7 @@ pub fn collect_func_call_edges(
             __result.extend(
                 (*if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
                     collect_calls_in_expr(
-                        crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone()),
+                        authored_name_at(source_indices.clone(), item.clone()),
                         item.body.clone().clone().unwrap(),
                         local_func_set.clone(),
                         source_indices.clone(),
@@ -313,9 +305,8 @@ pub fn collect_calls_in_expr(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_edges = match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
-                let f =
-                    crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone());
-                if crate::v1_compiler_infer_types::emit_map_has(local_func_set.clone(), f.clone()) {
+                let f = expr_call_func_at(texpr.clone(), source_indices.clone());
+                if emit_map_has(local_func_set.clone(), f.clone()) {
                     Rc::new(vec![Rc::new(CallEdge {
                         caller: caller.clone(),
                         callee: f.clone(),
@@ -354,7 +345,7 @@ pub fn func_reaches_self(
     visited: Rc<HashMap<String, bool>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if crate::v1_compiler_infer_types::emit_map_has(visited.clone(), current.clone()) {
+        if emit_map_has(visited.clone(), current.clone()) {
             false
         } else {
             {
@@ -513,10 +504,7 @@ pub fn topo_resolve_loop(
                         .iter()
                         .cloned()
                         {
-                            if crate::v1_compiler_infer_types::emit_map_has(
-                                local_func_set.clone(),
-                                c.clone(),
-                            ) {
+                            if emit_map_has(local_func_set.clone(), c.clone()) {
                                 __result.push(c);
                             }
                         }
@@ -564,11 +552,11 @@ pub fn topo_resolve_loop(
                                     signatures: acc.signatures.clone(),
                                     diagnostics: v1_rt::rc_list_push(
                                         acc.diagnostics.clone(),
-                                        crate::v1_std_core::make_error_node(
+                                        make_error_node(
                                             Rc::new(CompilerDiagnostic::MissingAnnotation {
                                                 fn_name: fn_name.clone(),
                                                 what: "return type (recursive)".to_string(),
-                                                span: crate::v1_std_core::no_span(),
+                                                span: no_span(),
                                             }),
                                             module_name.clone(),
                                         ),
@@ -634,11 +622,11 @@ pub fn topo_resolve_loop(
                             signatures: acc.signatures.clone(),
                             diagnostics: v1_rt::rc_list_push(
                                 acc.diagnostics.clone(),
-                                crate::v1_std_core::make_error_node(
+                                make_error_node(
                                     Rc::new(CompilerDiagnostic::MissingAnnotation {
                                         fn_name: fn_name.clone(),
                                         what: "return type".to_string(),
-                                        span: crate::v1_std_core::no_span(),
+                                        span: no_span(),
                                     }),
                                     module_name.clone(),
                                 ),
@@ -658,11 +646,7 @@ pub fn topo_resolve_loop(
         let next_remaining = Rc::new({
             let mut __result = Vec::new();
             for fn_name in remaining.iter().cloned() {
-                if (crate::v1_compiler_infer_types::emit_map_has(
-                    ready_set.clone(),
-                    fn_name.clone(),
-                ) == false)
-                {
+                if (emit_map_has(ready_set.clone(), fn_name.clone()) == false) {
                     __result.push(fn_name);
                 }
             }
@@ -704,10 +688,7 @@ pub fn resolve_func_sigs(
             .iter()
             .cloned()
             {
-                __result.push(crate::v1_std_core::authored_name_at(
-                    source_indices.clone(),
-                    item.clone(),
-                ));
+                __result.push(authored_name_at(source_indices.clone(), item.clone()));
             }
             __result
         });
@@ -719,7 +700,7 @@ pub fn resolve_func_sigs(
         );
         topo_resolve_loop(
             local_func_names.clone(),
-            panic!("call target identity was not established before Rust emission")(),
+            v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
             declared_sigs.clone(),
             call_edges.clone(),
             local_func_set.clone(),

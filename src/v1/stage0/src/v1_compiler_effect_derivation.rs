@@ -38,7 +38,7 @@ pub fn re_export_derive_op_effect(
     method: HttpMethod,
     path: Rc<PathTemplate>,
 ) -> Rc<DeriveOpEffectResult> {
-    crate::std_effects::derive_op_effect(operation_name.clone(), method.clone(), path.clone())
+    derive_op_effect(operation_name.clone(), method.clone(), path.clone())
 }
 
 pub fn re_export_check_modifier(
@@ -46,7 +46,7 @@ pub fn re_export_check_modifier(
     declared_idempotent: bool,
     declared_readonly: bool,
 ) -> Rc<ModifierCheck> {
-    crate::std_effects::check_modifier_vs_derivation(
+    check_modifier_vs_derivation(
         op.clone(),
         declared_idempotent.clone(),
         declared_readonly.clone(),
@@ -54,9 +54,9 @@ pub fn re_export_check_modifier(
 }
 
 pub fn re_export_parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
-    crate::extdeps_uri_path::parse_path_template(raw.clone())
+    parse_path_template(raw.clone())
 }
 
 pub fn re_export_has_path_params(template: Rc<PathTemplate>) -> bool {
-    crate::std_http_path::has_path_params(template.clone())
+    has_path_params(template.clone())
 }

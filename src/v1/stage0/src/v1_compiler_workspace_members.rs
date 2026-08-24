@@ -33,7 +33,7 @@ pub fn stage0_member_entry(spec: Rc<Stage0CrateSpec>) -> String {
 }
 
 pub fn stage0_workspace_member_region() -> String {
-    match (*crate::v1_compiler_stage0_crates::stage0_crate_plan_outcome()).clone() {
+    match (*stage0_crate_plan_outcome()).clone() {
         Stage0CratePlanOutcome::Stage0CratePlanOk { plan: plan, .. } => Rc::new(
             plan.crates
                 .clone()
@@ -45,11 +45,9 @@ pub fn stage0_workspace_member_region() -> String {
         .join(&"\n".to_string()),
         Stage0CratePlanOutcome::Stage0CratePlanRefused { cause: cause, .. } => v1_rt::concat(
             "    # REFUSED: ".to_string(),
-            crate::v1_compiler_stage0_crates::stage0_crate_boundary_emit_refusal_message(
-                crate::v1_compiler_stage0_crates::stage0_map_package_dir_refusal_to_boundary(
-                    cause.clone(),
-                ),
-            ),
+            stage0_crate_boundary_emit_refusal_message(stage0_map_package_dir_refusal_to_boundary(
+                cause.clone(),
+            )),
         ),
     }
 }

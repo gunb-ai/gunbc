@@ -32,21 +32,19 @@ pub fn filesystem_read_result_type_note() -> String {
 }
 
 pub fn filesystem_read_result_type() -> Rc<Node> {
-    crate::v1_compiler_infer_types::make_kernel_record_type(
+    make_kernel_record_type(
         "FilesystemReadResult".to_string(),
-        Rc::new(vec![
-            crate::v1_compiler_infer_types::make_kernel_record_field(
-                "content".to_string(),
-                string_type(),
-            ),
-        ]),
+        Rc::new(vec![make_kernel_record_field(
+            "content".to_string(),
+            string_type(),
+        )]),
     )
 }
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
-        span: crate::v1_std_core::no_span(),
+        span: no_span(),
         ident_span: None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
@@ -67,7 +65,7 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
 }
 
 pub fn map_of_type_variables() -> Rc<Node> {
-    crate::v1_compiler_infer_types::make_map_type(
+    make_map_type(
         type_variable_node("map_key".to_string()),
         type_variable_node("map_value".to_string()),
     )
@@ -76,26 +74,20 @@ pub fn map_of_type_variables() -> Rc<Node> {
 }
 
 pub fn list_of_type_variable(id: String) -> Rc<Node> {
-    crate::v1_compiler_infer_types::make_container_type(
-        "List".to_string(),
-        type_variable_node(id.clone()),
-    )
-    .ty
-    .clone()
+    make_container_type("List".to_string(), type_variable_node(id.clone()))
+        .ty
+        .clone()
 }
 
 pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
-    crate::v1_compiler_infer_types::make_container_type("List".to_string(), element.clone())
+    make_container_type("List".to_string(), element.clone())
         .ty
         .clone()
 }
 
 pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
     v1_rt::rc_map_insert(
-        panic!("call target identity was not established before Rust emission")(
-            panic!("malformed arg: missing value"),
-            panic!("malformed arg: missing value"),
-        ),
+        v1_rt::rc_empty_map::<String, Rc<Node>>(),
         key.clone(),
         value.clone(),
     )
@@ -104,20 +96,20 @@ pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node
 pub fn builtin_kernel_seed_diagnostics() -> Rc<Vec<Rc<ErrorNode>>> {
     v1_rt::concat(
         v1_rt::concat(
-            crate::v1_compiler_infer_types::make_map_type(
+            make_map_type(
                 type_variable_node("map_key".to_string()),
                 type_variable_node("map_value".to_string()),
             )
             .diagnostics
             .clone(),
-            crate::v1_compiler_infer_types::make_container_type(
+            make_container_type(
                 "List".to_string(),
                 type_variable_node("collection_element".to_string()),
             )
             .diagnostics
             .clone(),
         ),
-        crate::v1_compiler_infer_types::make_container_type(
+        make_container_type(
             "Set".to_string(),
             type_variable_node("set_elem".to_string()),
         )
@@ -157,7 +149,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "parse_int".to_string(),
-            crate::v1_std_core::with_optional_cardinality(int_type()),
+            with_optional_cardinality(int_type()),
         );
         let m = v1_rt::rc_map_insert(m.clone(), "char_at".to_string(), string_type());
         let m = v1_rt::rc_map_insert(m.clone(), "substring".to_string(), string_type());
@@ -204,7 +196,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(m.clone(), "map_insert".to_string(), map_of_type_variables());
         let m = v1_rt::rc_map_insert(m.clone(), "map_merge".to_string(), map_of_type_variables());
         let m = v1_rt::rc_map_insert(m.clone(), "with".to_string(), map_of_type_variables());
-        let set_ty = crate::v1_compiler_infer_types::make_container_type(
+        let set_ty = make_container_type(
             "Set".to_string(),
             type_variable_node("set_elem".to_string()),
         )
@@ -223,23 +215,17 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "lookup".to_string(),
-            crate::v1_std_core::with_optional_cardinality(type_variable_node(
-                "map_value".to_string(),
-            )),
+            with_optional_cardinality(type_variable_node("map_value".to_string())),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "map_get".to_string(),
-            crate::v1_std_core::with_optional_cardinality(type_variable_node(
-                "map_value".to_string(),
-            )),
+            with_optional_cardinality(type_variable_node("map_value".to_string())),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "Some".to_string(),
-            crate::v1_std_core::with_optional_cardinality(type_variable_node(
-                "some_inner".to_string(),
-            )),
+            with_optional_cardinality(type_variable_node("some_inner".to_string())),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -259,9 +245,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "get".to_string(),
-            crate::v1_std_core::with_optional_cardinality(type_variable_node(
-                "collection_element".to_string(),
-            )),
+            with_optional_cardinality(type_variable_node("collection_element".to_string())),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

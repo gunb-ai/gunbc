@@ -71,7 +71,7 @@ pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
         Rc::new(vec!["T".to_string()])
     } else {
         match v1_rt::map_get(&kernel_algebra_profile(), kind_name.clone()) {
-            Some(p) => crate::std_algebra::algebra_type_param_names(p.clone()),
+            Some(p) => algebra_type_param_names(p.clone()),
             None => Rc::new(vec![]),
         }
     }
