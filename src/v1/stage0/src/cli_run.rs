@@ -464,6 +464,154 @@ pub fn project_roadmap_acceptance_event_history_from_authority_text_builtin(
 pub mod roadmap_acceptance_history_carrier;
 
 #[cfg(test)]
+mod bare_reference_scanner_tests {
+    use super::{bare_identifier_candidates, module_self_declared_names};
+
+    /// Every coproduct shape the corpus actually writes. The multiline form is the one
+    /// review 55386 caught being missed, and it is how `std.spatial_frame` declares
+    /// `ExtentInFrame` and `std.realization_schedule` declares `Predicted` — two of the
+    /// four variants this guard exists for.
+    #[test]
+    fn self_declared_names_collect_every_coproduct_form() {
+        let src = "module std.probe\n\
+                   type VisibilityScope = Repo | Org | Network | World\n\
+                   type FrameExtent\n\
+                     = ExtentInFrame { length: FrameLength }\n\
+                     | ExtentFrameUnregistered { identity: Id }\n\
+                   type CostBasis\n\
+                     = Predicted\n\
+                     | Measured\n\
+                   type CostAccount<S> {\n\
+                     time: Measure<Time, S>\n\
+                   }\n\
+                   type Result<ok, err> = Ok { value: ok } | Err { value: err }\n\
+                   data volume_row: Int = 3\n\
+                   fn trim_one(s: String) -> String { s }\n";
+        let names = module_self_declared_names(src);
+        for expected in [
+            "VisibilityScope",
+            "Repo",
+            "Org",
+            "Network",
+            "World",
+            "FrameExtent",
+            "ExtentInFrame",
+            "ExtentFrameUnregistered",
+            "CostBasis",
+            "Predicted",
+            "Measured",
+            "CostAccount",
+            "S",
+            "Result",
+            "ok",
+            "err",
+            "Ok",
+            "Err",
+            "volume_row",
+            "trim_one",
+        ] {
+            assert!(
+                names.contains(expected),
+                "missing self-declared name {expected}"
+            );
+        }
+    }
+
+    /// A coproduct may be spaced out. `std.measure`'s `Dimension` puts blank lines
+    /// between groups of variants and `Volume` sits after one; breaking the block scan
+    /// on the blank line dropped it and silently reopened the edge this guard closes.
+    #[test]
+    fn blank_lines_do_not_end_a_coproduct_block() {
+        let src = "module std.measure\n\
+                   type Dimension\n\
+                     = Length\n\
+                     | Mass\n\
+                   \n\
+                     | Area\n\
+                     | Volume\n\
+                   \n\
+                   type Scale =\n\
+                     | Nano\n";
+        let names = module_self_declared_names(src);
+        for expected in [
+            "Dimension",
+            "Length",
+            "Mass",
+            "Area",
+            "Volume",
+            "Scale",
+            "Nano",
+        ] {
+            assert!(
+                names.contains(expected),
+                "missing {expected} across a blank line"
+            );
+        }
+    }
+
+    // KNOWN GAP, deliberately not asserted: a type ALIAS target is collected as though
+    // it were a variant — `type List<element> = FreeMonoid<element>` in `std.types` puts
+    // `FreeMonoid` in this set, which suppresses the closure edge to whichever module
+    // declares it. That is an UNDER-pull, the dangerous direction, and it is pre-existing
+    // in this guard rather than introduced here. It is left alone because the obvious
+    // repair — treat a single unalternated item with no record payload as an alias —
+    // was implemented, measured, and made the branch arm WORSE (94 sources -> 126, 2
+    // blocking -> 3), so the alias distinction interacts with something not yet
+    // understood. Fixing it needs its own arms, not a rider on this one.
+
+    /// A record body's field labels are not declarations the module exports.
+    #[test]
+    fn record_field_labels_are_not_self_declared() {
+        let src = "module std.probe\n\
+                   type CostAccount {\n\
+                     observation: Observation\n\
+                   }\n";
+        let names = module_self_declared_names(src);
+        assert!(names.contains("CostAccount"));
+        assert!(
+            !names.contains("observation"),
+            "field label collected as a declaration"
+        );
+    }
+
+    /// A parenthesis-free arrow lambda binds its parameter. The guard keys on the
+    /// PRECEDING token, not the arrow, because a match arm head is also `ident =>` and
+    /// binding one would suppress a real edge — a silent under-pull.
+    #[test]
+    fn bare_arrow_lambda_parameter_is_bound_but_a_match_arm_head_is_not() {
+        let src = "module std.probe\n\
+                   fn f(xs: List<Row>) -> Bool {\n\
+                     xs |> any(t => t.name == name)\n\
+                   }\n\
+                   fn g(o: Optional<Int>) -> Int {\n\
+                     match o {\n\
+                       Absent => 0\n\
+                       Present { value: v } => v\n\
+                     }\n\
+                   }\n";
+        let c = bare_identifier_candidates(src);
+        assert!(
+            c.bound.contains("t"),
+            "lambda parameter not treated as a binder"
+        );
+        assert!(
+            !c.bound.contains("Absent"),
+            "match arm head bound — this would silently drop a real closure edge"
+        );
+    }
+
+    /// The other two legal preceding tokens: a comma and a named argument's colon.
+    #[test]
+    fn named_argument_and_comma_positioned_lambdas_bind_too() {
+        let src = "module std.probe\n\
+                   fn f(xs: List<Int>) -> Int {\n\
+                     fold(xs, init: 0, f: acc => acc)\n\
+                   }\n";
+        let c = bare_identifier_candidates(src);
+        assert!(c.bound.contains("acc"));
+    }
+}
+#[cfg(test)]
 mod stage0_cargo_manifest_parser_tests {
     use super::{parse_stage0_cargo_manifest_bin_paths, Stage0CargoManifestBinParse};
 
@@ -7814,11 +7962,26 @@ fn module_self_declared_names(content: &str) -> BTreeSet<String> {
                     }
                 }
             }
-            // `type X =` opens a coproduct whose variant heads continue on this line
-            // and on following lines that begin with `|`.
-            in_coproduct =
-                (l.starts_with("type ") || l.starts_with("pub type ")) && l.contains('=');
-            if in_coproduct {
+            // `type X = ...` opens a coproduct whose variant heads continue on this
+            // line and on following lines beginning with `|`. The MULTILINE form puts
+            // the `=` on the NEXT line instead —
+            //
+            //     type FrameExtent
+            //       = ExtentInFrame { length: FrameLength }
+            //       | ExtentFrameUnregistered { .. }
+            //
+            // — so a bare `type X` head opens one too, pending its `=`. Review 55386
+            // caught this: without it `ExtentInFrame` and `Predicted` were never
+            // collected, two of the four variants this guard exists for, and the
+            // closure improvement measured for their modules came from those modules
+            // leaving the closure for an unrelated reason. Right conclusion, wrong
+            // evidence.
+            //
+            // The same-line extraction below is gated on the LINE's own `=` rather than
+            // on the flag, so widening the flag cannot silently disable it.
+            let is_type_head = l.starts_with("type ") || l.starts_with("pub type ");
+            in_coproduct = is_type_head;
+            if is_type_head {
                 if let Some((_, body)) = l.split_once('=') {
                     for part in body.split('|') {
                         if let Some(name) = ident_head(part) {
@@ -7972,24 +8135,37 @@ fn bare_reference_pull_paths_for_source(
                 || binding.resolved.type_annotation.is_some()
                 || binding.resolved.connective != crate::v1_std_core::Connective::NoConnective
         };
-        let resolve_in = |census: &Rc<SymbolIndex>| -> Option<String> {
+        // Returns WHAT was selected and, beside it, WHICH CENSUS STATE produced the
+        // selection. The state is the census's own verdict — `GlobalBareUniqueBinding`
+        // versus `GlobalBareAmbiguousBinding` — and it is the authority on whether a
+        // bare name has competing declarations. Reconstructing that from source with a
+        // declaration-head scanner does not work: a line-leading `=`/`|` regex
+        // undercounts (it misses `type Connective = Conj | Disj | NoConnective | Arrow`
+        // entirely) and a permissive one overcounts (it reads an alias target and a
+        // `data` initializer's head as variants), and the two answers differ by 30x on
+        // the same trace. The census already knows; carrying its verdict costs nothing.
+        let resolve_in = |census: &Rc<SymbolIndex>| -> (Option<String>, &'static str) {
             if service_head {
-                return v1_rt::map_get(&census.services, name.clone())
-                    .map(|entry| entry.module_path.clone());
+                return (
+                    v1_rt::map_get(&census.services, name.clone())
+                        .map(|entry| entry.module_path.clone()),
+                    "service",
+                );
             }
             match v1_rt::map_get(&census.global_bare, name.clone()) {
                 Some(state) => match state.as_ref() {
                     GlobalBareLookupState::GlobalBareUniqueBinding {
                         module_path,
                         binding,
-                    } => {
+                    } => (
                         if pullable(binding) {
                             Some(module_path.clone())
                         } else {
                             None
-                        }
-                    }
-                    GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
+                        },
+                        "unique",
+                    ),
+                    GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => (
                         crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
                             referencing_module.clone(),
                             candidates.clone(),
@@ -8000,17 +8176,19 @@ fn bare_reference_pull_paths_for_source(
                             } else {
                                 None
                             }
-                        })
-                    }
+                        }),
+                        "ambiguous",
+                    ),
                 },
-                None => {
+                None => (
                     if in_call_position {
                         v1_rt::map_get(&census.services, name.clone())
                             .map(|entry| entry.module_path.clone())
                     } else {
                         None
-                    }
-                }
+                    },
+                    "absent",
+                ),
             }
         };
         // WHICH ARM ANSWERED is a fact the caller needs and this match used to destroy
@@ -8025,9 +8203,12 @@ fn bare_reference_pull_paths_for_source(
         // Carrying the provenance costs nothing (the arms already know it) and makes the
         // existing `GUNBC_BARE_PULL_TRACE` line answer "how was this resolved", not only
         // "what did it resolve to".
-        let (target_module, resolution_arm) = match resolve_in(&census) {
-            Some(m) => (Some(m), "scoped"),
-            None => (resolve_in(&pool_bare_census(index)?), "pool-fallback"),
+        let (target_module, resolution_arm, census_state) = match resolve_in(&census) {
+            (Some(m), state) => (Some(m), "scoped", state),
+            (None, _) => {
+                let (m, state) = resolve_in(&pool_bare_census(index)?);
+                (m, "pool-fallback", state)
+            }
         };
         let Some(module_path) = target_module else {
             continue;
@@ -8058,8 +8239,8 @@ fn bare_reference_pull_paths_for_source(
         let dep_rel = workspace_relative_repo_path(&dep.path);
         if std::env::var("GUNBC_BARE_PULL_TRACE").is_ok() {
             eprintln!(
-                "[bare-pull] {} -> '{}' -> {} ({}) [{}]",
-                file_rel, name, module_path, dep_rel, resolution_arm
+                "[bare-pull] {} -> '{}' -> {} ({}) [{} {}]",
+                file_rel, name, module_path, dep_rel, resolution_arm, census_state
             );
         }
         if !index.module_graph_facts.declares_repo_path(&dep_rel) {
