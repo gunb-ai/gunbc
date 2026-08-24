@@ -1,6 +1,20 @@
 module test.claim.compile_pool_ensure_wiring_witness
 
 import gunbc.host_toolchain_ensure { host_toolchain_ensure_effect, CompilePool }
+// IMPORTED FOR LOADING, NOT FOR BINDING, and the distinction is what this import is here to record.
+// Names in this corpus resolve by global uniqueness across the modules a run has LOADED -- an import
+// list does not bind them, which is why the other ten witnesses below reference symbols no import
+// names and resolve fine. But a module enters the load graph only by being imported by something in
+// the entry's closure, and gunbc.host_compile_pool_provision is a LEAF entry point: like its siblings
+// gunbc.host_build_cache_provision and gunbc.srv3_os_install_actuator_toolchain_ensure, nothing in the
+// corpus imports it. Without this line its symbols are absent rather than unbound, and the entry-point
+// witness fails with NoSuchFunction -- measured, not reasoned: that is exactly how it failed under
+// `gunbc run` before this import was added, while the same witness passed under the floor, which
+// prepares one subject over all 3873 modules and therefore loads it anyway.
+import gunbc.host_compile_pool_provision {
+  provision_compile_pool_effect_for_host,
+  provision_compile_pool_routes_through_host_effect_apply,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
