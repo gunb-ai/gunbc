@@ -23,23 +23,15 @@ data runner_activation_scope_disposition: Disposition = SingleAuthority
 
 data materialization_is_not_activation_note: String = "RunnerDeploySlot CONFLATED TWO LIFECYCLE MOMENTS, and the conflation is why the fleet-wide birth defect was constructible. Materializing a slot — writing its files, service template, credentials and drop-ins — and ACTIVATING it — enabling the unit so it may accept a job — have different prerequisites, and only the second one can create the defect. A materialized-but-disabled slot compiles nothing and therefore cannot spawn a cache server; the moment a slot may accept work, its first cache-miss compile will connect-or-start, and if no managed endpoint owner exists that start happens inside the runner's own cgroup, where it survives as the host's de facto build cache under one slot's memory ceiling.\\n\\nSo the prerequisite belongs on ACTIVATION and nowhere else. This module owns that moment; gunbc.runner_host_deploy keeps materialization and no longer offers an enable path at all. The two live in different modules because the dependency has to run one way: activation needs the deployed-instance model, materialization does not, and a single module owning both would have to import the cache authority into the installer's own layer.\\n\\nWHY MOVING THE ROW IN host_standup WOULD NOT HAVE DONE THIS. The spine declares P1 RunnerDeploySlot before P1b BuildCacheProvision, and swapping those two rows changes the declared narrative while leaving runner_enable_command constructible from a bare RunnerHostAdmission through exactly the path that produced srv1. Ordering in a status list is a projection of a dependency; it is not the dependency. The wall has to be that the enable command has no constructor that does not consume the readiness receipt."
 
-data build_cache_instance_ready_note: String = "THE RECEIPT IS ABOUT AN EXACT INSTANCE AND AN EXACT OWNER, never about a responsive daemon. It carries the desired BuildCacheInstance it was checked against and the ProcessIdentity actually found holding the endpoint, so a reader can tell WHICH instance was proven ready and WHICH process proved it — a token meaning 'sccache seems fine on this host' would readmit the state this whole lane exists to remove.\\n\\nThe receipt carries managed_unit — a bare unit name — and NOT a BuildCacheServerPlacement, which is the load-bearing choice and was arrived at by having a weaker version fail. The first draft declared the field as placement: ServerManagedUnitOwned, reasoning that naming one variant as the field type made the other four unwritable. That is not what this substrate does: a variant used as a type widens to its coproduct, so the field really had type BuildCacheServerPlacement and a receipt holding ServerRunnerOwned was perfectly constructible — the compiler said so, refusing a match on the field as non-exhaustive over all five arms. The note claiming unrepresentability would have shipped as a false statement about a wall, which is rung inflation (DESIGN section 4b) in the carrier that exists to prevent exactly that.\n\nSo the receipt does not hold a placement at all. A managed unit name is the ONLY ownership fact it can express, and there is no way to write 'ready but runner-owned' or 'ready but placement unknown' into it, because those states have no field to occupy. The placement coproduct stays where it belongs — on the observation — and the bridge between them is placement_admits_activation, which refuses four arms out of five and deliberately does not construct a receipt.\\n\\nThe verified flags stay Bool deliberately and this is the honest weak point, so it is named rather than hidden: each one should eventually be a typed comparison carrying the observed value beside the intended one, the way placement already does. They are Bool today because the observation carriers for principal, storage and capacity do not exist yet — the endpoint observer reads executable and principal, but nothing reads back a unit's configured storage root or capacity. A Bool that nothing can currently compute from an observation is a placeholder, and the dissolve-on is that each flag becomes a typed observed-vs-intended pair as its producer lands. Until then the receipt is only as strong as its producer, which is why no producer ships in this increment."
-
-data build_cache_instance_ready_observation_carrier_correction: String = "CORRECTION TO build_cache_instance_ready_note's final paragraph: gunbc.build_cache_instance now carries storage and capacity observations bound to the same exact instance and endpoint-owning process. The flags remain Bool because no producer reads that process's environment into the carriers yet, principal still has no typed comparison, and replacing flags before those producers land would fabricate verification. The dissolve-on remains one typed observed-versus-intended comparison per producer; this increment supplies only the two missing carrier shapes."
+data build_cache_instance_ready_note: String = "THE RECEIPT IS ABOUT AN EXACT INSTANCE AND AN EXACT OWNER, never about a responsive daemon. It carries the desired BuildCacheInstance it was checked against and the ProcessIdentity actually found holding the endpoint, so a reader can tell WHICH instance was proven ready and WHICH process proved it — a token meaning 'sccache seems fine on this host' would readmit the state this whole lane exists to remove.\\n\\nThe receipt carries managed_unit — a bare unit name — and NOT a BuildCacheServerPlacement, which is the load-bearing choice and was arrived at by having a weaker version fail. The first draft declared the field as placement: ServerManagedUnitOwned, reasoning that naming one variant as the field type made the other four unwritable. That is not what this substrate does: a variant used as a type widens to its coproduct, so the field really had type BuildCacheServerPlacement and a receipt holding ServerRunnerOwned was perfectly constructible — the compiler said so, refusing a match on the field as non-exhaustive over all five arms. The note claiming unrepresentability would have shipped as a false statement about a wall, which is rung inflation (DESIGN section 4b) in the carrier that exists to prevent exactly that.\n\nSo the receipt does not hold a placement at all. A managed unit name is the ONLY ownership fact it can express, and there is no way to write 'ready but runner-owned' or 'ready but placement unknown' into it, because those states have no field to occupy. The placement coproduct stays where it belongs — on the observation — and gunbc.build_cache_instance_readiness is the single producer that joins every required positive observation before constructing this proof-shaped receipt."
 
 type BuildCacheInstanceReady {
   instance: BuildCacheInstance
   owner: ProcessIdentity
   managed_unit: NonEmptyStr
-  endpoint_verified: Bool
-  executable_verified: Bool
-  principal_verified: Bool
-  storage_verified: Bool
-  capacity_verified: Bool
-  compile_pool_verified: Bool
 }
 
-data host_compile_pool_ready_note: String = "The compile pool is a SEPARATE prerequisite from the cache instance because moving the server into a managed unit relocates where every cache-miss compiler's memory is charged. A managed server inside no declared pool is not an improvement on a runner-owned one; it is the same unbounded charge under a different parent. The two receipts are therefore both required and neither implies the other. Today no host realizes the slice and the budget derives a zero pool, so this receipt has no producer either — which is the correct state for a wall whose actuation is deliberately unauthorized."
+data host_compile_pool_ready_note: String = "The compile pool is a SEPARATE prerequisite from the cache instance because moving the server into a managed unit relocates where every cache-miss compiler's memory is charged. A managed server inside no declared pool is not an improvement on a runner-owned one; it is the same unbounded charge under a different parent. The two receipts are therefore both required and neither implies the other. gunbc.host_compile_pool derives this receipt from the declared topology, sizing and slice observation; under today's CompilePoolInRunnerSlots topology it correctly produces not-ready for every host."
 
 type HostCompilePoolReady {
   host: HostIdentity
@@ -60,15 +52,6 @@ type RunnerActivationAdmission
 
 fn ready_receipt_names_intended_unit(r: BuildCacheInstanceReady) -> Bool {
   (r.managed_unit as String) == (r.instance.intended_unit as String)
-}
-
-fn readiness_flags_all_verified(r: BuildCacheInstanceReady) -> Bool {
-  r.endpoint_verified
-    && r.executable_verified
-    && r.principal_verified
-    && r.storage_verified
-    && r.capacity_verified
-    && r.compile_pool_verified
 }
 
 fn compile_pool_is_ready(p: HostCompilePoolReady) -> Bool {
@@ -119,13 +102,6 @@ fn admit_runner_activation(
                 reason: "runner_activation: the endpoint is owned by a managed unit, but not the unit this instance intends. ServerManagedUnitOwned means SOME unit holds it, which is satisfied by the wrong one — an out-of-band supervisor, a legacy ctrl unit, a hand-started service — and each of those charges cache-miss compilers to a parent the fleet does not manage. Refusing rather than accepting unit ownership as a synonym for correct ownership." as NonEmptyStr,
               }
             true =>
-          match readiness_flags_all_verified(r: cache_ready) {
-            false =>
-              RunnerActivationRefused {
-                host_label: d.host_label,
-                reason: "runner_activation: the build-cache instance is managed-unit-owned but at least one declared attribute (endpoint, executable, principal, storage, capacity, compile pool) is unverified against intent. A partially verified instance is not a ready one; refusing rather than activating on the verified subset." as NonEmptyStr,
-              }
-            true =>
               match pool_receipt_is_for_host(p: pool_ready, host: d.host_label as HostIdentity)
                 && pool_receipt_names_intended_pool(p: pool_ready, r: cache_ready) {
                 false =>
@@ -152,12 +128,11 @@ fn admit_runner_activation(
               }
               }
           }
-          }
       }
   }
 }
 
-data activation_command_has_one_constructor_note: String = "THE WALL ITSELF: there is no function in this module that takes a RunnerHostDeploy, or a bare RunnerHostAdmission, and yields an enable command. runner_activate_command consumes RunnerActivationAdmission, and its refusal arm carries no command at all — so 'enable a runner without a grounded managed cache' is unrepresentable rather than discouraged. gunbc.runner_host_deploy's readiness-blind runner_enable_command is deleted rather than deprecated; leaving it would leave the old path constructible, and a wall with a door beside it is a sign.\\n\\nHONEST RESIDUAL, inherited from the enrollment wall this mirrors and stated for the same reason: .dag has no visibility modifiers yet, so a caller can hand-write RunnerActivationAdmitted, or a BuildCacheInstanceReady whose Bool flags are all true, without any observation behind it. That is an explicit lie in the source rather than a forgotten check, which is the strongest wall this substrate currently supports. It closes when node/subtree visibility grants make these constructors private to their producers (DESIGN open thread), at which point the receipt becomes unforgeable."
+data activation_command_has_one_constructor_note: String = "THE WALL ITSELF: there is no function in this module that takes a RunnerHostDeploy, or a bare RunnerHostAdmission, and yields an enable command. runner_activate_command consumes RunnerActivationAdmission, and its refusal arm carries no command at all — so 'enable a runner without a grounded managed cache' is unrepresentable rather than discouraged. gunbc.runner_host_deploy's readiness-blind runner_enable_command is deleted rather than deprecated; leaving it would leave the old path constructible, and a wall with a door beside it is a sign.\\n\\nHONEST RESIDUAL, inherited from the enrollment wall this mirrors and stated for the same reason: .dag has no visibility modifiers yet, so a caller can hand-write RunnerActivationAdmitted or BuildCacheInstanceReady without any observation behind it. That is an explicit lie in source rather than a forgotten check, which is the strongest wall this substrate currently supports. It closes when node/subtree visibility grants make these constructors private to their producers (DESIGN open thread), at which point the receipt becomes unforgeable."
 
 fn runner_activate_command(admission: RunnerActivationAdmission) -> RunnerCommandOrRefusal {
   match admission {
@@ -198,7 +173,7 @@ fn runner_activation_gate_accepts(
   }
 }
 
-data placement_admits_activation_note: String = "The bridge from an observation to a readiness receipt is deliberately PARTIAL and lives here as a refusal, not a constructor. Given any endpoint observation, this answers only whether its placement could support activation at all — and only ServerManagedUnitOwned can. It does not build a BuildCacheInstanceReady, because the remaining attribute verifications have no producers yet; a function that manufactured the receipt from placement alone would fabricate five verified flags from one observed fact, which is the fabricated-plausible-output shape (DESIGN section 5) applied to the wall's own input."
+data placement_admits_activation_note: String = "This projection remains deliberately PARTIAL. Given any endpoint observation, it answers only whether its placement could support activation at all — and only ServerManagedUnitOwned can. It does not build a BuildCacheInstanceReady: gunbc.build_cache_instance_readiness owns that construction and also requires executable, principal, storage, capacity and exact compile-pool nesting. Manufacturing the receipt from placement alone would fabricate those independent observations."
 
 fn placement_admits_activation(placement: BuildCacheServerPlacement) -> Bool {
   match placement {
