@@ -1860,3 +1860,63 @@ which head, which roots, run when — **and it reports a number either way**, wi
 in both cases.
 
 **The number does not know it is wrong.** That sentence covers every entry in this document.
+
+---
+
+## Why this class recurs: the checking artifact is one step further away than the reasoning
+
+Every entry above is an instance. This is an attempt at the generating condition, and it comes from
+two sessions comparing error logs at the end of the day and finding the same shape three times each.
+
+**Session A's three:** a code snippet attributed to the wrong enclosing function; an attribution
+declared *settled* from a syllogism whose premise omitted a second variable; a **size** argument
+offered against a **structure** objection.
+
+**Session B's three:** an emitter defect partitioned by POSITION when the wall's coverage is over
+PRODUCERS; a fallback count quoted as bounding "the defect" when it bounded one of two paths; "194
+files depend on this declaration" when the census had counted a **spelling**.
+
+Six errors, two sessions, one afternoon, arrived at independently. **Every one was locally valid and
+answered a neighbouring question.** And every one was **a single fetch from being right** — read the
+enclosing function, ask which binary, open the ruling text, check what the wall ranges over, ask
+whether the count is of names or of resolutions.
+
+### The condition, stated as a claim rather than a moral
+
+**The error appears when the artifact that would check a claim is one step further away than the
+artifact the claim was reasoned from.**
+
+Not further in difficulty — further in *steps*. In every case above, the reasoning input was already
+open: a grep hit, a count, a review comment, a green run. The checking input required one more
+action: resolve the container, name the binary, fetch the ruling, read the producer. **One step.**
+
+That gap is small enough to be invisible and large enough to be skipped, and it is skipped
+*precisely when a lane is moving well* — because the reasoning input is sufficient to produce a
+confident, coherent, communicable claim. **Nothing about the moment feels like a gap.** The output is
+fluent and internally consistent, which is exactly the artifact this document opened by warning
+about.
+
+### Why "be more careful" is the wrong remedy
+
+Six instances by two competent sessions in one afternoon is not a diligence failure; it is what the
+default produces. The remedy is not vigilance but **shortening the distance to the checking
+artifact**, or making its absence loud:
+
+    reasoning from a grep hit          -> the check is: what declaration contains it
+    reasoning from a count             -> the check is: over what population, produced by what
+    reasoning from a green run         -> the check is: which workflow, which binary, which head
+    reasoning from a review's claim    -> the check is: the ruling text, not its summary
+    reasoning from another lane's PR   -> the check is: ask that lane, do not infer from files
+
+**Each is one command or one message.** The entries in this document are, almost without exception,
+the record of that one action not being taken — and of a second party taking it later.
+
+### The corollary that makes it operational
+
+**A claim's confidence should be bounded by the distance to its checking artifact, not by the
+coherence of the reasoning that produced it.** Coherence is available for free on the wrong premise;
+it is not evidence and it never was. When the check is one step away and untaken, the honest form is
+not the claim but the claim plus its unfetched premise: *"the snippet matches — I have not checked
+what contains it."*
+
+That sentence is longer, weaker, and would have prevented every entry in this document.
