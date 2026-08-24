@@ -2337,3 +2337,77 @@ identical shape had already been written up twice on the pages above.
 
 **Knowing the class does not confer immunity.** The first postscript said so; this is the receipt for
 the sentence.
+
+## Two the corpus produced, not the authors
+
+The entries above are mistakes people made. These two were made by machinery, and both were invisible
+for the same reason: **they produced agreement.**
+
+### The name our own emitter minted
+
+A ruling went out this evening replacing fraction-of-a-board reports with sets of site identities:
+report *which* sites, not *how many*, so that union and overlap are computable without a shared
+denominator. The stated constraint was **module plus symbol, never `file:line`** — a line number is
+not stable across trees or binaries, which is the positional-citation class the design document
+already forbids.
+
+A lane implemented it against 154 sites and came back with a hole in it. Their sites live in *emitted
+Rust*, so the walk took the nearest enclosing item, and thirteen of them came back as:
+
+    v2_lens_coverage :: CACHED     13 sites
+
+`CACHED` is the `thread_local` static our own emitter generates inside every data-definition function.
+Thirteen distinct authority symbols, reported as one name. Restricting the walk to top-level items
+gives thirteen symbols with one site each.
+
+**The constraint was one-sided.** It said where an identity may not come from and never said where it
+must. The two-sided form: **module plus AUTHORITY-DERIVED symbol — never a positional coordinate, and
+never an emitter-generated name.** `CACHED`, `__m`, `__sorted` and everything else codegen mints are
+not identities; they are collisions waiting to be read as clusters.
+
+What makes this the sharpest instance of the shorter-spelling class recorded here is that **no author
+chose the name.** Every other instance in this document has a human picking a spelling that failed to
+discriminate. Here a machine emitted the same name at thirteen sites *by design*, so the collision is
+guaranteed rather than accidental — and the resulting report is finding-shaped: one symbol, thirteen
+sites, a tidy cluster no reviewer would question. The walk was not careless. It asked a reasonable
+question of a structure that cannot answer it.
+
+The same lane also showed the identity was still lossy at symbol grain — 154 sites collapse to 99
+symbols, one symbol holds ten sites, and one spans two mechanism roots. Two lanes hitting *different*
+sites inside the same symbol would read as agreement, which would have destroyed the overlap detection
+that motivated the whole change. **A join that manufactures false agreement is worse than the
+fractions it replaced, because a fraction at least announces that it is a summary.**
+
+### The duplicate git could not see
+
+A hand-written 116-line line-based `.dag` parser was found in the seed — stripping declaration
+prefixes off trimmed lines, walking characters for identifiers, tracking a coproduct flag. Its own
+comment documents a cross-module type corruption it caused: type parameters scanned as references,
+resolved whole-pool to an unrelated function, giving one module closure edges to an unrelated witness
+and mistyping a third. **The defect and the argument against the mechanism are the same artifact.**
+
+Then the routing turned up the part no one had seen: **the identical function had been authored twice,
+independently, by two sessions.** One PR merged it. Another still carries a byte-identical copy —
+same 116 lines, same start line, same md5 — awaiting a disposition on that very function.
+
+`git merge-tree` over the two produces exactly one definition and **zero conflict markers**. Git
+collapses identical additions at one location into a single change. So the collision was invisible to
+git, to both reviewers, and to both authors — **precisely because the two copies agreed.** A
+divergence would have conflicted loudly; convergence passed silently.
+
+Two consequences, and the second inverts a decision:
+
+- **When a fact is not published, the number of hand re-derivations is bounded only by the number of
+  consumers who need it.** Two sessions independently needed *which names does this module declare* —
+  a fact the parser already owns — and independently wrote the same scanner. That is the corpus making
+  the single-authority argument on its own behalf.
+- **Refusing the open PR now produces the worse outcome.** The receipt that would admit the scanner
+  lives only on that branch; nothing on the main line mentions the function at all. So rejecting it
+  deletes the accounting and leaves the code — a hand-written second parser sitting in a frozen seed
+  with no growth receipt whatsoever. The refusal has been converted into its own opposite by a merge
+  that landed first.
+
+**Agreement is not corroboration when both parties derive from the same absence.** Two independent
+implementations matching each other is normally the strongest evidence available. Here it was the
+mechanism of concealment, and the thing they agreed about was a fact neither of them should have been
+computing.
