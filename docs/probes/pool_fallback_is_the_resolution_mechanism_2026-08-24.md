@@ -490,14 +490,60 @@ What is gone is the claim that a particular observed diagnostic population *demo
 mechanism biting in production. **This probe describes a real hazard with no confirmed live victim**,
 which is a weaker and more honest claim than the one §5d and §5e were drifting toward.
 
-### The generalisable rule, which is worth more than the retraction
+### The generalisable rule, and its scope — which matters as much as the rule
 
 **In a self-hosted repository, "I changed the compiler and the compiler broke" has two readings, and
 nothing in the source distinguishes them.** The discriminator is one dispatch — rebuild the tool from
-a known-good commit, keep the sources fixed, re-run — and it should precede any mechanism analysis
-whose subject is a compiler diagnostic. **Four lanes spent an afternoon authoring mechanism theories
-for output that had no source cause**, and every one of those theories was internally coherent. Being
-coherent was never evidence.
+a known-good commit, keep the sources fixed, re-run.
+
+**But the rule has a boundary, and stating it without one produces the next over-correction.** The
+discriminator is **whether the compiler was held fixed across the arms**, not whether the claim
+involves diagnostics:
+
+    CROSS-BINARY        tree A measured with binary A, tree B with binary B.
+                        The compiler moved silently alongside the variable under test.
+                        DEAD. This is the failure above.
+
+    PAIRED WITHIN-BINARY  both arms measured with the SAME binary, one variable changed.
+                        Contamination shifts both arms equally, so the DELTA survives even
+                        when the absolute numbers are wrong. NOT killed.
+
+A stripped-header module refusing standalone and passing with its header restored, **under one
+binary**, is the second shape: for contamination to explain it, the contaminated compiler would have
+to refuse one arm and accept the other on exactly the axis under test — which is the claimed
+mechanism, not an artifact of it.
+
+**The second-order caveat, which is the part most likely to be skipped: a paired comparison is
+immune to a compiler that is WRONG, not to one that is IRRELEVANT.** If the binary measuring both
+arms was itself built from a contaminated mirror, the delta is real *for that compiler* and says
+nothing about the one the repository ships. So a surviving paired result should be stated as
+*"header state changes closure behaviour **in this compiler**"* rather than *"in gunbc"* — and the
+same one-dispatch fix upgrades it.
+
+**Four lanes spent an afternoon authoring mechanism theories for output that had no source cause**,
+and every one of those theories was internally coherent. Being coherent was never evidence.
+
+### This document audited against that boundary
+
+    SURVIVES — established by READING source, no compiler in the chain:
+      `type List<element> = FreeMonoid<element>` in dag/std/types.dag
+      the 14-row algebra map carrying "FreeMonoid": "FreeMonoid", so the profile HITS
+      tree_bare_census_for_root is keyed per ROOT; func_sig_from_global_bare takes no root
+      the scoped-census-then-whole-pool fall-through in bare_reference_pull_paths_for_source
+      algebra method templates are gated out of the census fallback by explicit law
+
+    SUSPECT — compiler-derived, provenance not established, CONFIDENCE WITHDRAWN:
+      the 733 pool-fallback population and its 510/223 directional split (§5d).
+      Nobody has established which binary produced it, or whether one binary produced all
+      of it. **It should not bound anything until re-derived under a known-good build.**
+      This is the second narrowing that figure has needed in one day; the first was scoping
+      it to the file-closure path only.
+      Likewise the per-eligible-file costs and the 3851/699 multiplier quoted in §5e are
+      single-run absolutes, not a paired delta, and inherit the same question.
+
+**Stating this as a per-claim audit rather than a blanket retraction is the point.** A blanket
+retraction would discard the read-derived facts, which are the load-bearing ones and which no binary
+can affect.
 
 ## 6. Provenance
 
