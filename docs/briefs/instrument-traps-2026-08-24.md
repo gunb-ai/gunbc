@@ -996,3 +996,47 @@ the namespace cut's two remaining blockers to `src/v1/04_infer.dag` pulling `Lis
 and resolving to the `FreeMonoid` alias instead of the kernel `List` that imports used to shadow.
 Same mechanism, worse symptom — the name finds the *wrong* definer rather than none, so it resolves
 and continues. A refusal announces itself; a wrong-definer binding does not.
+
+## The repair for a claim on the wrong subject is to MOVE it, not to soften it
+
+*Three authors, three rounds, one afternoon, on the cost forecast for the namespace cut. Recorded
+because the correction pattern is sharper than any of the three claims.*
+
+    round 1  smart-ram-730   "pool_parse's frequency changes by a large factor"    right shape, wrong term
+    round 2  deep-ant-102    "pool_bare_census memoizes -> a step function to       right memo,  wrong subject
+                              certainty, not a multiplication"
+    round 3  witty-lark-109  the multiplier is on bare_eligible                     correct
+
+**Round 1** attached a real forecast to `pool_parse`. **Round 2** checked the memo — correctly — and
+concluded there was no multiplier, only a step function. **Round 3** checked the producer and found
+both wrong, in different ways:
+
+- *"Today pays zero" is backwards.* The **scoped** census forces the whole-corpus parse, and it does
+  so unconditionally, **above** the loop containing the fallback (`tree_bare_census_for_root` at
+  ~7764; the fallback at ~7870). A process whose names all resolve in the scoped census pays the
+  parse in full. The receipt is an ordinary run: `bare_eligible=699`, `tree_census_misses=2` — scoped
+  hits throughout, parse paid anyway.
+- *The memo is real but bounds a different term* — `pool_bare_census`'s own whole-pool symbol index,
+  the largest of the three and the only one no successful resolve pays for.
+- *The multiplier exists on a third term nobody had named.* Bare-eligibility is the **negation** of
+  `source_declares_import_lines`, and the cut deletes exactly those lines corpus-wide — so
+  `bare_eligible` goes from 699 toward the whole corpus. **It needs no post-cut estimate, because the
+  population is defined as the absence of the syntax being removed.**
+
+### The lesson, which is round 3's and not mine
+
+> **Deleting a true shape to escape a wrong term loses more than the error did.**
+
+Round 2's correction was *locally* right — the memo does bound what it was pointed at — and it
+destroyed a true forecast in passing. The instinct that a cost was about to change was correct from
+the first message; only its subject was wrong. **The repair for a claim attached to the wrong subject
+is to move it, not to soften it**, and "soften it" is the tempting move precisely because it feels
+like rigour: hedging reads as caution while it is quietly discarding signal.
+
+**Nobody measured anything incorrectly at any point in this thread.** Every number in all three
+rounds was accurate. Each round, the comparand moved and the claim did not — which is this brief's
+whole subject, now demonstrated three times inside a single conversation *about* this brief's
+subject, by three people who had all read it.
+
+That last fact is the strongest argument in this document. The class does not yield to knowing about
+it.
