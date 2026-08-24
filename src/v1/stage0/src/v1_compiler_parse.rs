@@ -3974,6 +3974,7 @@ pub fn parse_type_after_kw(
                             name_span.clone(),
                             start_span.clone(),
                             type_params.clone(),
+                            is_sole_constructor.clone(),
                         )
                     }
                     EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -4131,6 +4132,7 @@ pub fn parse_type_body_from_prefix(
                             name_span.clone(),
                             start_span.clone(),
                             type_params.clone(),
+                            is_sole_constructor.clone(),
                         )
                     }
                     EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -4169,6 +4171,83 @@ pub fn parse_type_body_from_prefix(
     }
 }
 
+pub fn alias_rhs_is_anonymous_record(te: Rc<Node>) -> bool {
+    (((te.connective.clone() == Connective::Conj) && (te.ident_span.clone() == None))
+        && (te.type_annotation.clone() == None))
+}
+
+pub fn type_item_from_alias_rhs(
+    name: String,
+    name_span: Rc<SourceSpan>,
+    start_span: Rc<SourceSpan>,
+    type_params: Rc<Vec<Rc<Node>>>,
+    te: Rc<Node>,
+    is_sole_constructor: bool,
+) -> Rc<Node> {
+    if alias_rhs_is_anonymous_record(te.clone()) {
+        {
+            let sole_ctor_prop = if is_sole_constructor.clone() {
+                Rc::new(vec![make_field_init_node(
+                    "sole_constructor".to_string(),
+                    make_expr_node(
+                        Rc::new(ExprData::ExprLiteral {
+                            value: Rc::new(LiteralValue::LitBool { value: true }),
+                        }),
+                        Rc::new(vec![]),
+                        None,
+                        start_span.clone(),
+                    ),
+                    start_span.clone(),
+                    no_span(),
+                )])
+            } else {
+                Rc::new(vec![])
+            };
+            Rc::new(Node {
+                name: name.clone(),
+                span: start_span.clone(),
+                ident_span: Some(name_span.clone()),
+                children: te.children.clone(),
+                connective: Connective::Conj,
+                params: type_params.clone(),
+                inferred: None,
+                return_cardinality: Cardinality::Required,
+                uses: Rc::new(vec![]),
+                body: None,
+                transport: None,
+                properties: sole_ctor_prop.clone(),
+                type_annotation: None,
+                is_self_recursive: false,
+                has_non_tail_self_call: false,
+                match_pattern: None,
+                expr_data: Rc::new(ExprData::NoExprData),
+                ident: None,
+            })
+        }
+    } else {
+        Rc::new(Node {
+            name: name.clone(),
+            span: start_span.clone(),
+            ident_span: Some(name_span.clone()),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: type_params.clone(),
+            inferred: Some(Rc::new(InferredNode::Resolved { node: te.clone() })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+}
+
 pub fn parse_type_body_after_eq(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
@@ -4176,6 +4255,7 @@ pub fn parse_type_body_after_eq(
     name_span: Rc<SourceSpan>,
     start_span: Rc<SourceSpan>,
     type_params: Rc<Vec<Rc<Node>>>,
+    is_sole_constructor: bool,
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
@@ -4390,28 +4470,14 @@ pub fn parse_type_body_after_eq(
                                         err: wr.err.clone(),
                                     });
                                 }
-                                let item = Rc::new(Node {
-                                    name: name.clone(),
-                                    span: start_span.clone(),
-                                    ident_span: Some(name_span.clone()),
-                                    children: Rc::new(vec![]),
-                                    connective: Connective::NoConnective,
-                                    params: type_params.clone(),
-                                    inferred: Some(Rc::new(InferredNode::Resolved {
-                                        node: wr.type_expr.clone(),
-                                    })),
-                                    return_cardinality: Cardinality::Required,
-                                    uses: Rc::new(vec![]),
-                                    body: None,
-                                    transport: None,
-                                    properties: Rc::new(vec![]),
-                                    type_annotation: None,
-                                    is_self_recursive: false,
-                                    has_non_tail_self_call: false,
-                                    match_pattern: None,
-                                    expr_data: Rc::new(ExprData::NoExprData),
-                                    ident: None,
-                                });
+                                let item = type_item_from_alias_rhs(
+                                    name.clone(),
+                                    name_span.clone(),
+                                    start_span.clone(),
+                                    type_params.clone(),
+                                    wr.type_expr.clone(),
+                                    is_sole_constructor.clone(),
+                                );
                                 Rc::new(ItemResult {
                                     item: item.clone(),
                                     tokens: skip_newlines(wr.tokens.clone()),
@@ -4446,28 +4512,14 @@ pub fn parse_type_body_after_eq(
                                 err: wr.err.clone(),
                             });
                         }
-                        let item = Rc::new(Node {
-                            name: name.clone(),
-                            span: start_span.clone(),
-                            ident_span: Some(name_span.clone()),
-                            children: Rc::new(vec![]),
-                            connective: Connective::NoConnective,
-                            params: type_params.clone(),
-                            inferred: Some(Rc::new(InferredNode::Resolved {
-                                node: wr.type_expr.clone(),
-                            })),
-                            return_cardinality: Cardinality::Required,
-                            uses: Rc::new(vec![]),
-                            body: None,
-                            transport: None,
-                            properties: Rc::new(vec![]),
-                            type_annotation: None,
-                            is_self_recursive: false,
-                            has_non_tail_self_call: false,
-                            match_pattern: None,
-                            expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
-                        });
+                        let item = type_item_from_alias_rhs(
+                            name.clone(),
+                            name_span.clone(),
+                            start_span.clone(),
+                            type_params.clone(),
+                            wr.type_expr.clone(),
+                            is_sole_constructor.clone(),
+                        );
                         Rc::new(ItemResult {
                             item: item.clone(),
                             tokens: skip_newlines(wr.tokens.clone()),

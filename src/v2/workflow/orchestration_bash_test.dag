@@ -66,7 +66,7 @@ fn orch_emit_bash(root: Node, target: TargetModel) -> Outcome<Medium<String>> {
   emit(
     tree: InferredTree {
       root: root,
-      facts: Map { lookup: orch_bash_facts_lookup }
+      facts: PartialFunction { lookup: orch_bash_facts_lookup }
     },
     target: target
   )

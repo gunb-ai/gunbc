@@ -1,0 +1,16 @@
+module test.fixture.record_decl_spelling.witness_support
+
+import std.types { List }
+import test.fixture.record_decl_spelling.specimens
+import v2.std.decl_index { DeclFact, decl_facts }
+
+// One pool scan for the whole cluster: a `data` initializer is evaluated once per interpreter
+// context, a `fn` body re-runs the scan at every call site (the reason recorded on the sibling
+// decl_facts fixture in dag/test/fixture/decl_facts_reflection/witness_support.dag).
+// The root is exactly the specimen directory: no std, no shadow root, nothing whose parse cost
+// this cluster does not read.
+data record_decl_spelling_pool_roots: List<String> = [
+  "dag/test/fixture/record_decl_spelling",
+]
+
+data record_decl_spelling_facts: List<DeclFact> = decl_facts(pool_roots: record_decl_spelling_pool_roots)

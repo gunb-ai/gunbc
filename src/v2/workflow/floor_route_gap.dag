@@ -712,8 +712,66 @@ fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {
   list_flat_map(xs: floor_route_gap_expectation_chunks(), f: fn(chunk) { chunk })
 }
 
+// CHUNK 04 -- THE SIXTEEN IDENTITIES SURFACED BY DELETING THE shell.Exec MOCK ARMS, measured on
+// this branch's own floor run 32670248426 (route_gap_unenrolled=16), not enumerated from call
+// sites. Every one reaches shell.Exec.Run hermetically and now receives
+// `HermeticEffectGround.NoMockResponse` where it previously received a fabricated success
+// (`{ exit_code: 0, success: true, stdout: "", stderr: "" }`); the class and its receipts are
+// gunbc.hermetic_mock_fidelity. Nine of the sixteen were simultaneously enrolled in
+// `v2.workflow.floor_expected_red` and are DELETED from it in the same change: they were held as
+// "runs and fails" while they never reached their subject at all, which is exactly the
+// reclassification this roster's header describes for the original 101.
+//
+// ALL SIXTEEN ARE PROVABLE IN A BOUNDED REAL-EFFECT LANE, and that is a measured claim rather
+// than an assumption, because the population divides into two kinds and only one of them is
+// work. A row is not-hermetic-in-principle when its subject is whether a transport was consulted
+// at all: no mock can honestly answer that, since consulting the transport is what hermetic mode
+// forbids, so the only dispositions are a real lane or a declared refusal. Checked at source,
+// fifteen name `transport: LocalShell` and assert an exit code, a captured stdout, or a
+// converge-policy decision; the sixteenth (`emit_host_gate_verdicts_test`) shells out a local
+// `printf` narration through the same seam. All are facts a lane that runs the effect
+// establishes locally, and none turns on a remote endpoint answering. The
+// SshShell-to-203.0.113.1 witnesses that WOULD be the second kind are not in this population at
+// all: they refuse earlier, at the fail-closed SshShell stub, so they never reach this seam and
+// remain where they were. No route is built here: this change enrolls and records the bucket.
+fn floor_route_gap_chunk_04() -> List<String> {
+  Cons {
+      head: "test.claim.deploy_access_privilege_witness.witness_privileged_fixture_mutation_applies",
+      tail:   Cons {
+      head: "test.claim.deploy_access_privilege_witness.witness_privileged_fixture_surfaces_stdout",
+      tail:   Cons {
+      head: "test.claim.deploy_mutation_gate_witness.witness_right_host_privileged_may_apply",
+      tail:   Cons {
+      head: "test.claim.emit_host_gate_verdicts_test.gate_failure_exit_reason_carries_verdicts",
+      tail:   Cons {
+      head: "test.claim.host_effect_apply_witness.witness_converged_is_settled",
+      tail:   Cons {
+      head: "test.claim.host_effect_apply_witness.witness_converge_policy_redrives_not_converged",
+      tail:   Cons {
+      head: "test.claim.host_effect_apply_witness.witness_oneshot_policy_terminal_not_converged",
+      tail:   Cons {
+      head: "test.claim.host_effect_apply_witness.witness_shell_failure_surfaces_captured_stdout",
+      tail:   Cons {
+      head: "test.claim.host_effect_apply_witness.witness_shell_on_host_failure_fails_closed",
+      tail:   Cons {
+      head: "test.claim.host_effect_apply_witness.witness_shell_on_host_success_converges",
+      tail:   Cons {
+      head: "test.claim.host_effect_plan_real_execution.host_effect_plan_shell_failure_reason_carries_exit_code_by_real_execution",
+      tail:   Cons {
+      head: "test.claim.host_effect_plan_real_execution.host_effect_plan_shell_witness_holds_by_real_execution",
+      tail:   Cons {
+      head: "test.claim.host_identity_observation_witness.witness_host_effect_apply_failure_is_not_observation",
+      tail:   Cons {
+      head: "test.claim.srv3_host_effect_apply_witness.witness_srv3_apply_failure_no_fabricated_stdout",
+      tail:   Cons {
+      head: "test.claim.srv3_host_effect_apply_witness.witness_srv3_apply_failure_surfaces_captured_stdout_not_fabricated",
+      tail:   Cons {
+      head: "test.claim.srv3_host_effect_apply_witness.witness_srv3_apply_shell_failure_refuses_typed",
+      tail: Empty {} } } } } } } } } } } } } } } } }
+}
+
 fn floor_route_gap_chunks() -> List<List<String>> {
-  Cons { head: floor_route_gap_chunk_00(), tail: Cons { head: floor_route_gap_chunk_01(), tail: Cons { head: floor_route_gap_chunk_02(), tail: Cons { head: floor_route_gap_chunk_03(), tail: Empty {} } } } }
+  Cons { head: floor_route_gap_chunk_00(), tail: Cons { head: floor_route_gap_chunk_01(), tail: Cons { head: floor_route_gap_chunk_02(), tail: Cons { head: floor_route_gap_chunk_03(), tail: Cons { head: floor_route_gap_chunk_04(), tail: Empty {} } } } } }
 }
 
 fn floor_route_gap_roster() -> List<String> {

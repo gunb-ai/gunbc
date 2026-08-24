@@ -162,7 +162,7 @@ fn english_emit_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data english_emit_add_inferred_tree: InferredTree = InferredTree {
   root: english_emit_add_emitted_root,
-  facts: Map {
+  facts: PartialFunction {
     lookup: english_emit_add_facts_lookup
   }
 }

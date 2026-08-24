@@ -50,7 +50,7 @@ fn meet_join_emit_facts_miss(key: Node) -> Optional<InferredFacts> {
 fn meet_join_emit_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map { lookup: meet_join_emit_facts_miss }
+    facts: PartialFunction { lookup: meet_join_emit_facts_miss }
   }
 }
 
