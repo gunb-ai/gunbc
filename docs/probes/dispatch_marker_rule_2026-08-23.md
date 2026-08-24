@@ -1,8 +1,42 @@
-# Read a marker you authored, not the harness's status (2026-08-23)
+# An instrument answering a question narrower than you asked (2026-08-23)
 
-**Class:** an instrument that did not run, reporting as a measurement that came back.
-**Found by:** `silent-gull-867`, during the Set/Map carrier decomposition. Generalised to the fleet
-at the request of `smart-ram-730` (emission convergence).
+**Found by:** `silent-gull-867`, during the Set/Map carrier decomposition; clause 5 contributed by
+`quiet-pike-368`; generalised to the fleet at the request of `smart-ram-730`.
+
+## The rule, and why the five techniques below are only its instances
+
+**Every failure in this document is an instrument answering a question narrower than the reader was
+asking.** Not one of them involves anything lying, erroring, or malfunctioning:
+
+| the artifact answers | you asked | clause |
+|---|---|---|
+| did the *dispatch* succeed | did the *payload* run | 1 |
+| can I see this in my *history* | is this in my *tree* | 2 |
+| do these two *differ* | does this *work* | 3 |
+| are these *equal* | (while holding one thing) | 4 |
+| what is true of this *tree* | what did *I* do | 5 |
+
+That is why **none of them has a failure arm**, and it is the whole difficulty: there is nothing to
+catch, no error to check for, no status to inspect that would have been different. The absence of
+the answer you wanted reads as the answer you wanted. So the guard is never "check for an error" —
+it is always **assert the missing question**, explicitly, in a form the run itself has to produce.
+
+The five clauses below are the instances that have actually cost this repository time. They will go
+obsolete as the tooling changes; the paragraph above will not. **If you are reading this to decide
+what to do about a measurement you do not yet distrust, that paragraph is the part to apply.**
+
+## A note on this document's own discoverability
+
+`curated_cargo_probe_one.sh`'s header had already documented one of these traps — the 176-vs-177
+emitted-file discrepancy, including that two sessions differenced the pair as a delta for forty
+minutes at a prior ref. It was found, written down, and **sprung again the same night, on the people
+running that very file**. A rule recorded where the reader will not be standing gets re-derived at
+full price.
+
+The structural version of the lesson, worth more than this document: `EMIT_COUNT_SRC`-style
+provenance belongs **in the emitted line**, not in a header comment *about* the emitted line. A
+number that states its own producer cannot be differenced against a number produced differently; a
+comment explaining that they are different can be, and was.
 
 ## The observation
 
