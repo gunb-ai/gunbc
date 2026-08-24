@@ -73,7 +73,7 @@ type Scope {
 }
 
 fn empty_symbol_index() -> SymbolIndex {
-  SymbolIndex { entries: v2.std.collection.empty_map(), global_bare: v2.std.collection.empty_map(), services: v2.std.collection.empty_map(), transparent_alias_rep: v2.std.collection.empty_map(), type_head_exposures: v2.std.collection.empty_map() }
+  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map(), type_head_exposures: empty_map() }
 }
 
 fn empty_type_env() -> v1.compiler.infer_env.TypeEnv {
@@ -154,7 +154,7 @@ fn symbol_index_insert_service(index: v1.compiler.infer_env.SymbolIndex, name: S
   SymbolIndex {
     entries: index.entries,
     global_bare: index.global_bare,
-    services: v2.std.collection.map_insert(index.services, name, ServiceCensusEntry { module_path: module_path, item: item }),
+    services: map_insert(index.services, name, ServiceCensusEntry { module_path: module_path, item: item }),
     transparent_alias_rep: index.transparent_alias_rep,
     type_head_exposures: index.type_head_exposures
   }

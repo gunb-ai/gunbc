@@ -3264,7 +3264,7 @@ fn rust_identifier_tokens(s: String) -> List<String> {
     ";", " "), "\{", " "), "\}", " "), ".", " "), "=", " "), "\n", " "), "\t", " "), "\r", " "), "*", " ")
   let untokened = replace(replace(replace(replace(replace(unpunctuated,
     "!", " "), "?", " "), "|", " "), "+", " "), "#", " ")
-  untokened |> split(delimiter: " ") |> map(t => trim(t)) |> filter(t => t != "")
+  untokened |> split(delimiter: " ") |> map(t => std.algebra.trim(t)) |> filter(t => t != "")
 }
 
 fn collect_type_node_realized_surface_names(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> List<String> {
