@@ -3099,9 +3099,10 @@ const COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY: &str = "dag/gunbc/compile_clean_dia
 /// `resolve_virtual_source_with_imports`, whose BFS silently SKIPS an import it cannot resolve;
 /// a silent skip here would narrow the policy closure and answer from a graph missing the very
 /// module the answer depends on.
-fn compile_clean_policy_entry_closure_sources(
+fn policy_entry_closure_sources(
     roots: &[String],
     entry_rel: &str,
+    policy_module: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let ws = process_workspace_root();
     let module_index = build_module_path_index(roots);
@@ -3109,7 +3110,7 @@ fn compile_clean_policy_entry_closure_sources(
         let abs = ws.join(rel);
         std::fs::read_to_string(&abs).map_err(|e| {
             format!(
-                "compile_clean_diagnostic_policy closure: cannot read `{}` ({e})",
+                "{policy_module} closure: cannot read `{}` ({e})",
                 abs.display()
             )
         })
@@ -3122,7 +3123,7 @@ fn compile_clean_policy_entry_closure_sources(
         for module_path in extract_import_paths(&content) {
             let Some(rel_path) = module_index.get(&module_path) else {
                 return Err(format!(
-                    "compile_clean_diagnostic_policy closure: import `{module_path}` \
+                    "{policy_module} closure: import `{module_path}` \
                      (reached from `{entry_rel}`) names no module in the source roots"
                 ));
             };
@@ -3158,7 +3159,8 @@ pub fn compile_clean_unlisted_import_use_blocks_from_policy() -> Result<bool, St
     let roots = default_source_roots();
     let entry = resolve_entry_file_under_roots(&roots, COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY)
         .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
-    let sources = compile_clean_policy_entry_closure_sources(&roots, &entry)?;
+    let sources =
+        policy_entry_closure_sources(&roots, &entry, "gunbc.compile_clean_diagnostic_policy")?;
     let (graph, indices) = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
         .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
@@ -15699,7 +15701,17 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
 
 pub fn install_output_policy(source_roots: &[String]) {
     let entry = "dag/gunbc/output_policy.dag";
-    let (graph, indices) = match resolve_entry_graph_shared(source_roots, entry) {
+    // This standalone installer runs before `claim_batch` and `claim_executor` have a prepared
+    // subject. Resolve only the policy's own import closure: entering the process-shared,
+    // corpus-wide index here made this five-decision read the accidental first toucher of the
+    // bare-reference edge index. That ~31.7s charge described the harness ordering, not work a
+    // witness or the floor had demonstrated it needed.
+    let sources = match policy_entry_closure_sources(source_roots, entry, "gunbc.output_policy") {
+        Ok(sources) => sources,
+        Err(_) => return,
+    };
+    let (graph, indices) = match resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
+    {
         Ok(g) => g,
         Err(_) => return,
     };
@@ -15709,11 +15721,10 @@ pub fn install_output_policy(source_roots: &[String]) {
 
 /// INSTALL THE POLICY FROM AN ALREADY-PREPARED CONTEXT.
 ///
-/// `install_output_policy` above resolves `dag/gunbc/output_policy.dag` on its own, which on
-/// the floor cost a separate whole-entry resolve to read five channel decisions out of a world
-/// the run was about to build anyway. The required floor calls this form with the one prepared
-/// repository instead: the policy module is already in the subject, so reading it is an
-/// evaluation and nothing more.
+/// `install_output_policy` above resolves `dag/gunbc/output_policy.dag`'s own import closure when
+/// no prepared subject exists. The required floor calls this form with the one prepared repository
+/// instead: the policy module is already in the subject, so reading it is an evaluation and
+/// nothing more.
 ///
 /// The two forms share every decision below deliberately — a second copy of the decode would be
 /// a second policy, and the divergence would show up as two runs disagreeing about what
