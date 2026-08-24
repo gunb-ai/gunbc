@@ -303,9 +303,11 @@ code-partitioned view does not surface it: each code's rows look like unrelated 
 
 ---
 
-## E — empty list literal element type resolves to unit
+## E — an undetermined empty-list element type is answered as `unit`, silently
 
-**Rows:** 2 (`E0308` x1, `E0631` x1, same line). **Read.**
+**Rows:** 2 (`E0308` x1, `E0631` x1, same line). **Measured** — and, like B, the measurement moved the
+mechanism upstream of where the rows appear. The rows are a *downstream symptom*; the defect is that
+inference fabricates an answer where it has none.
 
 ### Source
 
@@ -342,6 +344,50 @@ error[E0308]: mismatched types
 ```
 
 Both rows are the same emitted line.
+
+### The producing arm, and why this is a §5 defect rather than a missing feature
+
+`v1.compiler.infer`, the `ExprListLit` arm, chooses the element type of an empty literal:
+
+```dag
+Absent => unit_type      // elem_type_node, when there is no expected type
+...
+Absent => []             // empty_list_diags — no diagnostic
+```
+
+Its two siblings refuse with located diagnostics — *"empty list literal: expected type has no element
+type"* and *"...expected type is not a collection"*. The arm reached when there is **no expected type at
+all** answers `unit` and says nothing. That is *"I could not determine the element type"* rendered as
+*"the element type is unit"*: the fabricated plausible output §5 forbids, and the ⊥-as-answer /
+⊥-as-ignorance conflation in the recurring-failure list.
+
+It also explains the distance between cause and report. `fold(init: [], ..)` takes the fabricated
+`unit`, the accumulator becomes `List<()>`, the inner fold's binder emits as `|found: bool, k: ()|`, and
+rustc refuses **that** — a message naming neither the empty literal nor the missing expected type, two
+stages from the decision that caused it.
+
+### Counterfactual (executed) — the local refusal is NOT affordable
+
+The repair the defect invites: make that arm refuse instead of fabricating. Implemented, regenerated,
+installed, rebuilt, and run against this entry, with the positive control taken on the installed mirror
+(`CONTROL_installed=1`, generation-2 build clean at 0 errors).
+
+| | result |
+|---|---|
+| sites hitting the fabricating arm, **affected-set closure alone** | **24** |
+| entry's blocking diagnostics, control → refusal | 0 → **12** |
+
+The fabrication is load-bearing: 24 empty-list literals in this one closure reach that arm, and refusing
+locally does not surface E's two rows — it stops the entry compiling at 12 blocking errors. A refusal
+that converts one downstream rustc row into twelve blocking refusals is not the fail-closed repair; it
+is the same local-patch error B already paid for, in the opposite direction.
+
+**Where E actually lives.** The `fold(init: [])` site *has* a determinable element type — the outer
+fold's accumulator — and inference lacks it only because the callee's type variable is unsolved at the
+point the literal is judged. The repair is therefore upstream: solve the accumulator type variable, or
+defer the literal's judgement until the expected type is known, so the arm becomes unreachable rather
+than refusing. Until that lands, the fabrication is the *only* thing keeping 24 sites compiling, which
+is why the arm is left exactly as `main` has it rather than reddened.
 
 ---
 
@@ -391,7 +437,7 @@ mechanisms already went through.
 | B | read | **unowned** — no lane holds it | promote to measured: at the pinned tree, vary the `'static`/`Clone` bound emission for fn-typed params captured behind `Rc` and confirm the 4 `E0310` rows retire with no relocation. |
 | C | read | **owned elsewhere** — the corpus-wide `ABSENT_CLONE_BOUND` population (`docs/probes/rustc_mechanism_partition_2026-08-23.md`, 22 manifestations at `967b5bc1b92`) | none here. This board contributes 2 rows to that population and tracks nothing separately; a second trigger beside that document's would be a second authority for one class. |
 | D | measured (peer board) | **lane open: #8952** (`CALLABLE-LOOKUP-UNIQUE`) | #8952's own trigger. The seam this board adds to it is stated above and is a defect-side property: the decisive `&&` consults resolved semantics in its first conjunct and the leaf spelling in its second, so what is missing is a recorded target identity for `PlainCallSemantics`, not a different table lookup. |
-| E | read | **unowned** — no lane holds it | promote to measured: annotate the element type of the empty list literal at the cited site and confirm the 2 rows retire. |
+| E | **measured** (executed counterfactual, negative) | **unowned, and reclassified** — the local refusal was implemented and measured: 24 sites in this closure depend on the fabricated `unit`, and refusing turns 1 downstream row into 12 blocking ones | solve the empty literal's element type from the callee's unsolved type variable, or defer its judgement until the expected type is known, so the fabricating arm becomes unreachable rather than refusing. The arm is left as `main` has it until then, because it is currently the only thing keeping those 24 sites compiling. |
 | F | read | **unowned** — no lane holds it | promote to measured: vary the closure parameter's by-value/by-reference binding against the reference-yielding iterator and confirm the 1 row retires. |
 
 **Three mechanisms are declared unowned, and that is the disposition rather than a gap in it.** B, E and F

@@ -4643,7 +4643,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 Absent => [inference_error(message: "empty list literal: expected type has no element type", span: span, module_name: scope.module_name)]
               }
             } else { [inference_error(message: "empty list literal: expected type is not a collection", span: span, module_name: scope.module_name)] }
-          Absent => [inference_error(message: "empty list literal: no expected type, so the element type is undetermined", span: span, module_name: scope.module_name)]
+          Absent => []
         }
       } else { [] }
       let list_k = list_kernel_ty_from_element(element: elem_type_node)
