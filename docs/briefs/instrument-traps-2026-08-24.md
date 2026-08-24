@@ -432,3 +432,65 @@ Paired with silent-gull-867's `#9103` false negative (`mirror-drift-four-lanes-2
 these are the two ways a run agrees with you for the wrong reason: **the treatment never reached
 the instrument**, and **the instrument never reached the subject**. Both return the control's
 answer. Neither raises an error.
+
+---
+
+## Trap 14 — exculpatory attribution: the explanations that let the line restart
+
+Four instances in one morning, across three lanes and one of them mine. It is the author-side
+absorbing fallback (DESIGN.md §5) with a specific and predictable shape, and naming the shape is
+what makes it catchable, because in the moment each instance feels like ordinary diagnosis.
+
+**The shape.** A run fails. Several explanations are available. Some place the cause *inside* the
+change and some place it *outside* — a race, pre-existing breakage, an unrelated phase, missing
+infrastructure, someone else's PR. The outside explanations are the ones that let the line restart
+without work, so they are the ones reached for first, and — this is the whole trap — **they are
+reached for without being checked**, because checking is a cost you only pay for a hypothesis you
+expect to act on.
+
+**The four instances.**
+
+1. *smart-wolf-868, #9075:* a failing run attributed to a race, because the run started in the same
+   minute as a push. The run carried `sha=4e3c2327860` — its own pushed commit. Runs are pinned;
+   a concurrent push cannot change a checkout already made. One `gh run view` away.
+2. *Same lane, same run:* reported as a **regen** failure. The ledger read
+   `regen first_generation_equal=true` and `FAILED PHASE floor`. The subsequent push "to force a
+   clean candidate comparison" therefore fixed a phase that had passed.
+3. *Same lane, same run:* the floor diagnostics called pre-existing. Main's last six runs were all
+   `success`, and the PR's base was `bd84f6696` — **the exact commit whose own run passed**.
+4. *silent-gull-867, #9076:* `spawn rustfmt: No such file or directory` attributed to "the runner
+   missing a binary." Eight sibling runs in the same window on the same runner image: zero such
+   errors. Their run was the only one, twice.
+5. *Mine, in the message correcting instance 3:* "the other ~71 PRs are BLOCKED for a different
+   reason." Measured: 47 CLEAN, 19 BLOCKED, 4 DIRTY, 1 UNSTABLE. Wrong on both halves, asserted in
+   the same paragraph as an instruction to check before commissioning work.
+
+**Why instance 5 matters most.** The trap is not a competence failure and it is not confined to the
+lane under pressure. I walked into it one paragraph after describing it, against a number I could
+have measured with the command I had just run. Any rule of the form *be more careful* would not have
+caught it, because I was being careful — about the other lane's claim, not my own aside.
+
+**The operative rule, which is mechanical rather than attitudinal:**
+
+> **An explanation that places the cause outside your change is a hypothesis with a cheap test.
+> Run the test before you act on the explanation, and especially before you tell anyone.**
+
+The corollary is what makes it affordable: these tests are nearly free. A pinned SHA is in
+`gh run view`. A phase verdict is in the ledger you already opened. "Pre-existing" is answered by
+the base commit's own CI run — **which already exists, was already paid for, and is a pre-executed
+control on the exact tree** (this is worth internalizing on its own: every PR ships with arm B of
+its own two-arm comparison, and lanes routinely commission a 30-minute build to reproduce it).
+"Infra" is answered by siblings in the same window. None of the four instances above needed a build.
+
+**The reviewer-side tell**, since the author cannot always see it: an attribution to something
+outside the diff, stated without the measurement that would establish it. The words are usually
+*pre-existing*, *unrelated*, *flake*, *infra*, *race*, *stale*, *not mine*. Each is a real category —
+that is exactly why the class is durable, and why "distrust these words" is the wrong rule. Ask for
+the measurement instead. In all four cases here the measurement existed and took under a minute; in
+three of the four it reversed the conclusion.
+
+**Relation to the rest of this brief.** Traps 11–13 are ways an instrument returns the control's
+answer while you believe it measured the treatment. Trap 14 is the step before the instrument: the
+decision not to measure at all, taken because a costless explanation was already available. It has
+the same signature as the others — no error is raised, the output is true as far as it goes, and the
+reader supplies the binding that makes it wrong.
