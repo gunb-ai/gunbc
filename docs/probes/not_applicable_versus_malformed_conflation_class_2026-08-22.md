@@ -1,10 +1,10 @@
-# One reason symbol over two states: "malformed input" and "this path was never applicable", found three times in three stages
+# One reason symbol over two states: "malformed input" and "this path was never applicable", found five times in five stages
 
 | | |
 |---|---|
-| what this is | a CLASS record, written after the third independent instance in one lane, so the fourth is recognised rather than rediscovered |
-| how each was found | by reading the producer, in every case — never from the diagnostic's text |
-| lane | the B4 product door (`v2.workflow.product_receipt_transport`), 2026-08-21 / 2026-08-22 |
+| what this is | a CLASS record, written after the third independent instance in one lane, so the next would be recognised rather than rediscovered. It has since worked: the fifth (§7) was caught by the recognition rule, by a different lane, without reading the producer |
+| how each was found | by reading the producer for the first four — never from the diagnostic's text. The fifth broke that pattern and is the evidence the rule is usable |
+| lanes | §2's three from the B4 product door (`v2.workflow.product_receipt_transport`), 2026-08-21 / 2026-08-22; §6 and §7 from two other lanes on 2026-08-24. The spread across lanes is part of the claim — a class rediscovered independently by people not reading each other is a property of the corpus, not of one author's habits |
 
 ---
 
@@ -29,7 +29,7 @@ They have opposite repairs. Malformed is fixed by the input's author; not-applic
 
 | gunbc#9075 | parse / §4c annotation adjudication | `source annotation names no subject` | an annotation genuinely lacking a following module item vs **parse never reaching module scope**, so the check cannot see one |
 
-Four stages, four independent discoveries, one shape. That is a property of this corpus's diagnostic vocabulary rather than four coincidences.
+Five stages, five independent discoveries, one shape. That is a property of this corpus's diagnostic vocabulary rather than five coincidences.
 
 ## 3. Why it is expensive, in the currency this repository already counts
 
