@@ -15,13 +15,14 @@ asking.** Not one of them involves anything lying, erroring, or malfunctioning:
 | do these two *differ* | does this *work* | 3 |
 | are these *equal* | (while holding one thing) | 4 |
 | what is true of this *tree* | what did *I* do | 5 |
+| were these two *built as named* | were the two things I compared *actually different* | 6 |
 
 That is why **none of them has a failure arm**, and it is the whole difficulty: there is nothing to
 catch, no error to check for, no status to inspect that would have been different. The absence of
 the answer you wanted reads as the answer you wanted. So the guard is never "check for an error" —
 it is always **assert the missing question**, explicitly, in a form the run itself has to produce.
 
-The five clauses below are the instances that have actually cost this repository time. They will go
+The six clauses below are the instances that have actually cost this repository time. They will go
 obsolete as the tooling changes; the paragraph above will not. **If you are reading this to decide
 what to do about a measurement you do not yet distrust, that paragraph is the part to apply.**
 
@@ -250,7 +251,7 @@ Note the failure this clause names passes clauses 1–4 completely: the run
 executed, on the right tree, the subject stood alone, and the arms were genuinely two arms. What is
 missing is any evidence about **whose** the difference is.
 
-## The five clauses
+## The six clauses
 
 | | assert | catches | missed by the others |
 |---|---|---|---|
@@ -259,6 +260,7 @@ missing is any evidence about **whose** the difference is.
 | 3 | the subject **stands alone** | subject was never viable | 1 and 2 both pass — #8282 passed both for two days |
 | 4 | the two arms are **two dispatches** | a comparison that lost an operand | 1–3 all pass per arm; the arms are simply the same arm |
 | 5 | the difference is **yours** | a correct number blamed on the wrong change | 1–4 all pass; nothing about the run is wrong |
+| 6 | the arms **actually differed** | an agreement that compared one thing to itself | 1–5 can all pass, including a *correct* provenance stamp |
 
 Each catches what the others cannot, and none implies another.
 
@@ -275,6 +277,78 @@ Clause 5 is the same shape pointed at the *reader* rather than the instrument: t
 is true of this tree" when asked "what did I do", and the gap is filled by the author's own guess.
 That is why its guard is a second arm rather than a better marker — no property of a single
 measurement can say whose the difference is.
+
+## Clause 6 — an agreeing pair is not a result until it carries its own proof of difference
+
+Contributed by `eager-lark-892`, who ran it; the reporting-side statement is `deep-ant-102`'s,
+relayed by `smart-ram-730`. It is not a sixth trick. **It is clause 4's own asymmetry moved one
+layer down**, and filing it as a new technique is how it gets dropped the first time it is
+inconvenient.
+
+The asymmetry clause 4 rests on:
+
+```
+arms DIFFER -> the arms cannot have shared a binary -> self-proving, assert nothing
+arms AGREE  -> the change was inert, OR both arms ran one thing, and the output does not say which
+```
+
+A **null is undecidable from its own output**, and the filter is vicious: a differing pair
+advertises its own soundness, so the cases you would catch are exactly the ones that did not need
+catching. A null is also the reading you are least inclined to interrogate, because it arrives as a
+finding to explain rather than a fault to doubt.
+
+**Binary provenance does not close it.** A provenance key answers *was this binary built from the
+tree I named*. It never answers *were the two things I compared actually different*. Three things
+defeat the first: a shared binary, a shared tree, and a key that is correct and blind — when both
+arms run on one tree (the failed checkout inside a single dispatch, clause 4's live instance) the
+key **rightly** returns the same value and cannot see the problem. That is `measure() == measure()`
+with a stamp on it. As of `330f63c514d` the probe key includes `HEAD` plus a sha256 of
+`git diff HEAD`, which closes the shared-binary half; it cannot close the shared-tree half, and
+"the key is fixed" must not travel as "agreeing arms are safe".
+
+**The control: diff the emitted artifact, not the board.** Compile the subject at each arm, emit to
+two directories, diff the bytes.
+
+```
+boards AGREE + emitted bytes DIFFER    -> the compilers provably behaved differently. Real null.
+boards AGREE + emitted bytes IDENTICAL -> genuine equivalence, OR one binary. Still undecidable;
+                                          now go assert provenance per arm.
+```
+
+It works for exactly clause 4's reason, relocated: shared binaries cannot produce different bytes,
+so an agreeing board over differing emitted bytes is self-proving by the same argument.
+
+**Both arms of the control were observed**, which is what makes it a control rather than a
+decoration — a check whose RED has never been produced is permanently green by construction and is
+worse than absent, because it gets cited as coverage:
+
+| pair | emitted bytes | boards | reading |
+|---|---|---|---|
+| `c07d13a49f` vs `974ac5d808` | 2 of 176 files differ | identical | real null: different compilers, unmoved board |
+| `c07d13a49f` vs `98b18cdc81e` | 0 of 176 differ | identical | genuine equivalence for that entry's closure |
+
+Two bounds, so it is not oversold: it proves the compilers **differ**, not that either is correct
+(the 2-file diff sat under a repair that turned out not to move its target rows at all); and it is
+scoped to **one entry's closure**, not to the two refs generally.
+
+**Where the obligation sits.** Stated as a question the reader asks when a report arrives, this is
+verification living in the reading frame — it works only while someone reads every report, remembers
+the class, and recognises it in another author's phrasing, which is the structure that failed four
+separate times in one night. So it belongs on the **producing** side:
+
+> An agreeing arm-pair is not a result until it carries its own binary-provenance assertion, and
+> preferably its own emitted-bytes diff. A differing pair is self-proving and needs nothing.
+
+The difference between a guard and a habit is that an agreeing pair arriving *without* the assertion
+is then visibly incomplete rather than quietly plausible.
+
+**A third guard worth naming beside two-dispatch and the stamp**, and it is a design decision rather
+than a footnote: run the arms as **sequential local dispatches from a fixed detached checkout**.
+`ctrl-build --remote` checks out the pushed base and applies your diff as a patch, so a two-arm
+dispatch from one branch has **one head and two trees** — the after-arm can be handed the
+before-arm's binary. A sequential local run from a detached checkout cannot express that state.
+
+Receipts: `gunbc#9019`'s `RESULT_FALSIFIED.md` and its controls directory.
 
 ## Neighbours already recorded, and how this differs
 
