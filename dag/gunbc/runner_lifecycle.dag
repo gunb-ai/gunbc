@@ -106,21 +106,33 @@ type RunnerSlotAddSequence
 // modeled yet. Answering with a plausible subsequence would be the fabricated-plausible-output
 // failure DESIGN section 5 forbids; refusing names the gap and stops the line.
 //
-// THE FABRIC SLOT'S OWN PROVISIONING SEQUENCE NOW EXISTS, AND IT IS NOT AN ARM HERE. An earlier
-// revision of this annotation named "landing as its own arm here" as the next-rung trigger; that
-// would have been the wrong shape and is corrected rather than deleted, because the reason is the
-// load-bearing part. The two families answer different questions -- this one selects a GitHub
-// Actions add sequence, gunbc.fabric_cell_converge selects a fabric cell provisioning sequence --
-// and folding the second into this return type would put a step vocabulary that must never install
-// an actions-runner inside the coproduct whose other arm is exactly that installation. They are
-// siblings with disjoint step enums, so "a fabric cell provisioning run installs no actions-runner"
-// has no representation to violate.
+// THE FABRIC SLOT HAS NO PROVISIONING SEQUENCE, HERE OR ANYWHERE, AND THIS ANNOTATION SAID
+// OTHERWISE. A previous revision claimed the fabric slot's own provisioning sequence "now exists",
+// described the two families as "siblings with disjoint step enums", and named
+// gunbc.fabric_cell_converge fabric_cell_provision_sequence_for as the sequence selector. That
+// symbol does not exist and never did: the PR that wrote this sentence deleted the
+// FabricCellProvisionStep vocabulary in the same diff and replaced it with a membership model, so
+// the annotation described the shape the work started from rather than the shape it landed in.
+// It is corrected rather than deleted because the reason the two families stay apart is still
+// load-bearing, and because a fabricated symbol in a citation is the exact defect DESIGN section 3
+// makes symbolic citation decidable in order to catch (found by side-chat review, not by any gate).
 //
-// WHAT IS STILL NOT TRUE, SAID PLAINLY: srv3-06 is not yet convergeable. A sequence is modeled; no
-// production caller selects it and no apply path executes it, exactly as this gate's own header
-// records for itself below. NEXT-RUNG TRIGGER: a fabric-execution desired population in
-// gunbc.runner_capacity_plan -- a sibling of desired_github_identities rather than a filter over
-// it -- so that a fabric cell can be planned at all.
+// WHAT gunbc.fabric_cell_converge ACTUALLY MODELS: the fabric family's DESIRED AND OBSERVED
+// SUBSTRATE MEMBERSHIP -- resource-addressed members, a typed population, and a verdict over the
+// two. Its host-effect realization is absent, which the plan family states as its own typed arm
+// rather than by silence. So there is no fabric step vocabulary to be a sibling of, and no fabric
+// success arm belongs in this GitHub lifecycle: the question this coproduct answers is which
+// GitHub Actions add sequence applies, and the fabric slot's answer is that none does.
+//
+// WHAT IS STILL NOT TRUE, SAID PLAINLY: srv3-06 is not yet convergeable. Its substrate membership
+// is modeled and can be planned; nothing observes it on a real host and nothing applies it.
+// NEXT-RUNG TRIGGER, and it is two things rather than one: a real observer producing a
+// FabricCellPopulation from the host, and a fabric host-effect realization for the membership
+// actions that population implies. Until both land, a nonempty fabric plan is a counted
+// realization refusal by construction, never an applied change. An earlier revision named a
+// desired population in gunbc.runner_capacity_plan as the trigger; that is already satisfied by
+// the fabric family's own host-exact desired fold, so it would have marked this row done while
+// both real gaps stayed open.
 // THIS GATE HAS NO PRODUCTION CALLER TODAY, AND SAYING SO IS THE DIFFERENCE BETWEEN A WALL AND A
 // CLAIM ABOUT A WALL. Only its witness calls it. The apply path never reaches a step sequence at
 // all: gunbc.runner_capacity_realize matches RunnerSlotAdd and discards the identity, counting adds
@@ -153,7 +165,7 @@ fn runner_slot_add_sequence_for(host: HostIdentity, slot_index: Nat) -> RunnerSl
           GitHubRunnerAddSequence { steps: runner_slot_add_steps_ordered() }
         SlotServesFabricExecution =>
           FabricSlotHasNoGitHubAddSequence {
-            reason: "fabric execution slot: the GitHub runner add sequence does not apply to it, and refusing is not the same as having nothing to say -- its provisioning sequence is gunbc.fabric_cell_converge fabric_cell_provision_sequence_for, a separate closed step vocabulary that shares no term with this one. What is refused here is the FILTERED SUBSEQUENCE: this sequence fetches an actions-runner release, verifies its arch digest and starts an actions-runner unit, so the GitHub steps minus the GitHub-specific ones would provision a slot that downloads GitHub's runner in order never to run GitHub's runner"
+            reason: "fabric execution slot: the GitHub runner add sequence does not apply to it, and refusing is not the same as having nothing to say. gunbc.fabric_cell_converge now models the fabric family's DESIRED AND OBSERVED SUBSTRATE MEMBERSHIP; its host-effect realization remains absent, so there is no provisioning sequence to name and no fabric success arm belongs in this GitHub lifecycle. What is refused here is the FILTERED SUBSEQUENCE: this sequence fetches an actions-runner release, verifies its arch digest and starts an actions-runner unit, so the GitHub steps minus the GitHub-specific ones would provision a slot that downloads GitHub's runner in order never to run GitHub's runner"
           }
       }
   }

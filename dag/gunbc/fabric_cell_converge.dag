@@ -8,7 +8,7 @@ import std.measure { byte_size_count }
 import product.placement_supply { HostIdentity }
 import product.fabric.sanitation { CellId }
 import gunbc.ownership { Ownership, Owned }
-import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name, runner_slot_identity_equal }
 import gunbc.runner_slot_allocation {
   fabric_execution_slot_identities,
   gunbc_runner_slot_desired,
@@ -86,8 +86,15 @@ fn fabric_cell_resource_addresses() -> List<FabricCellResourceAddress> {
   [FabricCellRootAddress, FabricCellAttemptRootAddress, FabricCellResourceBoundaryAddress]
 }
 
+// `host` IS NOT A FIELD HERE, AND ITS ABSENCE IS THE POINT. An earlier cut carried both
+// `host: HostIdentity` and `slot: RunnerSlotIdentity`, and `RunnerSlotIdentity` already contains
+// the host -- so the record admitted `member.host = srv4` beside `member.slot.host = srv3`, a
+// disagreement no consumer could detect and no fold could refuse. The stable member identity is
+// exactly RunnerSlotIdentity x FabricCellResourceAddress; the host is DERIVED from the slot
+// wherever it is needed. That makes the disagreement unrepresentable rather than validated
+// (DESIGN section 5, construction over validation), which is strictly stronger than the equality
+// check the two-field shape would have needed.
 type FabricCellMember {
-  host: HostIdentity
   slot: RunnerSlotIdentity
   address: FabricCellResourceAddress
   state_digest: NonEmptyStr
@@ -96,7 +103,7 @@ type FabricCellMember {
 
 fn fabric_cell_member_key(member: FabricCellMember) -> String {
   join([
-    member.host as String,
+    member.slot.host as String,
     "|",
     runner_slot_instance_name(slot: member.slot),
     "|",
@@ -151,7 +158,6 @@ fn fabric_cell_desired_members_for_slot(slot: RunnerSlotIdentity) -> List<Fabric
   map(
     fabric_cell_resource_addresses(),
     a => FabricCellMember {
-      host: slot.host,
       slot: slot,
       address: a,
       state_digest: fabric_cell_desired_state_digest(slot: slot, address: a),
@@ -237,8 +243,13 @@ fn observation_address(o: FabricCellAddressObservation) -> FabricCellResourceAdd
   }
 }
 
+// IDENTITY IS COMPARED AT ITS OWN AUTHORITY, NOT THROUGH A RENDERED NAME. An earlier cut
+// compared two `runner_slot_instance_name` strings, which makes a DISPLAY projection the backward
+// identity test for a type that already carries exact coordinates -- a second naming scheme for a
+// fact the identity authority owns (DESIGN section 3), and one that silently inherits every future
+// change to how a slot renders. `runner_slot_identity_equal` compares host and index directly.
 fn observation_targets(o: FabricCellAddressObservation, slot: RunnerSlotIdentity, address: FabricCellResourceAddress) -> Bool {
-  runner_slot_instance_name(slot: observation_slot(o: o)) == runner_slot_instance_name(slot: slot)
+  runner_slot_identity_equal(a: observation_slot(o: o), b: slot)
     && fabric_cell_resource_address_wire(address: observation_address(o: o))
         == fabric_cell_resource_address_wire(address: address)
 }

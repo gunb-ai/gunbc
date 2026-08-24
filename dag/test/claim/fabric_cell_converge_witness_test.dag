@@ -49,7 +49,6 @@ fn srv3_fabric_slot() -> RunnerSlotIdentity {
 
 fn desired_member(address: FabricCellResourceAddress) -> FabricCellMember {
   FabricCellMember {
-    host: operator_host_srv3,
     slot: srv3_fabric_slot(),
     address: address,
     state_digest: fabric_cell_desired_state_digest(slot: srv3_fabric_slot(), address: address),
@@ -271,7 +270,6 @@ test fn witness_fabric_cell_drifted_digest_is_unprovisioned() -> Bool {
       AddressObserved { member: desired_member(address: FabricCellAttemptRootAddress) },
       AddressObserved {
         member: FabricCellMember {
-          host: operator_host_srv3,
           slot: srv3_fabric_slot(),
           address: FabricCellResourceBoundaryAddress,
           state_digest: "fabric-cell-srv3-06.slice;memory_max=1" as NonEmptyStr,
@@ -303,7 +301,6 @@ test fn witness_fabric_cell_conflicting_positive_observations_contradict() -> Bo
       AddressObserved { member: desired_member(address: FabricCellRootAddress) },
       AddressObserved {
         member: FabricCellMember {
-          host: operator_host_srv3,
           slot: srv3_fabric_slot(),
           address: FabricCellRootAddress,
           state_digest: "/opt/fabric-cells/srv3-06-stale-reading" as NonEmptyStr,
