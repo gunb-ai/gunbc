@@ -5,6 +5,8 @@ import extdeps.languages.rust.emit {
   rt_functions,
   rt_wraps_result,
   rt_bridge_function_names,
+  rt_function_registry,
+  rt_bridge_name,
   rust_method_templates,
   rust_method_wraps_result,
 }
@@ -380,6 +382,17 @@ test fn rt_bridge_function_names_derived_from_registry() -> Bool {
     Absent => false
   }
   overridden && !str_map_has_key(rt_bridge_function_names(), "concat")
+}
+
+// rt_bridge_name's Absent arm returns its input unchanged, and that is the
+// IDENTITY case rather than a fallback: rt_bridge_function_names keeps only the
+// rows where name != bridge_name, so a miss means this bridge's runtime name IS
+// its .dag name. This witness joins the two by identity over the whole registry
+// -- no count, no literal -- so a future row whose override is dropped from the
+// map goes red here instead of emitting a call to a v1_rt symbol that does not
+// exist.
+test fn rt_bridge_name_agrees_with_registry_on_every_row() -> Bool {
+  rt_function_registry |> all(entry => rt_bridge_name(name: entry.name) == entry.bridge_name)
 }
 
 test fn rt_wraps_result_derived_from_registry() -> Bool {
