@@ -781,3 +781,43 @@ noticing that a lookup returns *a* member of a set rather than *the* member, and
 which.
 
 Only `"PartialFunction"` was added, which competes with nothing.
+
+## The strongest instance of the comparand rule: a stale binary and a correct one produce the same green
+
+*Reported by silent-gull-867, 2026-08-24, against the regen fixed-point loop on #9059 — and the
+reason it closes this brief rather than sitting mid-list is the timing, recorded below.*
+
+The regen loop is: install a mirror, rebuild, re-run, read the verdict. One round ran without the
+rebuild — the mirror was installed and then measured **against the binary built before it**. The
+round went green.
+
+That green is the comparand rule's purest specimen. The question asked was *does the committed
+mirror match what the compiler emits*. The question answered was *does the committed mirror match
+what the compiler emitted **before this mirror existed***. Both are real questions, both are
+answerable, and **both answer `true` with the same byte.** Nothing in the output distinguishes them,
+because the binary's identity is not one of the comparands the verdict is computed over — it is the
+thing computing the verdict, and an instrument does not report itself.
+
+What makes it worse than the traps above: those had a channel that *could* have carried the
+distinction and didn't. Here there is no such channel. The round's output is structurally incapable
+of encoding which binary produced it. The only channel that could catch it is a re-read of the
+commands that produced the run — which is exactly how it was caught, and it is not a channel that
+scales or that a reviewer has access to.
+
+**Why the damage was zero, stated precisely, because the precise version is the alarming one:** the
+round's answer happened not to depend on the reinstall. Not *the loop is robust to this*, not *the
+check was redundant anyway* — the inputs that round happened not to differ across the two binaries.
+That is luck. A finding whose cost was zero because of what the run happened to contain has not been
+handled; it has been survived.
+
+**The timing is the argument.** This was committed by the author who had written up the probe-staleness
+class **within the hour, on the change that records it.** Documenting the class did not immunise its
+own documenter against it, one hour later, with the text open. Any proposal whose remedy is "readers
+will be careful" is refuted by this single data point — the most primed possible reader, at the moment
+of maximum priming, on the most relevant possible change, still committed it and still needed a manual
+command re-read to notice.
+
+So the remedy cannot be attention. It has to be that the run **names the binary it ran** — putting the
+instrument's identity into the receipt makes the two questions above textually different, which is the
+minimum condition for the output channel to be able to carry the distinction at all. Until that lands,
+every green from this loop is a green about an unnamed compiler.
