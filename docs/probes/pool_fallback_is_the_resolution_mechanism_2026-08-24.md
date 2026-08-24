@@ -302,7 +302,13 @@ functions, that reasoning is unavailable.
 
 ## 5d. Three narrowings that arrived after this document was written, and one population it now has
 
-Four lanes converged on this mechanism within a few hours of the probe landing. What they establish
+**CORRECTED 2026-08-24, after this section was first written as "four lanes converged".** It is
+**two** lanes, and the two that dropped out were removed by measurement rather than by argument —
+see §5e, which also carries a negative result that constrains this document's central claim. Read
+§5e before this section; what follows is still true, but it was written believing a unification that
+did not survive.
+
+Lanes converged on this mechanism within a few hours of the probe landing. What they establish
 changes the document's scope in three directions, all of which make the finding **smaller and more
 actionable** than it was written as.
 
@@ -379,6 +385,65 @@ A confirmed prior instance exists from before the namespace cut: the same alias 
 `PartialFunction` appearing in type position where the kernel `Map` was meant. **The two-render model
 is therefore not a fresh hypothesis — it has a precedent.**
 
+## 5e. A refuted specimen and a negative result that bounds this document's claim
+
+Two of the four lanes §5d credited to this mechanism were removed the same day, both by measurement.
+They are recorded here rather than edited away, because one of them constrains what this probe is
+entitled to claim.
+
+### The specimen this document credited was never this mechanism
+
+This probe, and the message traffic around it, cited `src/v1/04_infer.dag` pulling `List` by
+pool-fallback and binding the `FreeMonoid` alias as **the** live specimen — and attributed that
+diagnosis to the lane working on the namespace cut. **That lane had already refuted it.** In their
+words: the `List`/`FreeMonoid` cross-tree pull *"was a SEPARATE hypothesis that I refuted."* The
+actual blocker they found was an empty list literal with no expected type being judged as
+`List<Unit>` — a different defect that happens to live in the same file.
+
+**Nobody asked them.** Two sessions inferred a lane's diagnosis from what its PR touched, and
+published the inference as that lane's finding. **"This lane works on that file" was substituted for
+"this lane found that mechanism"** — the same substitution that invalidated a hold's predicate the
+same afternoon, where *a session cited a law living in F* became *a measurement is running against
+F*. **Reading and measuring are different relations to a file**, and neither is the relation
+"diagnosed this cause".
+
+### The negative result, which is the part that bounds this document
+
+Installing a kernel guard removed **3141 pulls** and **moved the closure by zero modules**.
+
+That is a strong result and it was available in that lane the whole time. **It does not refute this
+probe, and stating why is the point of recording it here**, because the temptation is to read it as
+either a refutation or as irrelevant, and it is neither:
+
+    closure MEMBERSHIP    which modules get loaded        <- unchanged by 3141 removed pulls
+    name RESOLUTION       which definer a name binds to   <- this document's subject
+
+Every module a fallback pull would have brought in was **already reachable by another path**, so
+removing the pulls changed nothing about what loads. **The fallback's effect is on which definer a
+bare name resolves to, not on what the closure contains.** This document's claim survives that
+distinction intact — but it survives *narrowly*, and any argument for repairing the fallback on
+**closure-cost** grounds is refuted outright by this measurement. The cost case must be made on
+resolution correctness, or not at all.
+
+**What this changes about §4d's cost forecast:** nothing measured there is withdrawn, but the
+forecast should not be read as implying that scoping the fallback would shrink the loaded closure.
+Measured, it would not.
+
+### What survives
+
+    Root B / this mechanism      CONFIRMED. std.types DECLARES type List = FreeMonoid, and a
+                                 cross-root bare name reaching it genuinely receives FreeMonoid.
+    lanes on it                  two: this probe, and the stripped-header finding (gunbc#9083)
+    #8282's blocker              NOT an instance. A refuted hypothesis about the same file.
+    the no-definer symptom family  NOT this mechanism, and not the signature fallback either
+                                 (algebra method templates are gated out by explicit law), and
+                                 not the profile lookup (which HITS — see §5d's correction).
+                                 Mechanism unknown; three candidates eliminated.
+
+**Three candidates eliminated and none confirmed is the honest state**, and it is worth more than the
+unification this document briefly carried — which would have sent repair work at a cause two of its
+three cited lanes had already ruled out.
+
 ## 6. Provenance
 
 Three lanes, none of which had the whole picture, and none of which had the loader in front of them:
@@ -386,7 +451,7 @@ Three lanes, none of which had the whole picture, and none of which had the load
 | | what they held |
 |---|---|
 | `keen-tern-667` (#9083) | the sharpest statement of the mechanism — pool coincidence, and that whole-tree compile-clean is not evidence a module can be emitted alone |
-| `crisp-crab-430` | the live specimen (`04_infer` -> `FreeMonoid`) and the 0-PoolAmbiguous measurement that looked reassuring |
+| `crisp-crab-430` | the `510/223` directional split, the `37389/733` baseline, the 0-PoolAmbiguous measurement that looked reassuring — and the REFUTATION of the `04_infer` -> `FreeMonoid` specimen this document originally credited to them (§5e) |
 | `deep-ant-102` | read the loader and joined them |
 
 The pairing is the finding. Each lane's own result was correct and individually unalarming; the
