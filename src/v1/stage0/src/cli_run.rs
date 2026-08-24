@@ -16659,16 +16659,22 @@ pub fn whole_tree_ancestry_retention_probe(
 /// Companion to a Bool witness: `emit_on_demand_family_crate_pr_native_agreement_holds`
 /// → `emit_on_demand_family_crate_pr_native_agreement_failure_receipt`.
 ///
-/// Both witness-naming conventions in the corpus are recognized: `_holds` (claim witnesses)
-/// and `_passes` (the cheap-floor gate witnesses in `tools.floor_effect_gate_witness`). The
-/// gate witnesses were unreachable from this channel while only `_holds` was stripped, which
-/// is why ten consecutive `extdeps_scope_placement_gate_passes` reds reported nothing but
-/// `returned Bool(false)`. A missing companion stays "not declared" either way, so widening
-/// the derivation cannot invent a required hook for a witness that has none.
+/// Both corpus naming conventions are normalized away — `_holds` (claim witnesses) and
+/// `_passes` (the cheap-floor gate witnesses in `tools.floor_effect_gate_witness`) — and so
+/// is neither: a name carrying no suffix projects to its own stem. That is the 2026-08-24
+/// change. Recognizing only `_holds` once left the gate witnesses unreachable from this
+/// channel, which is why ten consecutive `extdeps_scope_placement_gate_passes` reds reported
+/// nothing but `returned Bool(false)`; recognizing exactly two suffixes left 84.8% of the
+/// discovered roster in the same silence, for the same reason one layer out. Widening the
+/// derivation to all names cannot invent a required hook for a witness that has none: a
+/// companion that does not exist yields an empty receipt and appends nothing.
 /// Delegates suffix derivation to `gunbc.test_module_hygiene.failure_receipt_companion`
 /// (single authority — orphan reachability and claim_executor share the same rule).
-/// `NotDeclared` means the witness name carries no `_holds`/`_passes` companion convention;
-/// `AuthorityRefused` is a located lookup failure and must not be rendered as not-declared.
+/// The projection is TOTAL — every witness name maps to a companion spelling, and the suffix
+/// gets no vote on whether something is a witness (that question belongs to floor discovery).
+/// `AuthorityRefused` is a located lookup failure and must not be rendered as a missing
+/// companion; a companion that simply does not exist surfaces as an empty receipt, appended
+/// as nothing.
 pub use test_module_hygiene_bridge::FailureReceiptCompanionLookup;
 
 pub fn failure_receipt_companion(function: &str) -> FailureReceiptCompanionLookup {
@@ -16697,7 +16703,6 @@ pub fn append_failure_receipt_companion_loudness(
             detail.push_str(" | failure_receipt_companion_refused: ");
             detail.push_str(&cause);
         }
-        FailureReceiptCompanionLookup::NotDeclared => {}
     }
 }
 
@@ -16719,7 +16724,6 @@ pub fn append_witness_verdict_diagnostic_loudness(
             detail.push_str(" | witness_verdict_diagnostic_refused: ");
             detail.push_str(&cause);
         }
-        FailureReceiptCompanionLookup::NotDeclared => {}
     }
 }
 
