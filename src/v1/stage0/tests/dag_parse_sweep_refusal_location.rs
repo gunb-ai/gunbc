@@ -21,29 +21,20 @@
 
 use std::path::{Path, PathBuf};
 
-// No `tempfile` dev-dependency exists in this crate and this test does not earn one: the
-// directory name is derived from the test's own name, so the two tests cannot collide, and the
-// tree is removed on the way in as well as on the way out so a killed run leaves nothing that
-// makes the next one pass or fail for the wrong reason.
-struct ScratchTree(PathBuf);
-
-impl ScratchTree {
-    fn new(name: &str) -> Self {
-        let dir = std::env::temp_dir().join(format!("gunbc_parse_sweep_{name}"));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("scratch tree");
-        ScratchTree(dir)
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for ScratchTree {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
+// A FREE FUNCTION RATHER THAN AN RAII GUARD, and the reason is the seed's own accounting: a
+// `struct` + two `impl` blocks would add four more hand-authored Rust items to `src/v1`, and
+// every `impl` method among them is UNCITABLE as a `DeclarationRef` (`std.decl_ref` has no
+// `ImplMethod` field), so the guard would have grown exactly the class
+// `gunbc.seed_growth_admission` reports separately and asks authors not to grow. Cleanup runs
+// on the way IN, which is what makes the run deterministic anyway: a tree left behind by a
+// killed run cannot make the next one pass or fail for the wrong reason. There is no
+// `tempfile` dev-dependency in this crate and this test does not earn one; the directory is
+// named after the test, so the four tests cannot collide.
+fn scratch_root(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("gunbc_parse_sweep_{name}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("scratch tree");
+    dir
 }
 
 fn sweep_errors(dir: &Path, module: &str, body: &str) -> Vec<String> {
@@ -67,8 +58,8 @@ fn fixture(leading_blank_lines: usize) -> String {
 
 #[test]
 fn parse_sweep_refusal_names_the_offending_line() {
-    let dir = ScratchTree::new("located");
-    let errors = sweep_errors(dir.path(), "located", &fixture(0));
+    let dir = scratch_root("located");
+    let errors = sweep_errors(&dir, "located", &fixture(0));
 
     assert_eq!(
         errors.len(),
@@ -85,8 +76,8 @@ fn parse_sweep_refusal_names_the_offending_line() {
 
 #[test]
 fn parse_sweep_refusal_location_follows_the_annotation() {
-    let dir = ScratchTree::new("moved");
-    let errors = sweep_errors(dir.path(), "moved", &fixture(7));
+    let dir = scratch_root("moved");
+    let errors = sweep_errors(&dir, "moved", &fixture(7));
 
     assert_eq!(
         errors.len(),
@@ -108,10 +99,10 @@ fn parse_sweep_refusal_location_follows_the_annotation() {
 
 #[test]
 fn parse_sweep_locates_a_trailing_annotation_refusal() {
-    let dir = ScratchTree::new("trailing");
+    let dir = scratch_root("trailing");
     // `data probe: Bool = true ` is 24 characters, so the `//` opens at column 25 of line 3.
     let errors = sweep_errors(
-        dir.path(),
+        &dir,
         "trailing",
         "module probe_root.probe\n\ndata probe: Bool = true // trailing placement is not modeled\n",
     );
@@ -130,9 +121,9 @@ fn parse_sweep_locates_a_trailing_annotation_refusal() {
 
 #[test]
 fn parse_sweep_locates_a_body_grain_annotation_refusal() {
-    let dir = ScratchTree::new("body");
+    let dir = scratch_root("body");
     let errors = sweep_errors(
-        dir.path(),
+        &dir,
         "body",
         "module probe_root.probe\n\nfn probe() -> Bool {\n  // inside a declaration body\n  true\n}\n",
     );

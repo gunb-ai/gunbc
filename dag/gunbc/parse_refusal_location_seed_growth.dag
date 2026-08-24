@@ -1,0 +1,52 @@
+module gunbc.parse_refusal_location_seed_growth
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+
+data parse_refusal_location_seed_growth_note: String = "Seed-growth obligation for the discriminating evidence behind the located parse-sweep refusal (gunbc#9072). It is homed here, beside the obligation it declares, rather than inside gunbc.seed_growth_admission, which owns the ROSTER and the join and would otherwise accumulate every lane's rows in the module that adjudicates them.\n\nWHAT THE CHANGE ITSELF WAS, because the growth is only defensible relative to it: v1_compiler.cli_run run_dag_parse_sweep rendered an annotation refusal as path plus message and discarded the SourceSpan the diagnostic already carried, so N refusals in one file arrived as N byte-identical unlocated sentences. The repair reads diagnostic_to_span -- which every CompilerDiagnostic answers -- so all three AnnotationAttachmentRefusal arms are located by one fix rather than three.\n\nWHY THE TEST FILE IS ENUMERATED AT ALL, since the scope question is live: seed_growth_forward_freeze_policy_note names 'hand-written src/v1 Rust' and states exactly two exclusions -- deleting existing Rust, and netting deletions against additions. Neither exempts tests, and the G0 census host agrees by execution rather than by reading: scripts/rust_item_census.py classify_repo_path returns 'hand' for every tracked .rs outside the stage0 source root, so src/v1/stage0/tests/ is inside the measured population. An author who read the policy as prose-about-production and skipped the row would be refused by the instrument that measures it.\n\nNO NEW UNCITABLE ITEM, AND THE FIRST DRAFT HAD FIVE. The scratch directory started as an RAII guard -- one struct, two impl blocks, three impl methods -- and every impl method among them is UNCITABLE as a DeclarationRef, because std.decl_ref offers WholeDeclaration or NamedField and neither names a method on an impl block. That would have grown exactly the class gunbc.seed_growth_admission reports separately in seed_growth_uncitable_item_keys. Collapsing the guard to one free function (scratch_root, cleaning on the way IN, which is what makes the run deterministic anyway) took the delta from 12 items to 7 and the uncitable count from 5 to 0. The measurement is the census diff against origin/main in both arms, not an estimate."
+
+data parse_refusal_location_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.tests.dag_parse_sweep_refusal_location",
+      decl_name: "scratch_root",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.dag_parse_sweep_refusal_location",
+      decl_name: "sweep_errors",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.dag_parse_sweep_refusal_location",
+      decl_name: "fixture",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.dag_parse_sweep_refusal_location",
+      decl_name: "parse_sweep_refusal_names_the_offending_line",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.dag_parse_sweep_refusal_location",
+      decl_name: "parse_sweep_refusal_location_follows_the_annotation",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.dag_parse_sweep_refusal_location",
+      decl_name: "parse_sweep_locates_a_trailing_annotation_refusal",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.tests.dag_parse_sweep_refusal_location",
+      decl_name: "parse_sweep_locates_a_body_grain_annotation_refusal",
+      field: WholeDeclaration
+    }
+  ],
+  reason: "WHY RUST IS STILL NEEDED, and it is a REACHABILITY limit rather than a modeling gap: the subject is v1_compiler.cli_run run_dag_parse_sweep, a hand-Rust host walk that reads the filesystem, and the property under test is the TEXT it prints. No .dag witness can call it -- the required floor's hermetic envelope refuses host effects during preparation, so a witness whose subject is a filesystem walk is counted executed while its assertion never runs (DESIGN 'Building & checks' records that boundary). Asserting the printer's output from a mocked span would assert the mock, which is the specification-without-execution trap, so the evidence has to live where the walk does.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits by PURPOSE -- does the change serve the v2 self-host program. A required-CI phase that cannot locate its own refusals taxes every lane including the self-host work, measured rather than argued: the incident that produced this change cost one session an hour of structural guessing over 52 byte-identical sentences, and the diagnosis it reached was wrong. The production change adds NO capability and NO hand item -- it connects two functions that already existed -- so the growth here is the discriminating evidence, not the fix.\n\nHAND-ITEM DELTA: +7, all seven citable above and enumerated rather than counted, and all seven in the ONE new file. HAND-LOC DELTA: +109 by the census, +150 by the diff, and the 41-line difference is the file-level prose the census does not attribute to an item. src/v1/stage0/src/cli_run.rs is +30/-3 and adds ZERO items -- the change is inside the existing run_dag_parse_sweep, so its disposition is ExistingSeedItemModified and listing it would net a modification into an addition census.\n\nWHAT THE EVIDENCE ESTABLISHES, so a later reader can judge whether the seven are still earning their place: one test locates a refusal, one MOVES the same annotation seven lines down and requires the reported line to move with it (a printer emitting a constant passes the first and fails the second), and two more hold the trailing and body-grain arms so 'arm-independent' is executed rather than asserted.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete all seven when the parse sweep's host walk is itself modeled -- when run_dag_parse_sweep's directory walk and its diagnostic rendering are expressed as a .dag operation over a typed filesystem transport, a witness can call it and these assertions move to the substrate unchanged. A PARTIAL migration IS admissible and is the expected shape: the moment the RENDERING is modeled, the four arm tests can be re-authored as .dag witnesses over an in-memory diagnostic while scratch_root and sweep_errors stay behind for as long as the WALK is still host-only; delete those two on the second step. What does NOT dissolve them is the printer merely changing shape again, and what does NOT dissolve them is a hermetic witness that asserts a fabricated span -- that would retire the evidence while retiring nothing it guards.",
+  current_boundary: "src/v1/stage0/src/cli_run.rs run_dag_parse_sweep; src/v1/stage0/tests/dag_parse_sweep_refusal_location.rs; dag/std/source_annotation.dag; dag/gunbc/parse_refusal_location_seed_growth.dag"
+}
