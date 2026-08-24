@@ -63,6 +63,32 @@ fn systemctl_show_property_operation_argv_matches_transport(
   }
 }
 
+// RESTORED, NOT RECONSTRUCTED. These four declarations were authored in #9062's branch and are
+// transcribed from it verbatim; they are not inferred from their call sites. #9057 rewrote this
+// module to route through gunbc.host_operation_exec and deleted them, #9062 was authored before
+// that rewrite, and the squash took #9057's body plus #9062's new call sites -- textually clean,
+// semantically contradictory, with nothing evaluating the union until main ran. The LoadState read
+// below is the only discriminator between an ABSENT unit and an UNBOUNDED one, so reverting it
+// would delete a live distinction rather than restore a green state.
+data systemctl_show_property_path: String = "dag/extdeps/systemd/systemctl.dag"
+
+data systemctl_show_property_service: String = "systemd.Systemctl"
+
+fn systemctl_show_property_read_ssh_argv(host: NonEmptyStr, argv: List<String>) -> SystemdPropertyCapture {
+  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Present { value: why } => SystemdPropertyCaptureRefused { reason: why }
+    Absent => systemd_property_capture_from_outcome(outcome: typed_argv_exec_over_ssh(host: host, argv: argv))
+  }
+}
+
+fn systemd_property_capture_from_outcome(outcome: TypedArgvExecOutcome) -> SystemdPropertyCapture {
+  match outcome {
+    TypedArgvExecConverged { result: r } =>
+      systemctl_show_property_value_from_stdout(success: r.success, stdout: r.stdout)
+    TypedArgvExecRefused { reason: why } => SystemdPropertyCaptureRefused { reason: why }
+  }
+}
+
 // THE LOAD-STATE READ IS A SIBLING OF THE PROPERTY READ, NOT A SPECIAL CASE OF IT. It shares the
 // capture type because the shape of the answer is identical -- one `--value` line, or a located
 // refusal -- but it cannot share the operation: extdeps.systemd.systemctl's own annotation records
