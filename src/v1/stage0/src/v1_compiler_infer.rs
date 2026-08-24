@@ -20247,6 +20247,33 @@ pub fn func_env_views_for_import(
     }
 }
 
+pub fn merge_func_env_views_by_owner(
+    views: Rc<Vec<Rc<ResolvedFuncEnv>>>,
+) -> Rc<Vec<Rc<ResolvedFuncEnv>>> {
+    let mut by_owner: HashMap<String, Rc<ResolvedFuncEnv>> = HashMap::new();
+    let mut owner_order: Vec<String> = Vec::new();
+    for view in views.iter().cloned() {
+        if let Some(existing) = by_owner.get(&view.name).cloned() {
+            by_owner.insert(
+                view.name.clone(),
+                Rc::new(ResolvedFuncEnv {
+                    name: view.name.clone(),
+                    local: v1_rt::rc_map_merge(existing.local.clone(), view.local.clone()),
+                    parents: Rc::new(vec![]),
+                }),
+            );
+        } else {
+            owner_order.push(view.name.clone());
+            by_owner.insert(view.name.clone(), view);
+        }
+    }
+    owner_order
+        .into_iter()
+        .filter_map(|owner| by_owner.get(&owner).cloned())
+        .collect::<Vec<_>>()
+        .into()
+}
+
 pub fn build_module_context(
     contributions: Rc<Vec<Rc<ItemContribution>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -20358,7 +20385,7 @@ pub fn build_module_context(
             ),
             v1_rt::rc_map_merge(census_scope.svc_locals.clone(), local.svc_locals.clone()),
         );
-        let parent_envs = Rc::new({
+        let parent_envs = merge_func_env_views_by_owner(Rc::new({
             let mut __result = Vec::new();
             for imp in resolved_imports.iter().cloned() {
                 __result.extend(
@@ -20375,7 +20402,7 @@ pub fn build_module_context(
                 );
             }
             __result
-        });
+        }));
         let resolve_result = crate::v1_compiler_infer_sigs::resolve_func_sigs(
             local.func_sigs.clone(),
             parent_envs.clone(),
@@ -22096,7 +22123,7 @@ pub fn rewire_func_env_parent_links(
             let mut __result = Vec::new();
             for m in modules.iter().cloned() {
                 __result.push({
-                    let parents = Rc::new({
+                    let parents = merge_func_env_views_by_owner(Rc::new({
                         let mut __result = Vec::new();
                         for imp in crate::v1_std_core::module_imports(m.module.clone())
                             .iter()
@@ -22123,7 +22150,7 @@ pub fn rewire_func_env_parent_links(
                             );
                         }
                         __result
-                    });
+                    }));
                     Rc::new(TypedModule {
                         module: m.module.clone(),
                         items: m.items.clone(),

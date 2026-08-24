@@ -10196,6 +10196,41 @@ fn func_env_views_for_import(parent: ResolvedFuncEnv, is_all: Bool, specific_nam
   }
 }
 
+type FuncEnvViewMerge {
+  by_owner: Map<String, ResolvedFuncEnv>
+  owner_order: List<String>
+}
+
+// Separate direct imports can reach the same real owner through different
+// flattened closures.  Union their admitted locals before owner deduplication;
+// otherwise an empty selective view can suppress an explicitly imported name.
+fn merge_func_env_views_by_owner(views: List<ResolvedFuncEnv>) -> List<ResolvedFuncEnv> {
+  let merged = fold(views, init: FuncEnvViewMerge { by_owner: empty_map(), owner_order: [] }, f: (acc, view) =>
+    match map_get(acc.by_owner, view.name) {
+      Present { value: existing } =>
+        FuncEnvViewMerge {
+          by_owner: map_insert(
+            acc.by_owner,
+            view.name,
+            ResolvedFuncEnv { name: view.name, local: map_merge(existing.local, view.local), parents: [] }
+          ),
+          owner_order: acc.owner_order
+        }
+      Absent =>
+        FuncEnvViewMerge {
+          by_owner: map_insert(acc.by_owner, view.name, view),
+          owner_order: list_push(acc.owner_order, view.name)
+        }
+    }
+  )
+  merged.owner_order |> flat_map(owner =>
+    match map_get(merged.by_owner, owner) {
+      Present { value: env } => [env]
+      Absent => []
+    }
+  )
+}
+
 fn build_module_context(contributions: List<ItemContribution>,
     parent_index: Map<String, TypedModule>,
     variant_surfaces: Map<String, VariantExportSurface>,
@@ -10262,12 +10297,12 @@ fn build_module_context(contributions: List<ItemContribution>,
     svc_registry: map_merge(census_scope.svc_registry, local.svc_registry),
     svc_locals: map_merge(census_scope.svc_locals, local.svc_locals)
   )
-  let parent_envs = flat_map(resolved_imports, imp =>
+  let parent_envs = merge_func_env_views_by_owner(flat_map(resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
       Present { value: typed_parent } => func_env_views_for_import(parent: typed_parent.func_env, is_all: imp.is_all, specific_names: imp.specific_names)
       Absent => []
     }
-  )
+  ))
   let resolve_result = resolve_func_sigs(
     declared_sigs: local.func_sigs,
     parent_envs: parent_envs,
@@ -11036,7 +11071,7 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
     map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
   )
   map(modules, m =>
-    let parents = flat_map(module_imports(n: m.module), imp =>
+    let parents = merge_func_env_views_by_owner(flat_map(module_imports(n: m.module), imp =>
       let path = import_module_path_at(imp: imp, source_indices: source_indices)
       match map_get(index, path) {
         Present { value: parent } => func_env_views_for_import(
@@ -11046,7 +11081,7 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
         )
         Absent => []
       }
-    )
+    ))
     TypedModule {
       module: m.module,
       items: m.items,
