@@ -7738,6 +7738,94 @@ struct BothClosureEdgeIndex {
     bare_scan_eligible: HashSet<String>,
 }
 
+/// The names a module declares FOR ITSELF, including the variant heads of its own
+/// coproducts.
+///
+/// The bare census indexes top-level declaration heads. A coproduct VARIANT is not
+/// one, so a module that declares `type VisibilityScope = Repo | Org | Network | World`
+/// and then writes `World` was scanned as referencing some other module — and the
+/// pool happens to contain `type World sole_constructor` in `dag/product/spatial_world.dag`,
+/// so `std.cache_interface` acquired a closure edge to the spatial product corpus.
+///
+/// Three more of the identical shape in one closure: `Volume` (a variant of
+/// `std.measure`'s own `Dimension`, pulled `gunbc.roadmap_model`), `Measured` (a
+/// variant of `std.realization_schedule`'s own coproduct, pulled `std.observation`),
+/// and `ExtentInFrame` (a variant in `std.spatial_frame`, pulled `std.attribution`).
+///
+/// This is not a tiebreak and not a policy: a name the module itself declares is
+/// bound by that declaration, so it can never be a reference OUT. Skipping it is the
+/// language's own scoping rule, not a heuristic about which candidate is likelier.
+fn module_self_declared_names(content: &str) -> BTreeSet<String> {
+    let content: &str = &annotation_erased_scan_text(content);
+    let mut out = BTreeSet::new();
+    let ident_head = |s: &str| -> Option<String> {
+        let s = s.trim_start();
+        let mut end = 0;
+        for (idx, c) in s.char_indices() {
+            if c.is_alphanumeric() || c == '_' {
+                end = idx + c.len_utf8();
+            } else {
+                break;
+            }
+        }
+        if end == 0 {
+            None
+        } else {
+            Some(s[..end].to_string())
+        }
+    };
+    let mut in_coproduct = false;
+    for line in content.lines() {
+        let l = line.trim_start();
+        let decl_head = [
+            "pub type ",
+            "pub data ",
+            "pub fn ",
+            "pub func ",
+            "type ",
+            "data ",
+            "fn ",
+            "func ",
+            "test fn ",
+            "test data ",
+        ]
+        .iter()
+        .find_map(|k| l.strip_prefix(*k));
+        if let Some(rest) = decl_head {
+            if let Some(name) = ident_head(rest) {
+                out.insert(name);
+            }
+            // `type X =` opens a coproduct whose variant heads continue on this line
+            // and on following lines that begin with `|`.
+            in_coproduct =
+                (l.starts_with("type ") || l.starts_with("pub type ")) && l.contains('=');
+            if in_coproduct {
+                if let Some((_, body)) = l.split_once('=') {
+                    for part in body.split('|') {
+                        if let Some(name) = ident_head(part) {
+                            out.insert(name);
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+        if l.starts_with('|') || (in_coproduct && l.starts_with('=')) {
+            in_coproduct = true;
+            for part in l.trim_start_matches(['|', '=']).split('|') {
+                if let Some(name) = ident_head(part) {
+                    out.insert(name);
+                }
+            }
+            continue;
+        }
+        if !l.is_empty() && !l.starts_with('|') {
+            in_coproduct = in_coproduct && l.starts_with('{');
+        }
+    }
+    out
+}
+
 fn source_declares_import_lines(content: &str) -> bool {
     content
         .lines()
@@ -7849,10 +7937,15 @@ fn bare_reference_pull_paths_for_source(
     resolve_stage_slot_add(|st| {
         st.edge_index_bare_name_universe += universe_started.elapsed().as_nanos();
     });
+    let self_declared = module_self_declared_names(&sf.content);
     let mut pulled: Vec<String> = Vec::new();
     let mut pulled_set: HashSet<String> = HashSet::new();
     let resolve_loop_started = std::time::Instant::now();
     for (name, service_head) in all_names {
+        // Bound by this module's own declaration — see `module_self_declared_names`.
+        if !service_head && self_declared.contains(&name) {
+            continue;
+        }
         let in_call_position = candidates.call_position.contains(&name);
         let pullable = |binding: &Rc<crate::v1_compiler_infer_env::TypeBinding>| {
             in_call_position
