@@ -6,7 +6,11 @@ Instrument `docs/probes/curated_cargo_probe_one.sh` (emit -> cssl_assemble -> `c
 Board: **123 error lines, 122 primary sites** (the 123rd is the span-less `could not compile` summary).
 
 This document describes defects. **It proposes no repairs**, deliberately: the aim is to make each
-defect cheap to understand, not to pre-decide its fix.
+defect cheap to understand, not to pre-decide its fix. That is a stance on *repair design*, and it is
+not a licence to leave the classes untracked — §4b(2) forbids a silent stall, so every mechanism below
+carries a disposition and a next trigger in the [Disposition](#disposition) section, including the ones
+whose honest disposition is *unowned*. Naming what would move a class is not the same as deciding how
+to fix it.
 
 ## Scope and evidence status
 
@@ -368,6 +372,32 @@ error[E0631]: type mismatch in closure arguments
                found closure signature `fn(Rc<_>, Rc<_>) -> _`
 help: consider adjusting the signature so it borrows its argument
 ```
+
+
+---
+
+## Disposition
+
+§4b(2) separates *cannot move* from *can move after one grounding* from *can move now but unbuilt*, and
+requires the distinction to be stated rather than inferred. None of these six is in the first category.
+The trigger for a **read** mechanism is always the same shape — an executed counterfactual at the pinned
+tree that discriminates the claim — and that is deliberately a trigger, not a repair: it establishes what
+the mechanism *is* before anyone designs a fix, which is the same order this document's two measured
+mechanisms already went through.
+
+| id | evidence today | disposition | next trigger |
+|----|----------------|-------------|--------------|
+| A | measured | **repair open: #9041** | merge retires the 10 rows. One question survives the merge and the board cannot answer it: a zero-occupancy counterfactual does not distinguish a dead parameter from a placeholder for an unbuilt variant. That belongs to `v2.lens.application`'s author, not to this board. |
+| B | read | **unowned** — no lane holds it | promote to measured: at the pinned tree, vary the `'static`/`Clone` bound emission for fn-typed params captured behind `Rc` and confirm the 4 `E0310` rows retire with no relocation. |
+| C | read | **owned elsewhere** — the corpus-wide `ABSENT_CLONE_BOUND` population (`docs/probes/rustc_mechanism_partition_2026-08-23.md`, 22 manifestations at `967b5bc1b92`) | none here. This board contributes 2 rows to that population and tracks nothing separately; a second trigger beside that document's would be a second authority for one class. |
+| D | measured (peer board) | **lane open: #8952** (`CALLABLE-LOOKUP-UNIQUE`) | #8952's own trigger. The seam this board adds to it is stated above and is a defect-side property: the decisive `&&` consults resolved semantics in its first conjunct and the leaf spelling in its second, so what is missing is a recorded target identity for `PlainCallSemantics`, not a different table lookup. |
+| E | read | **unowned** — no lane holds it | promote to measured: annotate the element type of the empty list literal at the cited site and confirm the 2 rows retire. |
+| F | read | **unowned** — no lane holds it | promote to measured: vary the closure parameter's by-value/by-reference binding against the reference-yielding iterator and confirm the 1 row retires. |
+
+**Three mechanisms are declared unowned, and that is the disposition rather than a gap in it.** B, E and F
+are 7 rows between them; nothing in the repository holds them today, and writing a lane row here would
+manufacture an owner that does not exist. What the declaration buys is that their absence is now countable
+— an unowned row is a thing that can be picked up, where an undocumented mechanism is not.
 
 ---
 
