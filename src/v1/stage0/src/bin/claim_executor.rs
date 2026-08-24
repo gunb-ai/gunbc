@@ -1841,8 +1841,8 @@ struct ClaimResult {
     /// failure mode has to be recovered by substring-matching `detail` — which is what
     /// `falsifier_failure_mode` did, and its fallback arm is `WitnessRed`, so a reworded
     /// message silently demoted a budget refusal to a witness failure. This keeps the fact
-    /// as data on the path that needs it. It is a projection of `ClaimOutcome::TimedOut`,
-    /// not a second authority: nothing sets it except the `TimedOut` arm below.
+    /// as data on the path that needs it. It is a projection of the two budget arms of
+    /// `ClaimOutcome`, not a second authority: nothing sets it except those arms below.
     budget_refusal: Option<BudgetRefusal>,
     /// Set when a wet witness refused because a host CLI dependency was absent on PATH
     /// before execution. Parsed from the failure-receipt wire
@@ -2106,14 +2106,8 @@ impl ExpectedRedDisposition {
             // before any caller of `run_batch_unit`, so CI does not execute this path at all.
             // Losing a cost signal on a retiring surface is the right trade; reporting a
             // passing row as undecided is not.
-            ClaimOutcome::TimedOut {
-                completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
-                ..
-            } => Self::BudgetFailure,
-            ClaimOutcome::TimedOut {
-                completion: v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget,
-                ..
-            } => Self::StaleQuarantineAssertionReturnedTrue,
+            ClaimOutcome::BudgetInterrupted { .. } => Self::BudgetFailure,
+            ClaimOutcome::CompletedOverBudget { .. } => Self::StaleQuarantineAssertionReturnedTrue,
             // A ROUTE GAP JOINS THE INFRASTRUCTURE ARM, not the assertion arm, and for the
             // same reason `HostToolUnresolved` already sits there: enrollment asserts an
             // expected VERDICT, and a claim whose route has no arm for a host effect never
@@ -2715,11 +2709,13 @@ fn claim_result_for_outcome(
             host_dependency_refusal: None,
             resolve_realization,
         },
-        ClaimOutcome::TimedOut {
-            elapsed_ms,
+        // ONE ARM PER READING. The prose used to be selected by matching a field this arm
+        // could have wildcarded away; it is now selected by which variant was constructed, so
+        // a receipt cannot say "killed ... elapsed is a ceiling" about a row that completed.
+        ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms,
             budget_ms,
             kind,
-            completion,
         } => ClaimResult {
             function,
             entry: entry.clone(),
@@ -2734,22 +2730,55 @@ fn claim_result_for_outcome(
             // The old comment defended the wording ("'ceiling' is deliberate"), which is how it
             // survived — a considered-looking justification for a claim that only held on one
             // arm.
-            detail: match completion {
-                v1_compiler::cli_run::BudgetCompletion::Interrupted => format!(
-                    "killed at its {} budget: at least {}ms elapsed against a {}ms budget \
-                     (interrupted, so elapsed bounds the cost and does not measure it)",
-                    kind.label(),
-                    elapsed_ms,
-                    budget_ms
-                ),
-                v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget => format!(
-                    "completed over its {} budget: exactly {}ms elapsed against a {}ms budget \
-                     (ran to completion and passed, then was reclassified on cost)",
-                    kind.label(),
-                    elapsed_ms,
-                    budget_ms
-                ),
-            },
+            detail: format!(
+                "killed at its {} budget: at least {}ms elapsed against a {}ms budget \
+                 (interrupted, so elapsed bounds the cost and does not measure it)",
+                kind.label(),
+                elapsed_at_least_ms,
+                budget_ms
+            ),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
+            witness_row_costs: Vec::new(),
+            expectation_refusal: None,
+            budget_refusal: Some(BudgetRefusal {
+                elapsed_ms: elapsed_at_least_ms,
+                budget_ms,
+                kind,
+                completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
+            }),
+            host_dependency_refusal: None,
+            resolve_realization,
+        },
+        ClaimOutcome::CompletedOverBudget {
+            elapsed_ms,
+            budget_ms,
+            kind,
+        } => ClaimResult {
+            function,
+            entry: entry.clone(),
+            ok: false,
+            // The detail names the budget in prose for the human reading a log; `budget_refusal`
+            // beside it is what classification reads, so the mode does not depend on this
+            // wording. What the wording MUST get right is whether the number is a bound or a
+            // measurement, and it used to say "killed ... elapsed is a ceiling" unconditionally.
+            // That is true of an interrupted row and FALSE of a completed one: a
+            // `CompletedOverBudget` row ran to completion, passed, and has an exact elapsed, so
+            // asserting it was killed and censored is a fabricated fact in a durable receipt.
+            // The old comment defended the wording ("'ceiling' is deliberate"), which is how it
+            // survived — a considered-looking justification for a claim that only held on one
+            // arm.
+            detail: format!(
+                "completed over its {} budget: exactly {}ms elapsed against a {}ms budget \
+                 (ran to completion and passed, then was reclassified on cost)",
+                kind.label(),
+                elapsed_ms,
+                budget_ms
+            ),
             wall_nanos,
             resolve_nanos,
             corpus_resolve_nanos: 0,
@@ -2762,7 +2791,7 @@ fn claim_result_for_outcome(
                 elapsed_ms,
                 budget_ms,
                 kind,
-                completion,
+                completion: v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget,
             }),
             host_dependency_refusal: None,
             resolve_realization,
@@ -4100,7 +4129,7 @@ fn read_schedule_witness_entry_paths(
 /// The first budget kill among this discovery batch's witnesses, if any.
 ///
 /// Discovery is the falsifier path — it is where the incident that motivated the typed
-/// `TimedOut` actually lives (`resolution_divergence_silent_pick_gate_keystone_holds` is a
+/// budget arms actually live (`resolution_divergence_silent_pick_gate_keystone_holds` is a
 /// discovery row). A discovery batch flattens N witness outcomes into one `ok`/`detail`
 /// pair, so without lifting the refusal out of `witness_outcomes` the batch would carry
 /// `budget_refusal: None`, miss the structural path in `batch_failure_mode_and_detail`, and
@@ -4111,19 +4140,15 @@ fn discovery_budget_refusal(summary: &DiscoverySummary) -> Option<BudgetRefusal>
     summary
         .witness_outcomes
         .iter()
-        .find_map(|w| match w.outcome {
-            ClaimOutcome::TimedOut {
-                elapsed_ms,
-                budget_ms,
-                kind,
-                completion,
-            } => Some(BudgetRefusal {
-                elapsed_ms,
-                budget_ms,
-                kind,
-                completion,
-            }),
-            _ => None,
+        // Both budget arms lift, through the projection rather than a wildcard: this carrier
+        // keeps the axis as data, so it wants the pair, not one of the two arms.
+        .find_map(|w| {
+            w.outcome.budget_event().map(|event| BudgetRefusal {
+                elapsed_ms: event.elapsed_ms,
+                budget_ms: event.budget_ms,
+                kind: event.kind,
+                completion: event.completion,
+            })
         })
 }
 
@@ -4201,27 +4226,34 @@ fn scoped_witness_summary_outcome(
                     v1_compiler::cli_run::hermetic_effect_ground_label(ground)
                 ),
             ),
-            ClaimOutcome::TimedOut {
+            // "budget-killed" was unconditional and is only true of an interrupted row; a
+            // completed one passed and was reclassified on an exact cost. The tag is what
+            // downstream reads, so a wrong tag is worse than wrong prose — and it is now the ARM
+            // that selects the tag, so the two cannot be given one name by a wildcard.
+            ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms,
+                budget_ms,
+                kind,
+            } => (
+                "budget-killed",
+                format!(
+                    "{} elapsed_ms={} budget_ms={} elapsed_is=at least",
+                    kind.label(),
+                    elapsed_at_least_ms,
+                    budget_ms
+                ),
+            ),
+            ClaimOutcome::CompletedOverBudget {
                 elapsed_ms,
                 budget_ms,
                 kind,
-                completion,
             } => (
-                // "budget-killed" was unconditional and is only true of an interrupted row; a
-                // completed one passed and was reclassified on an exact cost. The tag is what
-                // downstream reads, so a wrong tag is worse than wrong prose.
-                match completion {
-                    v1_compiler::cli_run::BudgetCompletion::Interrupted => "budget-killed",
-                    v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget => {
-                        "budget-exceeded-completed"
-                    }
-                },
+                "budget-exceeded-completed",
                 format!(
-                    "{} elapsed_ms={} budget_ms={} elapsed_is={}",
+                    "{} elapsed_ms={} budget_ms={} elapsed_is=exactly",
                     kind.label(),
                     elapsed_ms,
-                    budget_ms,
-                    completion.elapsed_reading()
+                    budget_ms
                 ),
             ),
         });
@@ -9920,6 +9952,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut corpus_type_judgment_mode = false;
     let mut required_regen_mode = false;
     let mut required_regen_fixed_point_mode = false;
+    let mut heads_reading_differential_mode = false;
     let mut behavioral_receipt_plan_mode = false;
     let mut behavioral_receipt_selftest_mode = false;
     let mut behavioral_receipt_census_mode = false;
@@ -9963,6 +9996,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-regen" => {
                 required_regen_mode = true;
+            }
+            "--heads-reading-differential" => {
+                heads_reading_differential_mode = true;
             }
             "--required-regen-fixed-point" => {
                 required_regen_fixed_point_mode = true;
@@ -10575,6 +10611,52 @@ fn run() -> Result<ExitCode, ExitCode> {
         };
     }
 
+    // The heads reading's own instrument. It is not enrolled in the required run and this
+    // clause does not pretend otherwise: reading 3875 modules TWICE is precisely the cost
+    // the heads reading exists to remove, so paying it on every push would spend more than
+    // the repair saves. It is a re-runnable receipt — the differential this change was
+    // landed on can be re-taken by anyone, on any tree, rather than being a number quoted
+    // from a run nobody can repeat.
+    if heads_reading_differential_mode {
+        let roots = if source_roots.is_empty() {
+            vec!["dag".to_string(), "src/v2".to_string()]
+        } else {
+            source_roots.clone()
+        };
+        let d = v1_compiler::cli_run::heads_reading_differential(&roots);
+        eprintln!(
+            "heads-reading-differential: compared={} divergent={} narrowed={} regressed={} both_refused={}",
+            d.modules_compared,
+            d.divergent.len(),
+            d.narrowed.len(),
+            d.regressed.len(),
+            d.both_refused.len(),
+        );
+        // The two readings' summed parse wall, from the same process over the same
+        // modules. This is the PARSE term only — not the whole `pool_parse` row, which
+        // also pays tokenize, newline indexing and per-file setup that neither reading
+        // changes.
+        eprintln!(
+            "heads-reading-differential: full_reading_parse_ms={} heads_reading_parse_ms={}",
+            d.full_reading_nanos / 1_000_000,
+            d.heads_reading_nanos / 1_000_000,
+        );
+        for path in d.divergent.iter().take(20) {
+            eprintln!("heads-reading-differential: DIVERGENT {path}");
+        }
+        for path in d.regressed.iter().take(20) {
+            eprintln!("heads-reading-differential: REGRESSED {path}");
+        }
+        for path in d.narrowed.iter().take(20) {
+            eprintln!("heads-reading-differential: narrowed (declared scope) {path}");
+        }
+        return if d.holds() {
+            Ok(ExitCode::SUCCESS)
+        } else {
+            Err(ExitCode::from(1))
+        };
+    }
+
     if required_regen_mode {
         return match v1_compiler::cli_run::run_required_regen(
             &regen_candidate_dir,
@@ -10695,7 +10777,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     // requirement is unchanged by #8140: the walk moved AFTER plan evaluation (it is now
     // demand-directed on `schedules_discovery`), so this install precedes it by even
     // more, and the walk's whole-tree read is still policy-funnelled.
-    v1_compiler::cli_run::install_output_policy(&source_roots);
+    if let Err(why) = v1_compiler::cli_run::install_output_policy(&source_roots) {
+        eprintln!("claim_executor: {why}");
+        return Err(ExitCode::from(1));
+    }
     // Install the per-target group-marker syntax (GitHub Actions `::group::` vs a
     // plain-terminal header) from the .dag authority, so the parallel walk folds each
     // batch's host-effect traces into a collapsible group.
@@ -11481,7 +11566,7 @@ fn run() -> Result<ExitCode, ExitCode> {
 /// so "falsifier dark" is one of three modes, never an undifferentiated exit 1.
 // STALE SIGNAL, NOT MERELY DEAD CODE. These substrings matched a budget refusal back when a
 // raised one reached the claim seam as a `RuntimeError` carrying the refusal as prose. It now
-// arrives as `ClaimOutcome::TimedOut` with the pair typed, so nothing renders this text on the
+// arrives as a `ClaimOutcome` budget arm with the pair typed, so nothing renders this text on the
 // required-floor path any more. That matters more for the RESTORE than for today: this function
 // sits past the required-floor early return, on the falsifier lane whose workflows the floor cut
 // deleted, and a dead `.contains` does not fail loudly when a lane comes back — it matches
@@ -13331,15 +13416,13 @@ mod tests {
 
         // ROW 3 — timed out: a BUDGET failure. An interruption plus a lower bound on cost is
         // never a semantic verdict, so it must not read as a quarantine holding.
-        let t = row(ClaimOutcome::TimedOut {
-            elapsed_ms: 5001,
+        let t = row(ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms: 5001,
             budget_ms: 5000,
+            // The VARIANT now says which case this is, so 5001 is a lower bound by
+            // construction: the completed row is a different arm the fixture cannot reach by
+            // omitting a field.
             kind: BudgetKind::Cpu,
-            // Interrupted, so 5001 is a lower bound. Named rather than defaulted: the
-            // CompletedOverBudget row is a DIFFERENT case with its own arm, and a fixture that
-            // did not say which one it built would be asserting about whichever the compiler
-            // picked.
-            completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
         });
         assert!(
             t.agreements.is_empty(),
@@ -13413,11 +13496,10 @@ mod tests {
         let f = "witness_holds";
         let expected_red = vec![(entry.to_string(), f.to_string())];
         for o in [
-            ClaimOutcome::TimedOut {
-                elapsed_ms: 1,
+            ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms: 1,
                 budget_ms: 1,
                 kind: BudgetKind::Wall,
-                completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
             },
             ClaimOutcome::RuntimeError {
                 message: "boom".into(),
@@ -15051,13 +15133,12 @@ mod tests {
     // `from_outcome` that never returned KnownRed at all would also pass.
     #[test]
     fn enrollment_holds_only_semantic_failures_not_undecided_claims() {
-        use v1_compiler::cli_run::{BudgetCompletion, BudgetKind, CiWitnessVerdict, ClaimOutcome};
+        use v1_compiler::cli_run::{BudgetKind, CiWitnessVerdict, ClaimOutcome};
 
-        let interrupted = ClaimOutcome::TimedOut {
-            elapsed_ms: 5_000,
+        let interrupted = ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms: 5_000,
             budget_ms: 5_000,
             kind: BudgetKind::Cpu,
-            completion: BudgetCompletion::Interrupted,
         };
         let missing_tool = ClaimOutcome::HostToolUnresolved {
             name: "git".to_string(),
@@ -16651,7 +16732,7 @@ mod tests {
         // recorded 900794ms is a censored measurement, not a completed one. Seeding it
         // would pin it WithinBasis below ~1.8M ms under the 2x comparator and enshrine a
         // deadline ceiling as normal cost. It must stay BasisAbsent — the honest third
-        // state — until ClaimOutcome::TimedOut can distinguish killed from completed.
+        // state — until ClaimOutcome distinguishes killed from completed, which it now does.
         for line in text.lines() {
             if line.trim_start().starts_with('#') {
                 continue;
@@ -16929,11 +17010,10 @@ mod tests {
             total_entry_groups: 0,
             selected_entry_groups: 0,
         };
-        let killed = ClaimOutcome::TimedOut {
-            elapsed_ms: 900_001,
+        let killed = ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms: 900_001,
             budget_ms: 900_000,
             kind: BudgetKind::Wall,
-            completion: v1_compiler::cli_run::BudgetCompletion::Interrupted,
         };
 
         // Both arms: the receipt projection may succeed or refuse, and a receipt refusal must

@@ -7,6 +7,7 @@ import v2.std.diagnostic {
   None,
   Outcome,
   Rejected,
+  diagnostics_merge,
   diagnostics_singleton,
   node_locus,
   Unavailable
@@ -74,18 +75,18 @@ fn integer_value_set_from_node(value_set: Node) -> Outcome<IntegerValueSet> {
       }
   } else {
     match find_named_child(root: value_set, name: ^integer_value_set_field_kind) {
-      Accepted { value: found_kind, diagnostics: None } =>
+      Accepted { value: found_kind, diagnostics: kind_ds } =>
         if found_kind == integer_value_set_atom(id: ^integer_value_set_kind_unbounded) {
           if count(value_set.children) == 1 {
             match find_named_child(root: value_set, name: ^integer_value_set_field_interval) {
-              Accepted { value: _, diagnostics: None } =>
+              Accepted { value: _, diagnostics: _ } =>
                 Rejected {
                   diagnostics: diagnostics_singleton(
                     d: integer_value_set_decode_invalid_diagnostic(source_carrier: value_set)
                   )
                 }
               Rejected { diagnostics: _ } =>
-                Accepted { value: IntegerValueSetUnbounded, diagnostics: None }
+                Accepted { value: IntegerValueSetUnbounded, diagnostics: kind_ds }
             }
           } else {
             Rejected {
@@ -97,9 +98,12 @@ fn integer_value_set_from_node(value_set: Node) -> Outcome<IntegerValueSet> {
         } else if found_kind == integer_value_set_atom(id: ^integer_value_set_kind_interval) {
           if count(value_set.children) == 2 {
             match find_named_child(root: value_set, name: ^integer_value_set_field_interval) {
-              Accepted { value: interval, diagnostics: None } =>
+              Accepted { value: interval, diagnostics: interval_ds } =>
                 if integer_interval_spec_node_contains(container: interval, contained: interval) {
-                  Accepted { value: IntegerValueSetInterval { interval: interval }, diagnostics: None }
+                  Accepted {
+                    value: IntegerValueSetInterval { interval: interval },
+                    diagnostics: diagnostics_merge(outer: kind_ds, inner: interval_ds)
+                  }
                 } else {
                   Rejected {
                     diagnostics: diagnostics_singleton(
@@ -156,9 +160,9 @@ fn integer_value_set_contains_decoded(container: IntegerValueSet, contained: Int
 
 fn integer_value_set_contains(container: Node, contained: Node) -> Bool {
   match integer_value_set_from_node(value_set: container) {
-    Accepted { value: decoded_container, diagnostics: None } =>
+    Accepted { value: decoded_container, diagnostics: _ } =>
       match integer_value_set_from_node(value_set: contained) {
-        Accepted { value: decoded_contained, diagnostics: None } =>
+        Accepted { value: decoded_contained, diagnostics: _ } =>
           integer_value_set_contains_decoded(
             container: decoded_container,
             contained: decoded_contained
