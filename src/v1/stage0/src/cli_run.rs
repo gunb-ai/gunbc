@@ -5533,6 +5533,64 @@ mod compile_clean_via_index_verdict_equivalence {
     }
 
     /// §5 discriminating RED: an unresolved import must red BOTH paths.
+    /// CAUSAL control for the regen-closure de-fork — the companion to
+    /// `regen_subject_admits_a_provider_reached_only_by_reference`.
+    ///
+    /// That test proves the provider ENTERS the subject. It does not prove the
+    /// provider enters BECAUSE OF THE REFERENCE, and those are different claims:
+    /// if the closure admitted every module in the wider roots for some unrelated
+    /// reason, the admitting test would still pass while the reference edge did no
+    /// work at all. That is the both-arms-green failure one level up — a test whose
+    /// subject is present for reasons the test does not control.
+    ///
+    /// So this fixture is byte-identical to that one EXCEPT that the seed does not
+    /// name the provider. The provider must then be ABSENT from the subject. Taken
+    /// together the pair establishes the edge is causal: reference present ->
+    /// admitted, reference absent -> not admitted, everything else held fixed.
+    #[test]
+    fn regen_subject_omits_a_provider_nothing_references() {
+        let base = super::workspace_root()
+            .join("target")
+            .join(format!("regen-closure-causal-{}", std::process::id()));
+        let entry_root = base.join("seed");
+        let provider_root = base.join("corpus");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&entry_root).expect("create entry root");
+        fs::create_dir_all(&provider_root).expect("create provider root");
+
+        // The ONLY difference from the admitting test: no reference to the provider.
+        fs::write(
+            entry_root.join("seed.dag"),
+            "module v1.regen_seed_probe\nfn probe() -> Int {\n  1\n}\n",
+        )
+        .expect("write seed");
+        fs::write(
+            provider_root.join("provider.dag"),
+            "module std.regen_provider_probe\nfn regen_provider_probe_answer() -> Int {\n  7\n}\n",
+        )
+        .expect("write provider");
+
+        let roots = vec![
+            entry_root.to_string_lossy().into_owned(),
+            provider_root.to_string_lossy().into_owned(),
+        ];
+        let admitted = super::regen_input_sources_over_roots(&entry_root, &roots)
+            .expect("regen subject over the fixture roots");
+
+        let _ = fs::remove_dir_all(&base);
+
+        assert!(
+            !admitted
+                .iter()
+                .any(|(_, c)| c.contains("module std.regen_provider_probe")),
+            "an unreferenced provider must NOT be admitted -- if it is, the closure is \
+             widening the subject rather than following edges, and the admitting test \
+             proves nothing about causality; admitted {} module(s): {:?}",
+            admitted.len(),
+            admitted.iter().map(|(p, _)| p).collect::<Vec<_>>()
+        );
+    }
+
     #[test]
     fn planted_unresolved_import_agrees_red() {
         let corpus = Corpus::new(
