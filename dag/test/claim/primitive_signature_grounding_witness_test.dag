@@ -1,0 +1,191 @@
+module test.claim.primitive_signature_grounding_witness_test
+
+import std.algebra {
+  AlgebraFieldTemplate,
+  AlgebraProfile,
+  FreeMonoidCollectionProfile,
+  NamedTemplate,
+  PartialFunctionProfile,
+  PointwisePowerCollectionProfile,
+  BooleanAlgebraProfile,
+  ReceiverKey,
+  ReceiverSelf,
+  algebra_templates_for_profile,
+}
+import std.primitive_identity {
+  GroundedInAlgebraTemplate,
+  PrimitiveSemanticContract,
+  SignatureAbsentFromProfile,
+  SignatureAmbiguousOnProfile,
+  SignatureNotGrounded,
+  SignatureResolved,
+  SignatureUngrounded,
+  algebra_grounded_semantic_contract_count,
+  algebra_grounded_signatures_all_resolve,
+  algebra_signature_from_candidates,
+  primitive_arity,
+  primitive_signature,
+}
+import std.types { Bool, Int, List, NonEmptyStr, String }
+
+data primitive_signature_grounding_witness_note: String = "Executing evidence that a primitive's arity and parameter types are GROUNDED -- read back through one authority -- rather than transcribed beside it. There is deliberately no witness asserting that the semantic contract AGREES with the algebra template: under projection there is one set of bytes, so disagreement has no spelling and such a check would be permanently green by construction, which DESIGN 4b names as worse than absent because it gets cited as coverage. The claims below are the ones whose RED an author can actually produce."
+
+// ---------------------------------------------------------------------------
+// (a) TOTALITY. Every derived contract resolves to exactly one signature.
+// ---------------------------------------------------------------------------
+
+test fn w_every_algebra_grounded_contract_resolves_a_signature() -> Bool {
+  algebra_grounded_signatures_all_resolve()
+}
+
+// The denominator, stated so a green totality claim cannot be satisfied by an empty
+// population. A fold over zero rows is vacuously true; this is what makes it not.
+test fn w_derived_population_is_the_algebra_template_rows() -> Bool {
+  algebra_grounded_semantic_contract_count() == 87
+}
+
+// ---------------------------------------------------------------------------
+// (b) THE PROJECTION IS A FUNCTION, AND THE KEY IS A PAIR.
+//
+// This is the load-bearing witness of the change. Measured over the 87 rows, 21 of the 59
+// distinct names carry more than one template and four disagree in what they take, so a
+// projection keyed on canonical_name alone would have to pick one silently. These two
+// assertions go RED the moment someone "simplifies" the key back to a bare name, because
+// the two readings of `get` would then have to collapse into one.
+// ---------------------------------------------------------------------------
+
+fn second_param_label(profile: AlgebraProfile) -> String {
+  let c = PrimitiveSemanticContract {
+    canonical_name: "get" as NonEmptyStr,
+    signature: GroundedInAlgebraTemplate { profile: profile }
+  }
+  match primitive_signature(contract: c) {
+    SignatureResolved { parameters: ps, result: _ } =>
+      match ps |> skip(1) |> first {
+        Present { value: p } =>
+          match p {
+            NamedTemplate { name: n } => concat("named:", n)
+            ReceiverKey => "receiver_key"
+            _ => "other_template"
+          }
+        Absent => "missing"
+      }
+    SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => "ambiguous"
+    SignatureAbsentFromProfile { canonical_name: _ } => "absent"
+    SignatureNotGrounded { reason: _ } => "not_grounded"
+  }
+}
+
+test fn w_get_takes_an_index_on_a_list_and_a_key_on_a_map() -> Bool {
+  second_param_label(profile: FreeMonoidCollectionProfile) == "named:Int"
+    && second_param_label(profile: PartialFunctionProfile) == "receiver_key"
+}
+
+// Arity is compared through a label rather than through Optional equality, so the two states
+// this pair exists to keep apart -- "no arity" and "arity zero" -- are compared as distinct
+// values rather than relying on how an Optional happens to compare.
+fn arity_label(contract: PrimitiveSemanticContract) -> String {
+  match primitive_arity(contract: contract) {
+    Present { value: n } => concat("arity:", to_string(n))
+    Absent => "no_arity"
+  }
+}
+
+// `member` disagrees in ARITY across profiles, not merely in parameter type -- the sharpest
+// form of the same finding, and the one a name-keyed projection could not represent at all.
+test fn w_member_has_a_different_arity_on_each_profile() -> Bool {
+  let boolean_member = PrimitiveSemanticContract {
+    canonical_name: "member" as NonEmptyStr,
+    signature: GroundedInAlgebraTemplate { profile: BooleanAlgebraProfile }
+  }
+  let pointwise_member = PrimitiveSemanticContract {
+    canonical_name: "member" as NonEmptyStr,
+    signature: GroundedInAlgebraTemplate { profile: PointwisePowerCollectionProfile }
+  }
+  arity_label(contract: boolean_member) == "arity:2"
+    && arity_label(contract: pointwise_member) == "arity:1"
+}
+
+// ---------------------------------------------------------------------------
+// THE REFUSAL ARMS, each with an authorable RED.
+// ---------------------------------------------------------------------------
+
+// A grounding whose (canonical_name, profile) pair carries no template refuses rather than
+// resolving to something. This is the RED behind the totality claim above.
+test fn w_a_name_absent_from_its_profile_refuses() -> Bool {
+  let bogus = PrimitiveSemanticContract {
+    canonical_name: "no_such_primitive" as NonEmptyStr,
+    signature: GroundedInAlgebraTemplate { profile: PartialFunctionProfile }
+  }
+  match primitive_signature(contract: bogus) {
+    SignatureAbsentFromProfile { canonical_name: n } => n == bogus.canonical_name
+    SignatureResolved { parameters: _, result: _ } => false
+    SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => false
+    SignatureNotGrounded { reason: _ } => false
+  }
+}
+
+// AMBIGUITY IS UNOCCUPIED BUT REACHABLE, and this fixture is why the resolver takes its
+// candidates as a parameter. Measured: zero duplicate names within any of the eight profiles
+// today, so nothing in the live corpus lands here -- but the template lists are hand-authored
+// and a repeated row is writable, so the arm is a quiet guard rather than a dead one. Planting
+// the duplicate is the RED that keeps it from being a decoration.
+test fn w_two_templates_of_one_name_on_one_profile_refuse() -> Bool {
+  let planted: List<AlgebraFieldTemplate> = [
+    { name: "dup", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "dup", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
+  ]
+  match algebra_signature_from_candidates(canonical_name: "dup" as NonEmptyStr, candidates: planted) {
+    SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: n } => n == 2
+    SignatureResolved { parameters: _, result: _ } => false
+    SignatureAbsentFromProfile { canonical_name: _ } => false
+    SignatureNotGrounded { reason: _ } => false
+  }
+}
+
+// The positive control for the arm above: one row of that name on that list resolves. Without
+// this, a resolver that refused EVERYTHING would satisfy the refusal test.
+test fn w_one_template_of_one_name_resolves() -> Bool {
+  let planted: List<AlgebraFieldTemplate> = [
+    { name: "dup", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
+  ]
+  match algebra_signature_from_candidates(canonical_name: "dup" as NonEmptyStr, candidates: planted) {
+    SignatureResolved { parameters: ps, result: _ } => (ps |> count) == 2
+    SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => false
+    SignatureAbsentFromProfile { canonical_name: _ } => false
+    SignatureNotGrounded { reason: _ } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ARITY IS DERIVED, AND AN UNRESOLVED SIGNATURE HAS NO ARITY RATHER THAN ZERO.
+//
+// This pair is the discriminating one: a resolver that fabricated a zero for an unresolved
+// signature would pass every claim above and fail here. A primitive taking no arguments and a
+// primitive whose signature did not resolve are different facts, and `none` is the only
+// spelling that keeps them apart.
+// ---------------------------------------------------------------------------
+
+test fn w_an_ungrounded_contract_has_no_arity_not_zero() -> Bool {
+  let ungrounded = PrimitiveSemanticContract {
+    canonical_name: "fold_list" as NonEmptyStr,
+    signature: SignatureUngrounded { reason: "spelling fork" as NonEmptyStr }
+  }
+  arity_label(contract: ungrounded) == "no_arity"
+    && match primitive_signature(contract: ungrounded) {
+         SignatureNotGrounded { reason: _ } => true
+         SignatureResolved { parameters: _, result: _ } => false
+         SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => false
+         SignatureAbsentFromProfile { canonical_name: _ } => false
+       }
+}
+
+// The other side of the same pair: a genuinely nullary primitive DOES report zero, so `none`
+// above is a real absence rather than the resolver being unable to count.
+test fn w_a_nullary_primitive_reports_arity_zero() -> Bool {
+  let ordered_zero = PrimitiveSemanticContract {
+    canonical_name: "bottom" as NonEmptyStr,
+    signature: GroundedInAlgebraTemplate { profile: BooleanAlgebraProfile }
+  }
+  arity_label(contract: ordered_zero) == "arity:0"
+}
