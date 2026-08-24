@@ -258,6 +258,9 @@ import gunbc.build_cache_endpoint_path {
   stale_socket_unlink_command,
 }
 import gunbc.live_deploy.operations {
+  deploy_stage_dir_var,
+  deploy_stage_write_command,
+  deploy_stage_install_command,
   systemctl_daemon_reload_command,
   systemctl_enable_command,
   systemctl_restart_command,
@@ -4464,15 +4467,47 @@ fn compile_pool_slice_system_path(slice_unit: NonEmptyStr) -> String {
 fn compile_pool_slice_install_body(slice_unit: NonEmptyStr, slice_unit_file: SystemdUnitFile) -> String {
   join([
     "set -euo pipefail",
-    "_gunbc_stage=\"$(mktemp -d)\"",
-    "trap 'rm -rf \"$_gunbc_stage\"' EXIT",
-    join(["cat > \"$_gunbc_stage/", slice_unit as String, "\" <<'__GUNBC_COMPILE_POOL_SLICE__'"], ""),
-    concat(serialize_systemd_unit_file(file: slice_unit_file), "__GUNBC_COMPILE_POOL_SLICE__"),
-    join(["sudo -n install -m 0644 \"$_gunbc_stage/", slice_unit as String, "\" ", compile_pool_slice_system_path(slice_unit: slice_unit)], ""),
+    compile_pool_stage_directory_line(),
+    compile_pool_stage_trap_line(),
+    deploy_stage_write_command(
+      stage_name: slice_unit as String,
+      content: serialize_systemd_unit_file(file: slice_unit_file),
+    ),
+    deploy_stage_install_command(
+      stage_name: slice_unit as String,
+      mode: compile_pool_slice_file_mode,
+      dest: compile_pool_slice_system_path(slice_unit: slice_unit),
+    ),
     systemctl_daemon_reload_command(privileged: true),
     systemctl_start_command(unit: slice_unit, privileged: true),
     "",
   ], "\n")
+}
+
+data compile_pool_slice_file_mode: NonEmptyStr = "0644" as NonEmptyStr
+
+// THE STAGE-DIRECTORY ASSIGNMENT AND THE TRAP ARE THE ONLY AUTHORED LINES LEFT, AND THEY ARE THE TWO
+// gunbc.live_deploy.emit ALREADY DECLARES AS UNMODELLED. That module's deploy_stage_directory_let_step
+// builds the assignment as a modeled Let over ExprCmdSubst, but it yields a PipelineStep and this
+// realizer's transport takes a script body, so there is no serializer between them to reach for; the
+// trap has no grammar row at all (deploy_stage_trap_is_unmodelled_note). Both are spelled here from the
+// same deploy_stage_dir_var authority the staged-path words read, so the variable name is not a second
+// spelling even though the two lines are.
+//
+// EVERYTHING ELSE ROUTES THROUGH THE EXISTING AUTHORITY. The unit bytes reach the host through
+// deploy_stage_write_command and the privileged install through deploy_stage_install_command -- both
+// built from v2.extdeps.languages.bash_build nodes rather than assembled here -- so a slice unit name
+// or a unit body carrying a quote, a space or a metacharacter keeps its word boundary structurally
+// instead of by whatever quoting this module remembered to write. The first draft of this function did
+// assemble them by hand: a `cat >` heredoc for the body and a hand-spelled `sudo -n install`, which was
+// a SECOND authority for staging-and-installing a unit file beside the one live_deploy already owns.
+// Reusing it is the section 3 repair, and it is also what shrinks the residue to the two lines above.
+fn compile_pool_stage_directory_line() -> String {
+  join([deploy_stage_dir_var, "=\"$(mktemp -d)\""], "")
+}
+
+fn compile_pool_stage_trap_line() -> String {
+  join(["trap 'rm -rf \"$", deploy_stage_dir_var, "\"' EXIT"], "")
 }
 
 data compile_pool_slice_install_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.host_effect_realize.compile_pool_slice_install_body -- concat-built systemd slice install shell run over shell_exec_via_bash transport, the same shape and the same debt as build_cache_provision_shell_script beside it. DISSOLVES WHEN bash-emit (#5828) realizes a unit-file install as typed host-effect argv, at which point both bodies retire together rather than this one being converted alone.")
