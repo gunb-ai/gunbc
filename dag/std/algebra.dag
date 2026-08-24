@@ -333,16 +333,18 @@ fn kernel_algebra_profile_value() -> Map<String, AlgebraProfile> {
               map_insert(
                 map_insert(
                   map_insert(
-                    map_insert(empty_map(), "Int", OrderedRingProfile),
-                    "Float", ApproximateFieldProfile),
-                  "Bool", BooleanAlgebraProfile),
-                "String", FreeMonoidScalarProfile),
-              "List", FreeMonoidCollectionProfile),
-            "Set", FinitePowerSetProfile),
-          "Map", FinitelySupportedFunctionProfile),
-        "FinitePowerSet", FinitePowerSetProfile),
-      "FinitelySupportedFunction", FinitelySupportedFunctionProfile),
-    "PartialFunction", PartialFunctionProfile)
+                    map_insert(
+                      map_insert(empty_map(), "Int", OrderedRingProfile),
+                      "Float", ApproximateFieldProfile),
+                    "Bool", BooleanAlgebraProfile),
+                  "String", FreeMonoidScalarProfile),
+                "List", FreeMonoidCollectionProfile),
+              "Set", FinitePowerSetProfile),
+            "Map", FinitelySupportedFunctionProfile),
+          "FinitePowerSet", FinitePowerSetProfile),
+        "FinitelySupportedFunction", FinitelySupportedFunctionProfile),
+      "PartialFunction", PartialFunctionProfile),
+    "PointwisePower", PointwisePowerCollectionProfile)
 }
 
 data kernel_algebra_profile: Map<String, AlgebraProfile> = kernel_algebra_profile_value()
