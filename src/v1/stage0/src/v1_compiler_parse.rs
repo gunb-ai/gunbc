@@ -14,12 +14,12 @@ use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, FieldOccurrence, LexicalValueOccurrence, MethodOccurrence,
     NamespaceSegmentOccurrence, TypeOccurrence,
 };
+pub use crate::std_occurrence_identity::OccurrenceRole;
 use crate::std_occurrence_identity::OccurrenceRole::*;
 pub use crate::std_occurrence_identity::{
     alloc_occurrence_id, authored_token_ordinal_space_from_allocator,
     occurrence_id_allocator_advance_to, occurrence_id_allocator_initial,
 };
-pub use crate::std_occurrence_identity::{AuthoredTokenOrdinal, OccurrenceRole};
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinalSpace, DeclarationOccurrence, OccurrenceCategory,
     OccurrenceContainmentPath, OccurrenceId, OccurrenceIdAllocResult, OccurrenceIdAllocator,
