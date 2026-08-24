@@ -155,7 +155,9 @@ use crate::v1_std_core::CallSemantics::{
     FunctionValueCallSemantics, LookupCallSemantics, PlainCallSemantics,
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
-use crate::v1_std_core::CompilerDiagnostic::{InternalError, UnlistedImportUse};
+use crate::v1_std_core::CompilerDiagnostic::{
+    AmbiguousAnonymousRecordLiteral, InternalError, UnlistedImportUse,
+};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
@@ -5346,29 +5348,38 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             });
         }
         let anonymous_record_diags = Rc::new({
-            let mut result = Vec::new();
-            for tm in typed.modules.iter().cloned() {
-                let module_name =
-                    authored_name_at(tm.type_env.source_indices.clone(), tm.module.clone());
-                for item in tm.items.iter().cloned() {
-                    result.extend(
-                        ambiguous_anonymous_record_literal_diagnostics(
-                            item,
-                            emit_info.type_summaries.clone(),
-                            tm.type_env.source_indices.clone(),
-                            module_name.clone(),
-                        )
-                        .iter()
-                        .cloned(),
-                    );
-                }
+            let mut __result = Vec::new();
+            for tm in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*Rc::new({
+                        let mut __result = Vec::new();
+                        for item in tm.items.clone().iter().cloned() {
+                            __result.extend(
+                                (*ambiguous_anonymous_record_literal_diagnostics(
+                                    item.clone(),
+                                    emit_info.type_summaries.clone(),
+                                    tm.type_env.clone().source_indices.clone(),
+                                    authored_name_at(
+                                        tm.type_env.clone().source_indices.clone(),
+                                        tm.module.clone(),
+                                    ),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }))
+                    .iter()
+                    .cloned(),
+                );
             }
-            result
+            __result
         });
-        if !anonymous_record_diags.is_empty() {
+        if ((anonymous_record_diags.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
-                diagnostics: anonymous_record_diags,
+                diagnostics: anonymous_record_diags.clone(),
             });
         }
         let svc_module_map = typed.modules.clone().iter().cloned().fold(
@@ -25904,6 +25915,240 @@ pub fn struct_candidates_by_field_names(
     }
 }
 
+pub fn anonymous_record_struct_candidates(
+    field_names: Rc<Vec<String>>,
+    field_type_hints: Rc<HashMap<String, String>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Rc<Vec<Rc<TypeSummary>>> {
+    {
+        let candidates =
+            struct_candidates_by_field_names(field_names.clone(), type_summaries.clone());
+        if ((candidates.clone().len() as i64) <= 1) {
+            candidates.clone()
+        } else {
+            {
+                let typed_candidates = Rc::new({
+                    let mut __result = Vec::new();
+                    for cand in candidates.iter().cloned() {
+                        if {
+                            let mut __all = true;
+                            for fname in Rc::new(v1_rt::sorted_map_keys(&field_type_hints))
+                                .iter()
+                                .cloned()
+                            {
+                                if !(match v1_rt::map_get(&field_type_hints, fname.clone()) {
+                                    Some(hint_type) => match v1_rt::map_get(
+                                        &cand.field_type_map.clone(),
+                                        fname.clone(),
+                                    ) {
+                                        Some(cand_type) => (cand_type.clone() == hint_type.clone()),
+                                        None => true,
+                                    },
+                                    None => true,
+                                }) {
+                                    __all = false;
+                                    break;
+                                }
+                            }
+                            __all
+                        } {
+                            __result.push(cand);
+                        }
+                    }
+                    __result
+                });
+                if ((typed_candidates.clone().len() as i64) == 1) {
+                    typed_candidates.clone()
+                } else {
+                    candidates.clone()
+                }
+            }
+        }
+    }
+}
+
+pub fn ambiguous_anonymous_record_literal_diagnostics(
+    n: Rc<Node>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let current = match (*n.expr_data.clone()).clone() {
+            ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                match record_lit_type_name_at(n.clone(), source_indices.clone()) {
+                    Some(_) => Rc::new(vec![]),
+                    None => {
+                        let resolved = resolved_type(n.clone());
+                        if ((((n.children.clone().len() as i64) > 1)
+                            && is_product_type(resolved.clone()))
+                            && (resolved.ident_span.clone() == None))
+                        {
+                            {
+                                let field_names = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for f in n.children.clone().iter().cloned() {
+                                        __result.push(field_init_node_name_at(
+                                            f.clone(),
+                                            source_indices.clone(),
+                                        ));
+                                    }
+                                    __result
+                                });
+                                let field_type_hints =
+                                    record_lit_field_type_hints(n.clone(), source_indices.clone());
+                                let candidates = anonymous_record_struct_candidates(
+                                    field_names.clone(),
+                                    field_type_hints.clone(),
+                                    type_summaries.clone(),
+                                );
+                                if ((candidates.clone().len() as i64) > 1) {
+                                    {
+                                        let candidate_names = Rc::new({
+                                            let mut __sorted: Vec<_> = Rc::new({
+                                                let mut __result = Vec::new();
+                                                for c in candidates.iter().cloned() {
+                                                    __result.push(c.name.clone());
+                                                }
+                                                __result
+                                            })
+                                            .iter()
+                                            .cloned()
+                                            .collect();
+                                            __sorted.sort_by(|a: &String, b: &String| {
+                                                let __ka = (|name: String| name.clone())(a.clone());
+                                                let __kb = (|name: String| name.clone())(b.clone());
+                                                __ka.partial_cmp(&__kb)
+                                                    .unwrap_or(std::cmp::Ordering::Equal)
+                                            });
+                                            __sorted
+                                        });
+                                        Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::AmbiguousAnonymousRecordLiteral {
+    candidates: candidate_names.clone(),
+    span: n.span.clone(),
+}), module_name.clone())])
+                                    }
+                                } else {
+                                    Rc::new(vec![])
+                                }
+                            }
+                        } else {
+                            Rc::new(vec![])
+                        }
+                    }
+                }
+            }
+            _ => Rc::new(vec![]),
+        };
+        let direct = v1_rt::concat(
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in n.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*ambiguous_anonymous_record_literal_diagnostics(
+                            c.clone(),
+                            type_summaries.clone(),
+                            source_indices.clone(),
+                            module_name.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in n.params.clone().iter().cloned() {
+                    __result.extend(
+                        (*ambiguous_anonymous_record_literal_diagnostics(
+                            c.clone(),
+                            type_summaries.clone(),
+                            source_indices.clone(),
+                            module_name.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+        );
+        let indirect = v1_rt::concat(
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in n.uses.clone().iter().cloned() {
+                    __result.extend(
+                        (*ambiguous_anonymous_record_literal_diagnostics(
+                            c.clone(),
+                            type_summaries.clone(),
+                            source_indices.clone(),
+                            module_name.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in n.properties.clone().iter().cloned() {
+                    __result.extend(
+                        (*ambiguous_anonymous_record_literal_diagnostics(
+                            c.clone(),
+                            type_summaries.clone(),
+                            source_indices.clone(),
+                            module_name.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }),
+        );
+        let optional_nodes = v1_rt::concat(
+            match n.body.clone() {
+                Some(b) => ambiguous_anonymous_record_literal_diagnostics(
+                    b.clone(),
+                    type_summaries.clone(),
+                    source_indices.clone(),
+                    module_name.clone(),
+                ),
+                None => Rc::new(vec![]),
+            },
+            v1_rt::concat(
+                match n.transport.clone() {
+                    Some(t) => ambiguous_anonymous_record_literal_diagnostics(
+                        t.clone(),
+                        type_summaries.clone(),
+                        source_indices.clone(),
+                        module_name.clone(),
+                    ),
+                    None => Rc::new(vec![]),
+                },
+                match n.type_annotation.clone() {
+                    Some(t) => ambiguous_anonymous_record_literal_diagnostics(
+                        t.clone(),
+                        type_summaries.clone(),
+                        source_indices.clone(),
+                        module_name.clone(),
+                    ),
+                    None => Rc::new(vec![]),
+                },
+            ),
+        );
+        v1_rt::concat(
+            current.clone(),
+            v1_rt::concat(
+                direct.clone(),
+                v1_rt::concat(indirect.clone(), optional_nodes.clone()),
+            ),
+        )
+    })
+}
+
 pub fn find_struct_name_by_fields(
     field_names: Rc<Vec<String>>,
     field_type_hints: Rc<HashMap<String, String>>,
@@ -25924,121 +26169,6 @@ pub fn find_struct_name_by_fields(
             None
         }
     }
-}
-
-pub fn anonymous_record_struct_candidates(
-    field_names: Rc<Vec<String>>,
-    field_type_hints: Rc<HashMap<String, String>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Rc<Vec<Rc<TypeSummary>>> {
-    let candidates = struct_candidates_by_field_names(field_names, type_summaries);
-    if (candidates.len() as i64) <= 1 {
-        candidates
-    } else {
-        let typed_candidates = Rc::new({
-            let mut result = Vec::new();
-            for cand in candidates.iter().cloned() {
-                if v1_rt::sorted_map_keys(&field_type_hints).iter().all(
-                    |fname| match v1_rt::map_get(&field_type_hints, fname.clone()) {
-                        Some(hint_type) => {
-                            match v1_rt::map_get(&cand.field_type_map, fname.clone()) {
-                                Some(cand_type) => cand_type == hint_type,
-                                None => true,
-                            }
-                        }
-                        None => true,
-                    },
-                ) {
-                    result.push(cand);
-                }
-            }
-            result
-        });
-        if typed_candidates.len() == 1 {
-            typed_candidates
-        } else {
-            candidates
-        }
-    }
-}
-
-pub fn ambiguous_anonymous_record_literal_diagnostics(
-    n: Rc<Node>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_name: String,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    let mut result = Vec::new();
-    if matches!(&*n.expr_data, ExprData::ExprRecordLit { .. })
-        && record_lit_type_name_at(n.clone(), source_indices.clone()).is_none()
-    {
-        let resolved = resolved_type(n.clone());
-        if n.children.len() > 1
-            && is_product_type(resolved.clone())
-            && resolved.ident_span.is_none()
-        {
-            let field_names = Rc::new(
-                n.children
-                    .iter()
-                    .cloned()
-                    .map(|field| field_init_node_name_at(field, source_indices.clone()))
-                    .collect(),
-            );
-            let field_type_hints = record_lit_field_type_hints(n.clone(), source_indices.clone());
-            let candidates = anonymous_record_struct_candidates(
-                field_names,
-                field_type_hints,
-                type_summaries.clone(),
-            );
-            if candidates.len() > 1 {
-                let mut candidate_names: Vec<String> = candidates
-                    .iter()
-                    .map(|candidate| candidate.name.clone())
-                    .collect();
-                candidate_names.sort();
-                result.push(make_error_node(
-                    Rc::new(CompilerDiagnostic::AmbiguousAnonymousRecordLiteral {
-                        candidates: Rc::new(candidate_names.into_iter().collect()),
-                        span: n.span.clone(),
-                    }),
-                    module_name.clone(),
-                ));
-            }
-        }
-    }
-    for child in n
-        .children
-        .iter()
-        .chain(n.params.iter())
-        .chain(n.uses.iter())
-        .chain(n.properties.iter())
-    {
-        result.extend(
-            ambiguous_anonymous_record_literal_diagnostics(
-                child.clone(),
-                type_summaries.clone(),
-                source_indices.clone(),
-                module_name.clone(),
-            )
-            .iter()
-            .cloned(),
-        );
-    }
-    for optional in [&n.body, &n.transport, &n.type_annotation] {
-        if let Some(child) = optional {
-            result.extend(
-                ambiguous_anonymous_record_literal_diagnostics(
-                    child.clone(),
-                    type_summaries.clone(),
-                    source_indices.clone(),
-                    module_name.clone(),
-                )
-                .iter()
-                .cloned(),
-            );
-        }
-    }
-    Rc::new(result)
 }
 
 pub fn find_unique_struct_name_by_fields(
@@ -26293,31 +26423,33 @@ pub fn emit_typed_record_lit(
                                         field_type_hints.clone(),
                                         emit_info.type_summaries.clone(),
                                     );
-                                    if resolution_candidates.len() > 1 {
+                                    if ((resolution_candidates.clone().len() as i64) > 1) {
                                         "compile_error!(\"ambiguous anonymous record literal shape; add a nominal type\")".to_string()
                                     } else {
-                                        let vals = Rc::new({
-                                            let mut __result = Vec::new();
-                                            for f in fields.iter().cloned() {
-                                                __result.push(emit_typed_expr(
-                                                    field_init_node_value(f.clone()),
-                                                    registry.clone(),
-                                                    scope.clone(),
-                                                    depth.clone(),
-                                                    shared_types.clone(),
-                                                    emit_info.clone(),
-                                                    1024,
-                                                ));
-                                            }
-                                            __result
-                                        });
-                                        v1_rt::concat(
+                                        {
+                                            let vals = Rc::new({
+                                                let mut __result = Vec::new();
+                                                for f in fields.iter().cloned() {
+                                                    __result.push(emit_typed_expr(
+                                                        field_init_node_value(f.clone()),
+                                                        registry.clone(),
+                                                        scope.clone(),
+                                                        depth.clone(),
+                                                        shared_types.clone(),
+                                                        emit_info.clone(),
+                                                        1024,
+                                                    ));
+                                                }
+                                                __result
+                                            });
                                             v1_rt::concat(
-                                                "(".to_string(),
-                                                vals.clone().join(&", ".to_string()),
-                                            ),
-                                            ")".to_string(),
-                                        )
+                                                v1_rt::concat(
+                                                    "(".to_string(),
+                                                    vals.clone().join(&", ".to_string()),
+                                                ),
+                                                ")".to_string(),
+                                            )
+                                        }
                                     }
                                 }
                             }
