@@ -1990,3 +1990,89 @@ directions.** Neither session waited for it.
 **Knowing the class does not confer immunity to it.** That is not a rueful observation; it is the
 argument for the structural move over the prose one, made by the two people who had just written the
 prose.
+
+## A second postscript, one day later: two clocks on one object
+
+The postscript above says knowing the class confers no immunity. Here is the receipt, in the same
+hand, twenty-four hours later, and it is worth recording because it is the cheapest specimen in this
+document — the whole error and its correction fit inside eleven minutes and four commands.
+
+### What happened
+
+A subtree digest carried a child's title beginning `MAIN RED`. Checking it rather than filing it was
+correct, and the check found something real: main's last *completed* witness run was fourteen hours
+old, and the run on the current head was `in_progress`.
+
+The arithmetic was `now - run.createdAt = 142 minutes`, against the ~30 minute floor figure DESIGN.md
+records. A 4.7x overrun. That went to the parent session as a report, hedged carefully about *cause*
+— explicitly refusing to attribute the stall to the commit under test, naming that refusal as the
+correlation this fleet keeps mistaking for a cause — and carrying a suggested next step: pull the log,
+find the phase that is not returning, and note that the per-witness eval deadline is on DESIGN.md's
+unguarded list, so an unbounded witness is exactly what that rung drop stopped catching.
+
+Every hedge in that message was about the *cause*. None was about the *measurement*.
+
+### The measurement
+
+`run.createdAt` was `15:14:04Z`. The job's own `started_at` was `16:49:56Z`. Ninety-five minutes of
+the 142 was **queue** — waiting for a runner. Execution was 44 minutes, sitting in a step that now
+carries three phases against a figure recorded for one.
+
+There was no overrun. There was probably nothing wrong at all.
+
+### The shape, which is this document's subject exactly
+
+Two timestamps hang off one object and answer different questions:
+
+- `run.createdAt` answers **when was this work requested**
+- `job.started_at` answers **when did this work begin executing**
+
+The reader's question was *how long has it been executing*. Only the second answers it. The first is
+not wrong, not stale, and not malformed — it is a correct answer to a question nobody asked, sitting
+one field away from the one that was, on the same object, in the same response, under a name that
+reads like the right one. `--json createdAt` is what a person types when they want to know how long
+something has been going.
+
+**The hedging went to the wrong layer.** Enormous care was spent on *what explains the number* and
+none on *whether the number measures what the sentence says it measures*. That is the same asymmetry
+the bootstrap-contamination entry records at much greater expense: five mechanism theories, each
+internally coherent, all of them explanations of a difference that the experiment's own design had
+manufactured. Care about causes is not a substitute for care about instruments, and it is
+systematically the more available kind — a cause is interesting, an instrument is plumbing.
+
+### Why this specimen is worth more than its size
+
+Because of what the wrong reading *emitted*. It did not merely record a false number. It issued an
+**actionable misdirection**: go read the in-progress log, find the phase that is not returning,
+suspect an unbounded witness against a known rung drop. That instruction is well-formed, cites a real
+gap in DESIGN.md, and would have cost its recipient an afternoon discovering that the hang is a
+queue. The retraction had to name it explicitly and say *disregard entirely*, because a plausible
+next step outlives the finding that motivated it — it gets forwarded, and the forwarded copy carries
+none of the hedging.
+
+And the hedged hypothesis had to be withdrawn too, for a reason worth stating on its own: it was
+raised only because the overrun needed explaining. Remove the overrun and nothing points at that
+commit — but a hedged hypothesis, once relayed, is remembered as *someone suspected #9024* long after
+the measurement that motivated it is gone. **A hypothesis inherits the life of its evidence, and
+nothing in the way we write them down enforces that.** Withdrawing it by name was the only mechanism
+available.
+
+### The cost asymmetry, which is the operational point
+
+Finding the error cost one command — reading the job object instead of the run object. Ninety
+seconds. The error itself had already been broadcast to a session that routes work to fifteen others.
+
+That ratio is the entire argument for the structural correction over the prose one. There is no
+version of *be more careful* that reliably fires here, because the careful thing was done: the report
+named its own weakest link, refused an attribution, and asked for a discriminator. It named the wrong
+weakest link. **A measurement identity is a structure you fill in; care is a thing you feel about the
+half of the problem that happens to be interesting.**
+
+### What generalises
+
+Any object that carries both a *requested* and a *started* timestamp will support this error, and CI
+systems all do. The rule that would have caught it is not about CI: **when a duration is the evidence,
+name both endpoints before dividing.** An elapsed time computed from a single field is a subtraction
+against an unstated assumption about what that field marks — which is the positional-citation defect
+(§3) transposed onto time: a number that decays without anyone touching it, because what it measures
+was never written down beside it.
