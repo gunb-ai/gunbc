@@ -23,7 +23,7 @@ fn w_two_string_substring_contains_stays_runtime_bound() -> Bool {
 
 fn w_primitive_bound_empty_map_stays_runtime_bound() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.runtime_empty_map_probe\nimport std.types { Int, String, Map }\nimport v2.std.collection { empty_map }\nfn probe() -> Map<String, Int> { empty_map() }\n",
+    "module test.claim.runtime_empty_map_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { empty_map }\nfn probe() -> Map<String, Int> { empty_map() }\n",
     "src/test_claim_runtime_empty_map_probe.rs",
     ["v1_rt::rc_empty_map"],
     ["v2_std_collection::empty_map("]
@@ -32,7 +32,7 @@ fn w_primitive_bound_empty_map_stays_runtime_bound() -> Bool {
 
 fn w_imported_generic_contains_keeps_declared_identity() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.declared_contains_probe\nimport std.types { Int, Bool }\nimport v2.std.algebra { FreeMonoid, contains }\nfn int_eq(left: Int, right: Int) -> Bool { left == right }\nfn probe(xs: FreeMonoid<Int>) -> Bool { contains(xs: xs, item: 1, eq: int_eq) }\n",
+    "module test.claim.declared_contains_probe\nimport std.types { Int, Bool }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.algebra { FreeMonoid, contains }\nfn int_eq(left: Int, right: Int) -> Bool { left == right }\nfn probe(xs: FreeMonoid<Int>) -> Bool { contains(xs: xs, item: 1, eq: int_eq) }\n",
     "src/test_claim_declared_contains_probe.rs",
     ["crate::v2_std_algebra::contains("],
     ["v1_rt::contains("]
@@ -41,7 +41,7 @@ fn w_imported_generic_contains_keeps_declared_identity() -> Bool {
 
 fn w_divergent_map_get_keeps_declared_outcome_identity() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.declared_map_get_probe\nimport std.types { Int, String, Map }\nimport v2.std.collection { map_get }\nfn probe(m: Map<String, Int>) { map_get(m: m, key: \"key\") }\n",
+    "module test.claim.declared_map_get_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { map_get }\nimport v2.std.diagnostic { Outcome }\nimport v2.std.optional { Optional }\nfn probe(m: Map<String, Int>) -> Outcome<Optional<Int>> { map_get(m: m, key: \"key\") }\n",
     "src/test_claim_declared_map_get_probe.rs",
     ["crate::v2_std_collection::map_get("],
     ["v1_rt::map_get("]
