@@ -30,7 +30,8 @@ import v1.std.core {
   make_expr_node, make_named_expr_node, make_expr_error_node,
   expr_var_name_at, field_access_base, field_access_field_at, FieldAccessSpine, field_access_spine, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, lambda_param_names_at, record_lit_type_name_at,
   qualified_last_segment, type_name_compatible,
-  make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node,
+  make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value,
+  service_config_field_for_property_name, ServiceConfigField, SvcEndpoint, SvcAuth, SvcAuthInput, SvcAuthSource, SvcRateLimit, make_text_part_node, make_interp_part_node,
   map_children, arg_value, arg_name_at,
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
@@ -7956,18 +7957,29 @@ type ServiceConfigFieldJudgment
 // reference judgment is owed at all. Not-applicable rendered as unjudged is the same
 // conflation this function exists to remove, one layer out.
 //
-// So the classification is total over the closed set `service_config_properties` mints, and
-// a NEW service-config field fails to compile HERE rather than silently inheriting whichever
-// arm a wildcard happened to name.
+// THE INNER MATCH IS TOTAL OVER `ServiceConfigField`, WHICH IS THE POINT — an earlier revision
+// of this function was an `if/else if` chain over string literals, and its comment claimed a new
+// service-config field would fail to compile here. IT WOULD NOT: an unrecognised name fell to the
+// else-arm and was classified as carrying no reference, so a field added to the parser without an
+// arm here routed silently to `diagnostics: []` — the fail-open this function exists to close,
+// recreated one level up, and asserted as a guarantee in prose. Review 55463 caught it.
+//
+// The field set is now a coproduct in `v1.std.core` whose spellings the minting site derives, so
+// adding a variant forces an arm BOTH in `service_config_field_property_name` and in the match
+// below. The declared residue, stated rather than implied: `service_config_known_fields` is a
+// hand-authored roster, so a variant absent from it is unreachable here and lands in
+// `FieldCarriesNoReference`; its next-rung trigger is a variant-enumeration primitive.
 fn service_config_field_judgment(field: String) -> ServiceConfigFieldJudgment {
-  if field == "svc_endpoint" || field == "svc_auth" || field == "svc_auth_source" {
-    FieldJudged
-  } else if field == "svc_auth_input" {
-    FieldDeferred { trigger: "the referent is a service-scoped input, and the binder authority carries no service or operation parameter kind to resolve it against; judged once that binder kind exists" }
-  } else if field == "svc_rate_limit" {
-    FieldDeferred { trigger: "the rate-limit atoms (`per`, `scope`) are bare identifiers with no declaration; judged once they are grounded as cited rows in the extdeps module that publishes the limit" }
-  } else {
-    FieldCarriesNoReference
+  match service_config_field_for_property_name(name: field) {
+    Absent => FieldCarriesNoReference
+    Present { value: known } =>
+      match known {
+        SvcEndpoint => FieldJudged
+        SvcAuth => FieldJudged
+        SvcAuthSource => FieldJudged
+        SvcAuthInput => FieldDeferred { trigger: "the referent is a service-scoped input, and the binder authority carries no service or operation parameter kind to resolve it against; judged once that binder kind exists" }
+        SvcRateLimit => FieldDeferred { trigger: "the rate-limit atoms (`per`, `scope`) are bare identifiers with no declaration; judged once they are grounded as cited rows in the extdeps module that publishes the limit" }
+      }
   }
 }
 

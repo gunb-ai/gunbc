@@ -17,6 +17,7 @@ use self::MatchPattern::*;
 use self::MethodSemantics::*;
 use self::NodeFieldRole::*;
 use self::OperationModifier::*;
+use self::ServiceConfigField::*;
 use self::StringPart::*;
 use self::TokenShape::*;
 use self::TransportKind::*;
@@ -3409,6 +3410,52 @@ pub fn expr_has_non_tail_self_call(
     })
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ServiceConfigField {
+    SvcEndpoint,
+    SvcAuth,
+    SvcAuthInput,
+    SvcAuthSource,
+    SvcRateLimit,
+}
+
+pub fn service_config_field_property_name(field: ServiceConfigField) -> String {
+    match field.clone() {
+        ServiceConfigField::SvcEndpoint => "svc_endpoint".to_string(),
+        ServiceConfigField::SvcAuth => "svc_auth".to_string(),
+        ServiceConfigField::SvcAuthInput => "svc_auth_input".to_string(),
+        ServiceConfigField::SvcAuthSource => "svc_auth_source".to_string(),
+        ServiceConfigField::SvcRateLimit => "svc_rate_limit".to_string(),
+    }
+}
+
+pub fn service_config_known_fields() -> Rc<Vec<ServiceConfigField>> {
+    Rc::new(vec![
+        ServiceConfigField::SvcEndpoint,
+        ServiceConfigField::SvcAuth,
+        ServiceConfigField::SvcAuthInput,
+        ServiceConfigField::SvcAuthSource,
+        ServiceConfigField::SvcRateLimit,
+    ])
+}
+
+pub fn service_config_field_for_property_name(name: String) -> Option<ServiceConfigField> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for f in service_config_known_fields().iter().cloned() {
+            if (service_config_field_property_name(f.clone()) == name.clone()) {
+                __result.push(f);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+}
+
 pub fn service_config_properties(
     endpoint: Rc<Node>,
     auth: Option<Rc<Node>>,
@@ -3419,14 +3466,14 @@ pub fn service_config_properties(
     {
         let zero_span = no_span();
         let ep_prop = Rc::new(vec![make_field_init_node(
-            "svc_endpoint".to_string(),
+            service_config_field_property_name(ServiceConfigField::SvcEndpoint),
             endpoint.clone(),
             zero_span.clone(),
             zero_span.clone(),
         )]);
         let auth_prop = match auth.clone() {
             Some(a) => Rc::new(vec![make_field_init_node(
-                "svc_auth".to_string(),
+                service_config_field_property_name(ServiceConfigField::SvcAuth),
                 a.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -3435,7 +3482,7 @@ pub fn service_config_properties(
         };
         let auth_input_prop = match auth_input.clone() {
             Some(ai) => Rc::new(vec![make_field_init_node(
-                "svc_auth_input".to_string(),
+                service_config_field_property_name(ServiceConfigField::SvcAuthInput),
                 ai.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -3444,7 +3491,7 @@ pub fn service_config_properties(
         };
         let auth_source_prop = match auth_source.clone() {
             Some(src) => Rc::new(vec![make_field_init_node(
-                "svc_auth_source".to_string(),
+                service_config_field_property_name(ServiceConfigField::SvcAuthSource),
                 src.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -3453,7 +3500,7 @@ pub fn service_config_properties(
         };
         let rate_prop = match rate_limit.clone() {
             Some(r) => Rc::new(vec![make_field_init_node(
-                "svc_rate_limit".to_string(),
+                service_config_field_property_name(ServiceConfigField::SvcRateLimit),
                 r.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -4514,3 +4561,13 @@ pub struct ChildrenListField;
 pub struct SubValueField;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MetadataField;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SvcEndpoint;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SvcAuth;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SvcAuthInput;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SvcAuthSource;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SvcRateLimit;

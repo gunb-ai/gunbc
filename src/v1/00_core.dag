@@ -1657,6 +1657,48 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, sour
   }
 }
 
+// THE SERVICE-CONFIG FIELD SET IS ONE AUTHORITY, and it is a coproduct rather than a list of
+// string literals because the property spellings had THREE copies before this: minted here,
+// matched in `04_infer` `service_config_field_judgment`, and (in authored spelling) matched in
+// `02_parse` `parse_config_fields`. Review 55463 on gunbc#9028 caught the cost exactly: the
+// judgment claimed a new field would fail to compile, and it would not — it was an `if/else if`
+// chain over string literals whose else-arm classified any unrecognised property as carrying no
+// reference, so a field added to the parser without a matching arm routed silently to
+// `diagnostics: []`. That recreates the fail-open the change exists to close, one level up.
+//
+// With the spellings derived from this coproduct and the judgment matching it totally, a new
+// variant forces an arm in `service_config_field_property_name` AND in the judgment. The residue
+// is declared rather than papered over: `service_config_known_fields` is a hand-authored roster,
+// so a variant added without a row there is unreachable from the judgment and lands in the
+// carries-no-reference arm. Its next-rung trigger is a variant-enumeration primitive; until one
+// exists, the roster is the one place that must be edited and every other site refuses.
+type ServiceConfigField
+  = SvcEndpoint
+  | SvcAuth
+  | SvcAuthInput
+  | SvcAuthSource
+  | SvcRateLimit
+
+fn service_config_field_property_name(field: ServiceConfigField) -> String {
+  match field {
+    SvcEndpoint => "svc_endpoint"
+    SvcAuth => "svc_auth"
+    SvcAuthInput => "svc_auth_input"
+    SvcAuthSource => "svc_auth_source"
+    SvcRateLimit => "svc_rate_limit"
+  }
+}
+
+fn service_config_known_fields() -> List<ServiceConfigField> {
+  [SvcEndpoint, SvcAuth, SvcAuthInput, SvcAuthSource, SvcRateLimit]
+}
+
+fn service_config_field_for_property_name(name: String) -> ServiceConfigField? {
+  service_config_known_fields()
+    |> filter(f => service_config_field_property_name(field: f) == name)
+    |> first
+}
+
 // `retry` WAS A FIELD HERE AND IS DELETED AT THE ROOT, not left parsed-and-unread.
 // Measured before removal: `service_config_retry` had zero callers in the whole tree, and
 // NEITHER realization retries anything -- `05_emit_rust.dag` has no occurrence of retry or
@@ -1671,21 +1713,21 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, sour
 // site, not as a literal frozen into a dependency's module.
 fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?) -> List<Node> {
   let zero_span = no_span()
-  let ep_prop = [make_field_init_node(name: "svc_endpoint", value: endpoint, span: zero_span, name_span: zero_span)]
+  let ep_prop = [make_field_init_node(name: service_config_field_property_name(field: SvcEndpoint), value: endpoint, span: zero_span, name_span: zero_span)]
   let auth_prop = match auth {
-    Present { value: a } => [make_field_init_node(name: "svc_auth", value: a, span: zero_span, name_span: zero_span)]
+    Present { value: a } => [make_field_init_node(name: service_config_field_property_name(field: SvcAuth), value: a, span: zero_span, name_span: zero_span)]
     Absent => []
   }
   let auth_input_prop = match auth_input {
-    Present { value: ai } => [make_field_init_node(name: "svc_auth_input", value: ai, span: zero_span, name_span: zero_span)]
+    Present { value: ai } => [make_field_init_node(name: service_config_field_property_name(field: SvcAuthInput), value: ai, span: zero_span, name_span: zero_span)]
     Absent => []
   }
   let auth_source_prop = match auth_source {
-    Present { value: src } => [make_field_init_node(name: "svc_auth_source", value: src, span: zero_span, name_span: zero_span)]
+    Present { value: src } => [make_field_init_node(name: service_config_field_property_name(field: SvcAuthSource), value: src, span: zero_span, name_span: zero_span)]
     Absent => []
   }
   let rate_prop = match rate_limit {
-    Present { value: r } => [make_field_init_node(name: "svc_rate_limit", value: r, span: zero_span, name_span: zero_span)]
+    Present { value: r } => [make_field_init_node(name: service_config_field_property_name(field: SvcRateLimit), value: r, span: zero_span, name_span: zero_span)]
     Absent => []
   }
   concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop)

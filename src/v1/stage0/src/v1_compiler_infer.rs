@@ -194,6 +194,9 @@ use crate::v1_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
+use crate::v1_std_core::ServiceConfigField::{
+    SvcAuth, SvcAuthInput, SvcAuthSource, SvcEndpoint, SvcRateLimit,
+};
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::UnaryOpKind::{Neg, Not};
 use crate::v1_std_core::VarBindingKind::{
@@ -222,9 +225,9 @@ pub use crate::v1_std_core::{
     node_name_span, none_type, param_node_default_value, param_node_name_at, param_node_type_expr,
     preserve_outer_optional_cardinality, qualified_last_segment, record_lit_expr_optional,
     record_lit_named_field_value_optional, record_lit_type_name_at, resource_use_name_at,
-    resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
-    type_name_compatible, unaryop_operand, unit_type, with_optional_cardinality,
-    with_required_cardinality,
+    resource_use_resource, return_value, service_config_field_for_property_name, slice_base,
+    slice_end, slice_start, string_type, type_name_compatible, unaryop_operand, unit_type,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     expr_is_any_literal, expr_literal_symbol_optional, module_path_segments,
@@ -233,8 +236,8 @@ pub use crate::v1_std_core::{
     AdmitCallersEntry, CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords,
     DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine,
     FieldAccessStyle, FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode,
-    InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, UnaryOpKind,
-    VarBindingKind,
+    InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, ServiceConfigField, StringPart,
+    UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -15447,26 +15450,20 @@ impl ServiceConfigFieldJudgment {
 }
 
 pub fn service_config_field_judgment(field: String) -> Rc<ServiceConfigFieldJudgment> {
-    if (((field.clone() == "svc_endpoint".to_string())
-        || (field.clone() == "svc_auth".to_string()))
-        || (field.clone() == "svc_auth_source".to_string()))
-    {
-        Rc::new(ServiceConfigFieldJudgment::FieldJudged)
-    } else {
-        if (field.clone() == "svc_auth_input".to_string()) {
-            Rc::new(ServiceConfigFieldJudgment::FieldDeferred {
+    match service_config_field_for_property_name(field.clone()) {
+    None => Rc::new(ServiceConfigFieldJudgment::FieldCarriesNoReference),
+    Some(known) => match known.clone() {
+    ServiceConfigField::SvcEndpoint => Rc::new(ServiceConfigFieldJudgment::FieldJudged),
+    ServiceConfigField::SvcAuth => Rc::new(ServiceConfigFieldJudgment::FieldJudged),
+    ServiceConfigField::SvcAuthSource => Rc::new(ServiceConfigFieldJudgment::FieldJudged),
+    ServiceConfigField::SvcAuthInput => Rc::new(ServiceConfigFieldJudgment::FieldDeferred {
     trigger: "the referent is a service-scoped input, and the binder authority carries no service or operation parameter kind to resolve it against; judged once that binder kind exists".to_string(),
-})
-        } else {
-            if (field.clone() == "svc_rate_limit".to_string()) {
-                Rc::new(ServiceConfigFieldJudgment::FieldDeferred {
+}),
+    ServiceConfigField::SvcRateLimit => Rc::new(ServiceConfigFieldJudgment::FieldDeferred {
     trigger: "the rate-limit atoms (`per`, `scope`) are bare identifiers with no declaration; judged once they are grounded as cited rows in the extdeps module that publishes the limit".to_string(),
-})
-            } else {
-                Rc::new(ServiceConfigFieldJudgment::FieldCarriesNoReference)
-            }
-        }
-    }
+}),
+},
+}
 }
 
 pub fn service_config_property_referenced_name(p: Rc<Node>, scope: Rc<InferScope>) -> String {
