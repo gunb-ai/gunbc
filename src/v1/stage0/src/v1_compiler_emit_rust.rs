@@ -89,6 +89,7 @@ pub use crate::v1_compiler_infer::{
     expand_type_for_field_access, expr_span, extend_scope, is_where_refinement_type,
     resolved_type_name,
 };
+pub use crate::v1_compiler_infer_emit_info::dedupe_nonempty_strings;
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v1_compiler_infer_emit_info::{
     collect_type_node_import_surface_names, emit_info_with_fn_return,
@@ -7470,6 +7471,40 @@ pub fn collect_type_node_realized_surface_names(
     ))
 }
 
+pub fn collect_type_node_realized_surface_names_rec(
+    n: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let peeled = normalize_access_type_node(n.clone());
+        let own = collect_type_node_realized_surface_names(
+            peeled.clone(),
+            shared_types.clone(),
+            source_indices.clone(),
+            emit_info.clone(),
+        );
+        let child_names = Rc::new({
+            let mut __result = Vec::new();
+            for ch in peeled.children.clone().iter().cloned() {
+                __result.extend(
+                    (*collect_type_node_realized_surface_names_rec(
+                        child_type_node(ch.clone()),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        dedupe_nonempty_strings(v1_rt::concat(own.clone(), child_names.clone()))
+    })
+}
+
 pub fn collect_item_realized_surface_names(
     item: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
@@ -7477,6 +7512,32 @@ pub fn collect_item_realized_surface_names(
     emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<Vec<String>> {
     {
+        let from_decl_children = Rc::new({
+            let mut __result = Vec::new();
+            for ch in item.children.clone().iter().cloned() {
+                __result.extend(
+                    (*collect_type_node_realized_surface_names_rec(
+                        child_type_node(ch.clone()),
+                        shared_types.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let from_alias_rhs = if is_bare_leaf_item(item.clone()) {
+            collect_type_node_realized_surface_names(
+                resolved_type(item.clone()),
+                shared_types.clone(),
+                source_indices.clone(),
+                emit_info.clone(),
+            )
+        } else {
+            Rc::new(vec![])
+        };
         let from_ann = match item.type_annotation.clone() {
             Some(t) => collect_type_node_realized_surface_names(
                 t.clone(),
@@ -7514,8 +7575,11 @@ pub fn collect_item_realized_surface_names(
             _ => Rc::new(vec![]),
         };
         unique_strings(v1_rt::concat(
-            from_ann.clone(),
-            v1_rt::concat(from_params.clone(), from_inferred.clone()),
+            v1_rt::concat(from_decl_children.clone(), from_alias_rhs.clone()),
+            v1_rt::concat(
+                from_ann.clone(),
+                v1_rt::concat(from_params.clone(), from_inferred.clone()),
+            ),
         ))
     }
 }
