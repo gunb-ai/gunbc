@@ -200,11 +200,9 @@ import v1.compiler.infer_access {
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import std.decl_ref { decl_ref }
-import std.primitive_identity {
-  primitive_projection_for_declaration,
-  PrimitiveProjectionAnswer, DeclarationProjectsPrimitive, DeclarationProjectsNoPrimitive,
-  DeclarationPrimitiveUndisposed,
-  ProjectionFidelity, HostRealizedSeam, ModeledProjection, DivergentProjection
+import std.primitive_projection {
+  primitive_projection_row_for_declaration,
+  HostRealizedSeam, ModeledProjection, DivergentProjection
 }
 
 fn is_witness_type_name(name: String) -> Bool {
@@ -5194,22 +5192,21 @@ fn needs_alias_field_expansion(n: Node, env: TypeEnv) -> Bool {
 
 data call_locals_shadow_note: String = "Body-scope binders shadow the fn-sig lookup in the ExprCall arm (nearest-first precedence: body locals > module fns > census global_bare). Without this gate a corpus-unique census homonym out-precedes a `let` callee: refinement.dag's `let classify = by.classify; match classify(base)` typed the scrutinee as a v2 lens test module's `fn classify -> Optional<Finding>`, refusing the match arms against the wrong enum (variant not found in Optional + non-exhaustive missing Absent/Present). The gate reads body_locals — the strict body-grain subset (let / match pattern / fn+lambda params) of scope.locals — because the module context pre-seeds locals with variant and service census bindings that must NOT eclipse fn sigs (an imported 0-arg fn would lose its sig to its own census row: html_fragment.dag's html_markup_medium() typed as an unresolved primitive). Absent sends the call down the local-callable path exactly as the pre-census seed did. Companion precedence law lives in func_sig_from_global_bare (infer_lookup): the census fallback never serves an algebra method-template name (filter/any/contains/…) — a whole-pool census entry for the UNLOADED v2.std.algebra must not preempt the known-method bridge (main-parity: on main such free calls type through the bridge; a census-served sig typed filter(xs, f) as a plain call to a never-loaded module and the runtime died NoSuchFunction)."
 
-data resolved_call_target_identity_note: String = "A call is resolved once, where its lexical scope is available, and emission consumes that exact result. RuntimePrimitiveCall is produced only by builtin resolution or when std.primitive_identity says THIS exact declaration is a HostRealizedSeam/ModeledProjection of the primitive. SourceDeclarationCall is retained for ordinary declarations and for DivergentProjection (v2.std.collection map_get is the canonical divergent row). The authored leaf spelling never participates in target selection after this point. CallableTargetUndetermined is a refusal-bearing residue, not permission for emission to retry name lookup. This closes the authority-substitution class in which v2.std.algebra contains resolved correctly but 05_emit_rust re-decided it as the unrelated two-String v1_rt substring primitive. The same identity is consumed by free-call bridge selection, by-reference lowering, and result wrapping; source_visible_names would only let emission repeat resolution and is deliberately not the mechanism."
+data resolved_call_target_identity_note: String = "A call is resolved once, where its lexical scope is available, and emission consumes that exact result. RuntimePrimitiveCall is produced only by builtin resolution or when std.primitive_projection says THIS exact declaration is a HostRealizedSeam/ModeledProjection of the primitive. SourceDeclarationCall is retained for ordinary declarations and for DivergentProjection (v2.std.collection map_get is the canonical divergent row). The authored leaf spelling never participates in target selection after this point. CallableTargetUndetermined is a refusal-bearing residue, not permission for emission to retry name lookup. This closes the authority-substitution class in which v2.std.algebra contains resolved correctly but 05_emit_rust re-decided it as the unrelated two-String v1_rt substring primitive. The same identity is consumed by free-call bridge selection, by-reference lowering, and result wrapping; source_visible_names would only let emission repeat resolution and is deliberately not the mechanism."
 
 fn resolved_plain_call_target(scope: InferScope, func_name: String, sig_lookup: FuncSigLookup) -> CallTargetIdentity {
   match sig_lookup {
     FuncSigResolved { sig: _ } =>
       match func_decl_binding_for_call(func_env: scope.func_env, type_env: scope.type_env, name: func_name) {
         ExactConstructorDeclaration { identity: identity, declaration: _ } =>
-          match primitive_projection_for_declaration(declaration: decl_ref(module_path: identity.owner_module_path, decl_name: identity.decl_name)) {
-            DeclarationProjectsPrimitive { identity: _, fidelity: fidelity } =>
-              match fidelity {
+          match primitive_projection_row_for_declaration(declaration: decl_ref(module_path: identity.owner_module_path, decl_name: identity.decl_name)) {
+            Present { value: row } =>
+              match row.fidelity {
                 HostRealizedSeam => RuntimePrimitiveCall { primitive_name: func_name }
                 ModeledProjection => RuntimePrimitiveCall { primitive_name: func_name }
                 DivergentProjection { divergence: _ } => SourceDeclarationCall { owner_module_path: identity.owner_module_path, decl_name: identity.decl_name }
               }
-            DeclarationProjectsNoPrimitive => SourceDeclarationCall { owner_module_path: identity.owner_module_path, decl_name: identity.decl_name }
-            DeclarationPrimitiveUndisposed { authored_symbol: _ } => SourceDeclarationCall { owner_module_path: identity.owner_module_path, decl_name: identity.decl_name }
+            Absent => SourceDeclarationCall { owner_module_path: identity.owner_module_path, decl_name: identity.decl_name }
           }
         NotAdmissionBearingReference {} => CallableTargetUndetermined
         AdmissionBearingDeclarationUnavailable { identity: _, cause: _ } => CallableTargetUndetermined
