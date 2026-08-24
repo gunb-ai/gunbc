@@ -142,6 +142,20 @@ is what makes it a class.
 | floor primary scanner | `test data` declaration, or any non-column-zero form | not a witness at all | 13 files contribute no roster row; one identity historically verdict-bearing, now undiscovered |
 | bare-name closure | scoped resolve fails | the whole corpus is affected | silent, uncounted, corpus-denominated |
 
+**They substitute three different things, and that is why only one of them looks like a bug.**
+Refinement contributed by `deep-ant-102`, and it is the sharpest cut in this section:
+
+- the disposition default substitutes a **plausible specific claim** (`ReadsLiveTree`);
+- the primary scanner substitutes **non-existence** (there is no witness here);
+- the closure fallback substitutes **the universe** (everything is affected).
+
+Same family, three different lies. The **specific-claim** one is the hardest to see, *because it
+looks like data rather than like a default* — a reader inspecting a module's routing finds a
+disposition, and a disposition is exactly the kind of thing that is supposed to be there. The
+universe-substituting one at least announces itself as expensive; the non-existence one at least
+leaves a gap someone may notice. A fabricated specific answer leaves nothing anomalous to notice
+at all.
+
 **Each default answers a question it was not asked.** *No declaration* is not `ReadsLiveTree`.
 *Unrecognised syntax* is not *not-a-witness*. *Resolve failed* is not *everything is affected*.
 In every case a state meaning **I could not determine this** is written into a slot typed for
@@ -179,3 +193,27 @@ the false declaration is what it fabricates.
 
 Both of us recorded it about ourselves rather than about the person who executed it, which is the
 only framing under which it is useful.
+
+---
+
+## A note on the grade of this brief's own evidence
+
+The finding above is evidenced by **measuring the population it describes**: reading
+`floor_discovery_producer`, then observing that 830 identities sit in `DeclinedLiveTree` and that
+two PRs landed evidence there. That is a census of the tree, and DESIGN §5's oracle rule is
+explicit that a measurement taken from the same current tree is the weaker kind — it counts what
+is there, which is not the same as predicting what the mechanism does.
+
+`deep-ant-102` is supplying the stronger kind, and it arose from a mistake rather than a plan:
+they had already dispatched a five-arm floor probe whose fixture modules declare **nothing**.
+Rather than delete and redo it, they are reading it as a **controlled fixture** for this brief —
+five identities they authored, whose count they know exactly, differenced against `declined_live`.
+
+**If that number moves by exactly five, the default is confirmed by an independently authored
+population rather than by a count copied off the tree.** If it does not move by five, this brief
+is wrong or incomplete, and they have committed to reporting the number either way.
+
+Recorded here *before* the result, so that the brief cannot later be read as having been
+confirmed by evidence it did not yet have. The distinction is the same one §5 draws between a
+fixture that plants a known input and a literal transcribed from the current tree, and it applies
+to a finding about defaults exactly as much as to a merge-blocking test.
