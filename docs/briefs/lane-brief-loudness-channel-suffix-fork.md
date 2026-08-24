@@ -1,174 +1,233 @@
 # LANE BRIEF — node://adhoc-602d7286-8ff
+## Failure-evidence admission: bind the producer, do not promote the spelling
 
-## The defect, stated as §3 rather than as a coverage gap
+**OPERATOR RULING, 2026-08-24 08:20, and it supersedes the two earlier framings in this
+brief's history.** Both were name-based and both were wrong in the same direction.
 
-Two authorities answer ONE question, "is this a witness":
+> **Yes: give the next free lane to failure-evidence admission before opening another
+> board-root investigation lane.** But do not implement the wall as *"a witness name must end
+> in `_holds` or `_passes`"* — that would preserve the current defect as policy. The right
+> wall is: **an executing enrolled witness must have a resolvable failure-evidence producer.**
+> The suffix convention may remain as a temporary compatibility lookup. It must not become the
+> semantic authority.
 
-- **structural** — `test fn` at column zero. `v1_compiler.cli_run` `witness_file_from_source`
-  is the whole of the floor's discovery: `line.strip_prefix("test fn ")`, collect the name,
-  and a path `exclude_substrings` filter above it. No annotation, no registry, no naming rule.
-- **name suffix** — `gunbc.test_module_hygiene` `failure_receipt_companion`:
-  `_holds`/`_passes` -> `_failure_receipt`, else `optional_absent()`.
+**Superseded — do not build either:**
 
-They disagree on **10408 of 12278** witnesses. That is not a defect population to count
-down; it is the measured disagreement rate between two authorities for one fact, which is
-§3 nicknaming applied to a PREDICATE rather than to a type.
+- *"refuse at enrolment for a witness whose name cannot derive a companion, counted then
+  blocking"* (mine). This codifies the suffix as the eligibility rule. The operator tested
+  exactly this hypothesis and rejected it.
+- *"delete the suffix test so the derivation is total"* (deep-ant's, and better). It fixes
+  one of four conflated states and leaves the mechanism `String → String`. The suffix stays
+  as a **compatibility projection**, not as the law and not as a totalised law.
 
-## Measured (static scan, dag + src/v2 + src/v1, BOTH `fn` and `func` keywords)
+---
 
-    test fn at column zero                12278
-    test func at column zero                  0
-    eligible by name suffix                1870   (15.2%)
-    INELIGIBLE BY NAME                    10408   (84.8%)
-    authored *_failure_receipt                16
-    eligible witnesses WITH a companion        4
-    authored *_verdict_diagnostic              0
+## The four states the suffix conflates
 
-CAVEAT ON THESE NUMBERS: static regex over declarations. Population confirmed, BEHAVIOUR not
-executed.
+A single name-derivation answers all of these at once, and they are different facts:
 
-**READ THIS BEFORE YOU RUN YOUR OWN GREP.** An earlier revision said 6 companions and 3 pairs.
-Both numbers were wrong, both sessions produced them independently, and the cause was the same
-in both: the pattern matched `^fn ` only. **`func` is a real declaration keyword in this
-corpus** — 269 uses against 36654 `fn` — and every missed companion was a `func`. A separate
-re-run then returned 2 `*_verdict_diagnostic` producers, which would have refuted the zero;
-that was a pattern with no END anchor matching `witness_verdict_diagnostic_companion` (the
-derivation itself) and `lens_verdict_diagnostic_locus_module` (substring only). Anchored on
-the declaration form, the count is 0, now verified independently by two sessions.
+    1. a companion spelling can be derived from this name
+    2. a companion function actually exists
+    3. that companion has the required type
+    4. that companion reports the reason for THIS witness evaluation
 
-Four defective greps in one night between two sessions. The only one that reached nobody was
-caught because the finding was interesting enough to double-check before sending — **that is
-not a discipline anyone can rely on.** Match both keywords and anchor both ends.
+`foo_holds` derives `foo_failure_receipt` **even when no such producer exists**. Conversely a
+witness with a legitimate but arbitrary name may have an explicitly bound producer and must
+not be refused because its spelling does not encode that fact.
 
-## The change
+So the wall must consume a real binding:
 
-`failure_receipt_companion` stops answering IS THIS A WITNESS and answers only WHAT WOULD
-THIS WITNESS'S COMPANION BE CALLED. Total, no name condition. Same for
-`witness_verdict_diagnostic_companion`.
+    WitnessIdentity { entry, function }
+            ↓
+    FailureEvidenceBinding { producer identity, evidence type }
 
-**DO NOT append naively.** `X_holds` + `_failure_receipt` = `X_holds_failure_receipt`, which
-BREAKS THE FOUR PAIRS THAT WORK TODAY. Correct shape: strip `_holds`/`_passes` WHEN PRESENT,
-otherwise use the full name.
+not `String → String manipulation`.
 
-## Safe by construction — already checked, do not redo
+## The denominator is NOT 12278
+
+Admission is denominated over **enrolled ∩ scheduled ∩ expected to execute**, never over every
+declaration. Some `test fn`s are offline recipes, deliberately declined long-home rows,
+fixtures, unscheduled cadence members, dormant local probes. *A declaration with no current
+executing consumer is a separate standing and must not be refused for lacking a runtime
+channel that nothing invokes.*
+
+I measured 12278 declared and flagged in passing that the floor's routed roster is ~10439 —
+then quoted the 12278 anyway. **The routed roster is the denominator.** The join is:
+
+    declared witness identity  ×  execution standing  ×  failure-evidence standing
+
+with terminal dispositions along the lines of:
+
+    ExecutingWithTypedEvidence
+    ExecutingWithLegacyTextEvidence
+    ExecutingWithoutFailureEvidence
+    DeclaredButNotScheduled
+    CompanionNameDerivableButProducerMissing
+    ProducerPresentWithWrongType
+
+**That is the only census this lane needs.** Do not turn it into a corpus-wide witness redesign.
+
+## One authority, three projections
+
+Do not preserve three independently implemented answers (`Bool` producer, `String` receipt
+producer, diagnostic producer). The terminal shape is:
+
+    one typed verdict/evidence producer
+        ├── Bool projection        for legacy witness execution
+        ├── Diagnostic projection  for the floor
+        └── textual rendering      where a string is still required
+
+Precedent already in tree: `LensVerdict<T>` distinguishes satisfaction, violation,
+non-applicability and unrealized, and its non-success arms carry a `Diagnostic`.
+
+**This does NOT mean minting another universal verdict carrier.** It means the failure-evidence
+channel consumes the domain's actual verdict where one exists, and legacy text renders *from
+that fact* rather than recomputing it.
+
+## Rollout — staged, and Phase 1 must not alter admission
+
+**Phase 1 — measure the active population, count-only.** Executing enrolled witnesses only,
+with exact reconciliation: `executing total = typed + legacy + unbound`.
+
+**Phase 2 — no-growth wall.** Immediately refuse a newly enrolled executing witness with no
+evidence binding; an existing witness whose enrollment is modified and remains unbound; a
+purported companion spelling whose producer does not exist; a producer whose result type is
+wrong. **Grandfather the measured legacy population as explicit migration debt.** This closes
+the writable hole without turning the roster red.
+
+**Phase 3 — one end-to-end specimen, with a mutation control.**
+
+    witness evaluates → typed non-success verdict exists → Bool projection is false
+    → located diagnostic fetched from the SAME verdict → floor prints that diagnostic
+
+    change the producer's diagnostic → floor output changes
+    change only the Boolean wrapper  → evidence still identifies the producer result
+
+That is what proves the channel is not decorative.
+
+**Phase 4 — migrate by touch and by value**, in order: required-floor witnesses producing
+opaque false; witnesses used as discriminators for emission/root repairs; high-cost witnesses
+whose opaque failure triggers expensive reconstruction; remaining active legacy rows. Full
+blocking only when the grandfathered population reaches zero **or the operator explicitly
+ratifies a final cut**.
+
+## Acceptance bar
+
+    1. Actual active-roster denominator, not all test declarations.
+    2. Explicit failure-evidence binding at witness identity grain.
+    3. Legacy suffix lookup retained only as a compatibility projection.
+    4. No-growth admission wall.
+    5. One real *_verdict_diagnostic producer exercised end to end.
+    6. Missing/wrong-type producer refuses at enrollment.
+    7. Witness NotExecuted remains distinct from witness false.
+    8. Legacy text receipt renders from the same evidence rather than recomputing.
+    9. Exact grandfathered population and dissolution trigger.
+
+**It must NOT:** rename 10,000 functions · migrate every witness in one PR · add another
+general verdict type · rewrite the floor · block on declared-but-unscheduled tests · open a
+census of what each witness ought to say.
+
+---
+
+## Measurements that stand (and how they were wrong before you inherit them)
+
+    test fn at column zero (dag+src/v2+src/v1)   12278    <- NOT the denominator
+    floor routed roster (DESIGN, older run)     ~10439    <- closer to it
+    eligible by _holds/_passes suffix             1870
+    ineligible by name                           10408
+    authored *_failure_receipt                      16
+    eligible witnesses WITH a companion              4
+    authored *_verdict_diagnostic                    0
+
+**READ THIS BEFORE RUNNING YOUR OWN SCAN.** An earlier revision said 6 companions and 3 pairs.
+Both wrong, produced independently by two sessions from the same defective pattern: it matched
+`^fn ` only, and **`func` is also a declaration keyword here** (269 against 36654 `fn`); every
+missed companion was a `func`. A separate re-run then returned 2 `*_verdict_diagnostic`
+producers — a pattern with no END anchor matching `witness_verdict_diagnostic_companion` (the
+derivation itself) and `lens_verdict_diagnostic_locus_module` (substring only). Anchored, it is
+0. Four defective greps in one night between two sessions; the only one that reached nobody was
+caught because the finding happened to be interesting enough to double-check. Match both
+keywords, anchor both ends.
+
+## The duplication, measured — this is why (3) says *compatibility projection only*
+
+`run_claim_failure_receipt` and `run_witness_verdict_diagnostic` are **byte-identical modulo one
+string literal**: same `match v1_interpreter::run_in_context(ctx, function, false)`, same four
+arms in the same order, same `Ok(Value::Str(s)) => s.to_string()`, same
+`Err(NoSuchFunction { .. }) => String::new()`, same wrong-type and error formats — differing
+only in whether the sentinel reads `failure_receipt_refused:` or
+`witness_verdict_diagnostic_refused:`. **The only thing either carries that the other does not
+is the word in its own error message.**
+
+The appenders match too, and every call site is a lockstep pair — both invoked on adjacent
+lines, same order, same target string, at all three sites (inside
+`seed_runner_bool_false_failure_detail`, in `claim_executor`'s Bool(false) path, and in the
+discovery-summary failure path). *No offsets given deliberately: an earlier revision carried
+line numbers and they were wrong for the reader's tree the moment they were written — measured
+from a branch several merges behind main, ~600 lines adrift on two of three. Name the symbol
+and grep (§3).*
+
+So this is a §2 duplicate as well as a §3 fork: two derivations, two identical runners, one of
+which has never had a producer.
+
+## Safe by construction — checked, do not redo
 
 - **Missing companion costs nothing.** `run_claim_failure_receipt` maps
   `InterpError::NoSuchFunction` to `String::new()` and the caller appends only when non-empty.
-  Under a total derivation the ~12274 witnesses with no companion behave exactly as today:
-  no error, no fabricated text, no cost outside a red.
 - **No Rust mirror of the derivation.** `failure_receipt_companion_from_authority` calls the
-  `.dag` function through the interpreter. One authority to edit.
+  `.dag` function through the interpreter.
+- **Floor discovery has no eligibility rule.** `witness_file_from_source` is
+  `line.strip_prefix("test fn ")` plus a path filter, and nothing else sits between the
+  declaration and the roster. (It is **column-zero only** — an indented `test fn` is silently
+  undiscovered. Occupancy is zero today, so this is a quiet guard, not a dead one: **do not
+  "fix" it**; it is noted because this lane edits the neighbourhood.)
 
-## THE BLOCKER — three assertions of the fork, in two languages
+## Three assertions of the old contract, in two languages
 
-All three assert that `failure_receipt_companion` DECIDES witness-hood. All three go red on a
-total derivation. Updating them **is the substance of the change, not churn around it**.
+Only one is reachable by CI. A lane that updates the `.dag` pair and ships will believe it is
+green.
 
-1. `dag/test/claim/test_module_hygiene_hand_rust_equivalence_witness_test.dag`
-   `test_module_hygiene_failure_receipt_companion_absent_on_non_witness` — asserts
-   `Absent` for `"ordinary_fn"`.
-2. its sibling in the same file, `codex_wet_enrolled_witnesses_resolve_failure_receipt_companion`.
-3. `src/v1/stage0/src/cli_run/test_module_hygiene_bridge.rs` — RUST UNIT TESTS asserting the
-   suffix behaviour directly (`failure_receipt_companion_from_authority("ordinary_fn")`, and
-   the `w_thing_holds` / `w_thing_passes` pairs).
+1. `test_module_hygiene_hand_rust_equivalence_witness_test`
+   `test_module_hygiene_failure_receipt_companion_absent_on_non_witness`
+2. its sibling `codex_wet_enrolled_witnesses_resolve_failure_receipt_companion`
+3. `src/v1/stage0/src/cli_run/test_module_hygiene_bridge.rs` — Rust unit tests asserting the
+   suffix behaviour directly
 
-These are not merely three assertions to update. They are three assertions **IN TWO
-LANGUAGES** of a contract being deleted, and **only one of the three is reachable by CI**.
-A lane that updates the `.dag` pair and ships will believe it is green.
-
-**(3) WILL NOT RED CI.** The Rust suite was removed from CI 2026-07-11 (operator ruling) and
-runs locally only.
-
-> **ACCEPTANCE STEP, REQUIRED:** run
-> `cargo test -p v1-compiler --lib test_module_hygiene`
-> locally. Nothing else will run it. Leaving a stale assertion in the language CI does not
-> check is precisely how this fork stayed invisible — splitting it out would reproduce the
-> condition that created it.
-
-## Two witnesses this lane owes
-
-- the updated non-witness case, now asserting `Present` with the derived name;
-- a NEW one proving a name with NEITHER suffix derives a companion. **That is the
-  discriminating RED for the whole change — it fails on main today.**
+> **ACCEPTANCE STEP, REQUIRED:** run `cargo test -p v1-compiler --lib test_module_hygiene`
+> locally. The Rust suite was removed from CI 2026-07-11 and nothing else will run it.
 
 ## Do not disturb: the gates are the working example
 
 Ten of the sixteen companions are effect-gate companions under `dag/tools/`
-(`floor_effect_gate_witness` x4, `dag_compile_clean_gate`, `generated_artifact_gate`,
+(`floor_effect_gate_witness` ×4, `dag_compile_clean_gate`, `generated_artifact_gate`,
 `prose_row_introduction_gate`, `extdeps_scope_placement_gate`). The channel is unused across
-the WITNESS corpus and deliberately used by the gates — the population that most needed it.
-`dag/tools/floor_effect_gate_witness.dag` `floor_gate_failure_receipt_note` carries a
-hand-authored "mute frontier" with counts; check whether this change moves them.
+the witness corpus and adopted **consistently by the gates** — the population that most needed
+loudness found the convention; the population that could not reach it by name did not.
+`floor_effect_gate_witness.dag` `floor_gate_failure_receipt_note` carries a hand-authored
+"mute frontier" with counts; check whether this lane moves them.
 
-This strengthens the case for totalising rather than merely adding to the number. It is not
-"nobody uses it" — **the population that most needed loudness found the convention and
-adopted it consistently, and the population that could not reach it by name did not.** The
-strip-then-append shape already guarantees the gates are undisturbed, since every one of them
-is a `_holds`/`_passes` pair today.
+## Priority, with the operator's correction to my claim
 
-## `*_verdict_diagnostic` — PRECONDITION DISCHARGED (read the consumer; here is what it does)
+I argued "every future lane depends on it." **Too broad.** Rustc board failures already carry
+located compiler diagnostics; this channel does not help an E0308 or E0004 trace. It directly
+improves witness-based discriminators, construction guarantees, red controls, cost and
+admission failures, behavioural receipt diagnosis, and any repair whose acceptance depends on a
+Boolean witness.
 
-Zero producers, corpus-wide, ever, while its derivation AND consumer both exist. Inert by
-§6's definition, and not excusable as new or niche.
+    existing merge-ready and in-flight board repairs:  continue
+    next free lane:                                    failure-evidence binding + no-growth wall
+    new broad board-root investigation:                wait until that lane is staffed
 
-The precondition was: *read what the consumer does with it before proposing deletion* — zero
-producers makes it inert, it does not make it interchangeable, and deleting a channel whose
-consumer does something the other cannot is how a 0% arm turns out to have been the only
-route to something. **That read is now done, and the answer is: nothing the failure receipt
-does not.**
+**One lane only.** Once the no-growth wall and one executed diagnostic path exist, return the
+lane to convergence rather than beginning a mass witness migration.
 
-Measured by reading `v1_compiler.cli_run`. **The two RUNNERS are byte-identical modulo one
-string literal.** Put `run_claim_failure_receipt` and `run_witness_verdict_diagnostic` side by
-side: same `match v1_interpreter::run_in_context(ctx, function, false)`, same four arms in the
-same order, same `Ok(Value::Str(s)) => s.to_string()`, same
-`Err(NoSuchFunction { .. }) => String::new()`, same wrong-type and error formats — differing
-only in whether the sentinel reads `failure_receipt_refused:` or
-`witness_verdict_diagnostic_refused:`.
+## Displaced cost, denominated
 
-**The only thing either runner carries that the other does not is the word in its own error
-message.** That is the load-bearing fact, and it is stronger than any argument about context:
-there is no behaviour available to differ.
+Three cold remote rebuilds in one day across two sessions, recovering located facts that
+already existed at the producing boundary. The shape:
 
-The appenders match too — `append_failure_receipt_companion_loudness` and
-`append_witness_verdict_diagnostic_loudness` — same three-arm `FailureReceiptCompanionLookup`
-match, same append-when-non-empty, same `NotDeclared => {}`, same target string.
+    producer computes a discriminating reason → witness projects to Bool → floor receives false
+    → reason discarded → another lane performs a cold reconstruction
 
-And every call site is a **lockstep pair**: both appenders are invoked on adjacent lines, in
-the same order, against the same target, at all three sites — inside
-`seed_runner_bool_false_failure_detail`, in `claim_executor`'s Bool(false) path, and in the
-discovery-summary failure path. No positions given deliberately: an earlier revision of this
-brief carried line offsets and they **rotted within twenty minutes**, drifting ~600 lines on
-two of the three. Name the symbol and grep for it (§3).
-
-So this is a §2 duplicate as well as a §3 fork: two derivations, two identical runners, one
-of which has never had a producer.
-
-CAVEAT: this is a code read, not execution. What it establishes is that no call site and no
-runner distinguishes them — not that nothing could. But with the runners identical, the space
-left for an objection is narrow: **anyone keeping the channel must argue for a future intent
-that needs a second DERIVATION AND A SECOND IDENTICAL RUNNER**, rather than a convention
-inside one string.
-
-## The precedent to cite, and it points the right way
-
-`witness_file_from_source` already carries a standing note: *"ONE FACT, TWO COMPUTATIONS, IN
-ONE BINARY — a §3 defect, recorded here rather than silently carried"*, about that text scan
-versus `reads_live_tree_effective`. It was resolved by observing the two consumers ask
-DIFFERENT questions, and deleting the floor's copy rather than unifying. **Here the two
-consumers ask the SAME question, so the same reasoning gives the opposite disposition —
-unify.** A precedent that flips once you check which question each consumer asks is stronger
-than one that simply agrees.
-
-## One line, recorded not actioned
-
-The discovery scan is COLUMN-ZERO only (`strip_prefix` on the raw line). An indented
-`test fn` is silently undiscovered — not refused, not counted, absent. Occupancy is ZERO
-today, so this is a quiet guard and not a dead one: **do not "fix" it**. It is noted because
-this lane is editing the neighbourhood and the first person to indent a witness inside a
-block gets a test that never runs and never says so.
-
-## Why this is worth a lane
-
-Displaced cost, denominated: three cold remote builds in one night, across two sessions, all
-spent recovering located information the producing code already had in hand. When a wall
-refuses, the floor says `returned Bool(false)` and the reason it computed is discarded.
+Every false witness currently invites a causal investigation that may reproduce an answer the
+program had already computed.
