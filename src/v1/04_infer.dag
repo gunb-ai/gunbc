@@ -2547,12 +2547,23 @@ fn borrowed_callable_call_type(gnode: Node, typed_args: List<Node>, scope: Infer
 
 fn is_anonymous_bound_name(name: String) -> Bool { name == "_" }
 
+fn call_param_caller_labels(param_name: String) -> List<String> {
+  if param_name == "_" {
+    []
+  } else if string_length(s: param_name) >= 1
+      && substring(s: param_name, start: 0, end: 1) == "_" {
+    [param_name, substring(s: param_name, start: 1, end: string_length(s: param_name))]
+  } else {
+    [param_name]
+  }
+}
+
 fn call_arg_label_matches_param(param_name: String, arg_label: String) -> Bool {
-  param_name == arg_label
-    || param_name == "_"
-    || (string_length(s: param_name) >= 1
-        && substring(s: param_name, start: 0, end: 1) == "_"
-        && substring(s: param_name, start: 1, end: string_length(s: param_name)) == arg_label)
+  if param_name == "_" {
+    true
+  } else {
+    call_param_caller_labels(param_name: param_name) |> any(caller_label => caller_label == arg_label)
+  }
 }
 
 fn param_binds_positionally(p: Node, source_indices: Map<String, NewlineIndex>) -> Bool {

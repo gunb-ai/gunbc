@@ -138,7 +138,7 @@ import v1.compiler.emit {
   emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
   emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text,
   module_emit_scope, scope_after_expr, lookup_item, has_nested_records_node,
-  emit_data_value_json, EmitterOutcome, Emitted, Refused, is_null_coalesce, has_service_items, typed_named_arg_matches,
+  emit_data_value_json, EmitterOutcome, Emitted, Refused, is_null_coalesce, has_service_items,
   order_typed_call_args, is_tco_eligible, is_self_recursive, emit_shared_tco_expr,
   tco_reassign_core, is_tco_identity_passthrough, service_fallback_transport,
   effective_operation_transport, ServiceFieldSet, compute_service_fields, service_field_decls,
