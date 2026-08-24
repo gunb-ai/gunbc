@@ -1419,3 +1419,64 @@ Same hour, same class, opposite halves. Neither was caught by a check; both were
 else's correction forcing a re-read of the primary artifact. **That is the honest summary of this
 entire document: the mechanism that found nearly every specimen in it was a second party re-reading
 the source, and no instrument in the repository substitutes for it.**
+
+---
+
+## The marker that exists before the run: counting a string in a log that also contains the command
+
+Two sessions were caught by this within an hour, from opposite ends, and it is the most mechanical
+trap in this document — no judgement required to avoid it, only knowing it exists.
+
+`ctrl-build` **echoes the dispatched script into the log** before executing it. So any marker you
+grep for is present in the log **at time zero**, put there by the echo rather than by the run:
+
+    grep -c "cost-partition" run.log   ->  2
+
+Which reads as *the line landed twice*. Both matches were the echoed script. The payload emitted
+nothing at all — the run was killed at 45 minutes without producing a single partition line.
+
+### Why it is worse than a wrong count
+
+A miscount is recoverable; you notice the number is odd and look. **The severe form is a watcher
+anchored on presence**, because the marker is there *before anything starts*:
+
+    wait until log contains "DONE"   ->  fires immediately, on the echo
+                                     ->  reports a run as settled that has not begun
+
+That is not a delayed wrong answer, it is an **instantaneous** one, and it arrives during the window
+where the correct answer is *"no information yet."* The same session lost an hour to a watcher firing
+on its own end-marker in the echoed script.
+
+### The rule
+
+**A marker must be something only a real run could emit.** A literal in the script fails that by
+construction — the script is data that reaches the log intact. So the marker has to carry a value the
+run *computes*:
+
+    bad    echo "DONE"                       a literal; present in the echo
+    good   echo "DONE files=$(wc -l < out)"  carries a computed value
+    good   echo "EXIT=$?"                    carries an outcome
+    good   anchor on a timestamp the run stamps, not a word the script contains
+
+Failing that, match with an anchor the echo cannot satisfy — line-start on a line the echo indents,
+or a count that must *exceed* the number of times the string appears in the script itself. The second
+is worth stating because it is the honest general form: **when the instrument's input is visible in
+the instrument's output, every measurement has a floor contributed by the input**, and you either
+subtract that floor or make the marker unforgeable by it.
+
+### Its neighbour, from the same failure
+
+The run that produced the miscount also could not say whether it was slow or hung. **The harness
+emits its cost partition only on termination**, so a 45-minute silence and a deadlock are
+byte-identical from outside — the only evidence of progress is the artifact that finishing produces.
+
+That is the self-testing shape from the previous entry, and this one is the **better** case, because
+here the repair exists and is cheap: emit per-phase progress markers so that liveness has a signal
+distinct from completion. The narrowed re-dispatch does exactly that — one root at a time, each
+capped, printing begin/exit stamps per root — which converts *"the run failed"* into *"this root
+failed"*, and makes the timeout informative instead of merely negative.
+
+**Where the two entries meet:** an instrument that reports only at the end cannot report on itself,
+and an instrument whose marker is a literal reports before it starts. **Both produce a confident
+reading during the interval when nothing is known** — one by silence that looks like a value, one by
+a value that precedes the measurement.
