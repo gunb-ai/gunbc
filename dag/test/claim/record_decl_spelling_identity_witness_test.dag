@@ -52,6 +52,8 @@ test fn leaf_alias_is_not_read_as_a_record() -> Bool {
   !record_decl_spelling_has_named_field(qn: qn_leaf_alias, field: ^first)
 }
 
+
+
 data record_decl_spelling_sole_constructor_note: String = "THE FIELDS ARE NOT THE WHOLE DECLARATION, and unifying them left one thing still forked. `parse_type_body_from_prefix` reads the `sole_constructor` modifier and consumes its tokens BEFORE it branches on `\{` versus `=`; the brace branch then builds the property and the `=` branch called `parse_type_body_after_eq`, which did not take the flag at all. Before the fields were hoisted that cost nothing -- the `=` form produced an alias, and nobody expects a construction wall on an alias. After the hoist it produced a record declaration identical to the brace form in every observable respect EXCEPT the missing wall, so `type X sole_constructor = \{ .. \}` would parse to an unsealed record while its source says sealed: a modifier written, consumed and silently dropped, which is the fabricated-plausible-output shape at the source boundary and precisely the mechanism DESIGN section 4b names as the live capability for carrier-borne invariants. Live exposure was zero -- no `type ... sole_constructor = \{` is authored anywhere in dag/ or src/v2/ -- so this is a hole closed before anything fell in it, not a repair of an observed loss. The flag is now threaded through to `type_item_from_alias_rhs`, which builds the same property, rather than the `=` form refusing the modifier: refusing would have re-introduced a spelling-dependent rule two lines after one was deleted. WHY THESE ROWS AND NOT A decl_facts ROW like their siblings above: `concept_decl_node` marshals a declaration's CHILDREN and not its properties, so the seal is invisible at that grain -- the wall is observable only where it fires, which is a cross-module record literal. `nominal_opaque` rides the same modifier path and is ALSO dropped, but it is dropped for BOTH spellings and is recorded nowhere by either, so it is not a fork this change opens and is not repaired here. dissolve-on: never -- permanent regression control."
 
 data qn_sealed_brace_probe_source: String = "module record_decl_sealed_brace_probe\n\nimport test.fixture.record_decl_spelling.sealed \{ SealedBraceSpelling \}\n\nfn forge() -> SealedBraceSpelling \{\n  SealedBraceSpelling \{ n: 1 \}\n\}\n"
@@ -71,4 +73,16 @@ test fn brace_spelling_seals_construction() -> Bool {
 
 test fn equals_spelling_seals_construction_the_same_way() -> Bool {
   record_decl_spelling_probe_refuses(source: qn_sealed_equals_probe_source)
+}
+
+data qn_sealed_empty_brace_probe_source: String = "module record_decl_sealed_empty_brace_probe\n\nimport test.fixture.record_decl_spelling.sealed \{ SealedEmptyBraceSpelling \}\n\nfn forge() -> SealedEmptyBraceSpelling \{\n  SealedEmptyBraceSpelling \{ \}\n\}\n"
+
+data qn_sealed_empty_equals_probe_source: String = "module record_decl_sealed_empty_equals_probe\n\nimport test.fixture.record_decl_spelling.sealed \{ SealedEmptyEqualsSpelling \}\n\nfn forge() -> SealedEmptyEqualsSpelling \{\n  SealedEmptyEqualsSpelling \{ \}\n\}\n"
+
+test fn empty_brace_spelling_seals_construction() -> Bool {
+  record_decl_spelling_probe_refuses(source: qn_sealed_empty_brace_probe_source)
+}
+
+test fn empty_equals_spelling_seals_construction_the_same_way() -> Bool {
+  record_decl_spelling_probe_refuses(source: qn_sealed_empty_equals_probe_source)
 }

@@ -4172,9 +4172,8 @@ pub fn parse_type_body_from_prefix(
 }
 
 pub fn alias_rhs_is_anonymous_record(te: Rc<Node>) -> bool {
-    ((((te.connective.clone() == Connective::Conj) && (te.ident_span.clone() == None))
+    (((te.connective.clone() == Connective::Conj) && (te.ident_span.clone() == None))
         && (te.type_annotation.clone() == None))
-        && ((te.children.clone().len() as i64) > 0))
 }
 
 pub fn type_item_from_alias_rhs(

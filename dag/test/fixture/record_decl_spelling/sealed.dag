@@ -16,3 +16,13 @@ type SealedBraceSpelling sole_constructor {
 type SealedEqualsSpelling sole_constructor = {
   n: Int
 }
+
+// The zero-field pair, sealed. decl_facts cannot see the empty case at all -- concept_decl_node
+// marshals a zero-child Conj through the same unit_type_node an alias-to-unit produces, so a
+// shape row over these two would be permanently green whichever way the parser answered. The seal
+// is the one thing that still differs: a nominal record declaration carries it, an alias does not.
+type SealedEmptyBraceSpelling sole_constructor {
+}
+
+type SealedEmptyEqualsSpelling sole_constructor = {
+}

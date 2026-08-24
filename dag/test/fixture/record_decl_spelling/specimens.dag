@@ -22,3 +22,12 @@ type RecordDeclEqualsSpelling = {
 // alias shape after the two spellings above are unified. Without this row the witness would
 // pass just as well against a change that turned every `=` form into a record.
 type RecordDeclLeafAlias = String
+
+// The zero-field pair. `type X { }` is common in tree (extdeps nominal markers); `type X = { }` is
+// authored nowhere, which is precisely why it is the corner where a field-count carve-out would
+// have survived unnoticed. Both must be the same empty record declaration.
+type RecordDeclEmptyBraceSpelling {
+}
+
+type RecordDeclEmptyEqualsSpelling = {
+}
