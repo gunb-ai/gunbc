@@ -76,6 +76,50 @@ artifacts is unsound in one direction, because emission is known to re-decide so
 leaf spelling, which erases exactly the difference being looked for — a difference in the emitted
 bytes proves divergence, but agreement proves nothing.
 
+## The corollary the specimen produced, which is stronger than "check your probes"
+
+Six separate times in one session, an instrument returned **empty** and the empty was not a
+measurement:
+
+- a required output flag was missing, so every invocation was an argument error;
+- a target selection reported a different class entirely;
+- an output filter truncated results ahead of their summary line;
+- a fixture was authored where the runner could not see it, so the subject never existed;
+- a filter matched neither the diagnostic nor the refusal the run actually produced;
+- a malformed fixture was refused, loudly and with a location, by a compiler doing its job — and the
+  same filter dropped the refusal.
+
+Every one failed silently toward good news, and none was visible in the output. The pattern under
+them is not carelessness, and naming it as such would miss the mechanism:
+
+> **An instrument that cannot represent the answer returns empty, and empty is indistinguishable
+> from "nothing was there."**
+
+That is a property of building instruments faster than they can be validated, which is the normal
+condition of investigative work. It is why the remedy has to be structural — plant the red — rather
+than attentional.
+
+**The last one is worth separating, because it nearly became a false finding.** The malformed
+fixture blanked, and the blankness was read as evidence of a *grammar ambiguity* — a nullary variant
+in scrutinee position being silently reinterpreted as a record-literal constructor, which would be a
+serious defect: two readings of one text with no refusal on either side. Re-run with the filter
+removed, the compiler says:
+
+    module index refused: 1 unparseable .dag source(s)
+      <probe>.dag:110-112: expected expression, found FatArrow
+
+**It refuses — typed, located, fail-closed.** There is no silent reinterpretation and no ambiguity;
+the substrate behaved exactly as DESIGN §5 requires, and the only defect was the filter standing
+between the refusal and the reader. A blank output is consistent with *the compiler said nothing
+wrong* and with *the compiler refused and I could not hear it*, and those have opposite owners —
+one is a defect in the language, the other a defect in the instrument. **Attributing an instrument's
+silence to its subject is how a clean mechanism acquires a bug report it did not earn.**
+
+**A corollary for filters specifically, since four of the six were filters:** narrowing the output
+channel to the shape you expect makes every *unexpected* shape — a refusal, an argument error, a
+crash — arrive as silence. Read the raw tail first; filter only once you know what the instrument
+says when it fails.
+
 ## Why this is not a story about carelessness
 
 Three earlier clean-looking zeroes preceded any real measurement: a missing required output flag that
