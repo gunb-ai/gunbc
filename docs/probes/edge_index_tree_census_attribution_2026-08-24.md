@@ -166,11 +166,29 @@ The sum is unchanged; what changes is that each row is about the work it is name
 be the rung inflation DESIGN §4b(1) names as worse than sitting low. The 14.24s corpus parse is
 still paid on exactly the same schedule, by exactly the same first arrival.
 
-**The heads-only parse is named, not scoped.** `parse_with_table` producing bodies for a
-heads-only consumer is a defect with a measured 7.15s attached to it, but the repair is a parser
-mode in `src/v1/03_parse.dag`, which is growth on a seed that is semantics-frozen
-(DESIGN §3, `gunbc.v1_maintenance_standing`). It is the next-rung trigger for this class and it
-belongs to whoever takes the parser, not to this diff.
+**The heads-only parse is named, not scoped — and the freeze is NOT the reason.** An earlier
+revision of this row said the repair is "growth on a seed that is semantics-frozen (DESIGN §3,
+`gunbc.v1_maintenance_standing`), so it belongs to whoever takes the parser, not to this diff."
+The "so" does causal work that does not hold, and leaving it would let a §6 obligation be
+retired by citing a §3 clause that does not reach it.
+
+Two things are true at once and the honest statement needs both. §6's **bare minimum cost**
+standing rule says a proven cost-shape defect is ALWAYS fixed, and `parse_with_table` building
+function bodies for a consumer that discards them 82ms later is exactly that, with 7.15s
+measured against it. And the v1 freeze does not exempt it: the admission test since 2026-08-20
+is PURPOSE, not shape — a change is admitted when it serves the v2 self-host program — and a
+faster seed resolve is paid on every required-floor run. So the obligation is live and the
+freeze is not a bar to discharging it.
+
+The actual reason it is not in this diff is scope, and scope is the operator's to scale rather
+than mine to narrow silently: a heads-only parse mode is a change to the parser's own
+correctness surface, it needs its own discriminating evidence (a heads-only parse that drops a
+declaration the census needed would be a silent-wrongness defect, not a slow one), and this diff
+is an attribution repair whose whole claim is that it makes nothing faster. Landing both in one
+change would mean shipping a parser change under a receipt that says it changes no behaviour.
+
+It is this class's next-rung trigger, it is owed under §6, and it wants its own PR — not its own
+excuse.
 
 **The 31.3164s denominator was not re-measured.** This probe measures the two censuses and the
 parse; the rest of the edge index's wall is outside what it ran.
