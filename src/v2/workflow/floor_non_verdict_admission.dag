@@ -1,0 +1,47 @@
+module v2.workflow.floor_non_verdict_admission
+
+import v2.std.algebra { Cons, Empty, fold_list, length }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.std.logic { Bool }
+
+// THE ADMISSION, MODELED WHERE THE ROSTER LIVES rather than only in the seed that reads it.
+//
+// The seed computes the same two sets inline over `HashSet`s; this module is the authority for
+// WHAT THE ADMISSION IS, and its witness is what establishes that the rule discriminates. The
+// duplication is the ordinary seed-mirrors-carrier seam and dissolves with the self-emitted
+// claim executor, exactly as the terminal ledger's does.
+
+fn identity_in(xs: List<String>, q: String) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || x == q })
+}
+
+// ADDED = observed - roster. The set the admission is about.
+fn non_verdict_added(observed: List<String>, roster: List<String>) -> List<String> {
+  fold_list(
+    xs: observed,
+    empty: Empty {},
+    cons: fn(acc, q) { if identity_in(xs: roster, q: q) { acc } else { Cons { head: q, tail: acc } } },
+  )
+}
+
+// REPAID = roster - observed. Reported, never gating: a repaid row must not red the run that
+// repaid it.
+fn non_verdict_repaid(observed: List<String>, roster: List<String>) -> List<String> {
+  fold_list(
+    xs: roster,
+    empty: Empty {},
+    cons: fn(acc, q) { if identity_in(xs: observed, q: q) { acc } else { Cons { head: q, tail: acc } } },
+  )
+}
+
+// THE ADMISSION IS EXACTLY "ADDED IS EMPTY", AND IT IS NOT A COUNT COMPARISON.
+//
+// `list_length(observed) <= list_length(roster)` would admit every case this refuses except one,
+// and the one it wrongly admits is the case the whole mechanism exists for: one identity
+// repaired while a different identity begins throwing, with the total unmoved. A count cannot
+// see a swap, so the admission is written over identities and the witness beside it drives
+// exactly that mutation.
+fn non_verdict_admits(observed: List<String>, roster: List<String>) -> Bool {
+  length(xs: non_verdict_added(observed: observed, roster: roster)) == 0
+}

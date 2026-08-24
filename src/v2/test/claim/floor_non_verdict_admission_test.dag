@@ -1,0 +1,56 @@
+module v2.test.claim.floor_non_verdict_admission_test
+
+import v2.std.algebra { Cons, Empty, length }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import v2.workflow.floor_non_verdict_admission {
+  non_verdict_added, non_verdict_repaid, non_verdict_admits,
+}
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+data roster_fixture: List<String> = Cons { head: "m.a", tail: Cons { head: "m.b", tail: Cons { head: "m.c", tail: Empty {} } } }
+
+// UNCHANGED: the population is exactly the roster.
+data observed_unchanged: List<String> = Cons { head: "m.a", tail: Cons { head: "m.b", tail: Cons { head: "m.c", tail: Empty {} } } }
+
+// REPAID: two identities now answer. Must be admitted -- this is the direction the debt is
+// supposed to move, and refusing it would red the merge that repairs the population.
+data observed_repaid: List<String> = Cons { head: "m.b", tail: Empty {} }
+
+// GROWN: a fourth identity begins producing no verdict. Must refuse.
+data observed_grown: List<String> = Cons { head: "m.a", tail: Cons { head: "m.b", tail: Cons { head: "m.c", tail: Cons { head: "m.d", tail: Empty {} } } } }
+
+// THE DISCRIMINATING CASE, AND THE REASON THE ADMISSION IS NOT A COUNT. `m.c` was repaired and
+// `m.d` began throwing in the same change. The population is STILL THREE IDENTITIES, so every
+// count in the run is identical to the unchanged case -- and a repaired witness has bought
+// permission for an unrelated witness to lose its verdict. This is the mutation a count-based
+// implementation passes silently.
+data observed_swapped: List<String> = Cons { head: "m.a", tail: Cons { head: "m.b", tail: Cons { head: "m.d", tail: Empty {} } } }
+
+test fn unchanged_population_is_admitted() -> Bool {
+  non_verdict_admits(observed: observed_unchanged, roster: roster_fixture)
+}
+
+test fn repayment_is_admitted_and_is_reported_per_identity() -> Bool {
+  non_verdict_admits(observed: observed_repaid, roster: roster_fixture)
+    && length(xs: non_verdict_repaid(observed: observed_repaid, roster: roster_fixture)) == 2
+    && length(xs: non_verdict_added(observed: observed_repaid, roster: roster_fixture)) == 0
+}
+
+test fn growth_refuses() -> Bool {
+  !non_verdict_admits(observed: observed_grown, roster: roster_fixture)
+    && length(xs: non_verdict_added(observed: observed_grown, roster: roster_fixture)) == 1
+}
+
+// THE EVIDENCE THAT THE IDENTITY-GRAIN DECISION WAS REAL, not the plumbing test. The swapped
+// population has the SAME LENGTH as the roster, so this assertion is the one a count-based
+// admission fails -- and the length equality is asserted here beside the refusal, so the
+// discrimination cannot be read as an artifact of the sizes differing.
+test fn a_swap_that_leaves_the_count_unmoved_still_refuses() -> Bool {
+  length(xs: observed_swapped) == length(xs: roster_fixture)
+    && !non_verdict_admits(observed: observed_swapped, roster: roster_fixture)
+    && length(xs: non_verdict_added(observed: observed_swapped, roster: roster_fixture)) == 1
+    && length(xs: non_verdict_repaid(observed: observed_swapped, roster: roster_fixture)) == 1
+}

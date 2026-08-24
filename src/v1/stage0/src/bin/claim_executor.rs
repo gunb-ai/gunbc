@@ -11946,27 +11946,73 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for unreadable in &outcome.known_red_observation_unreadable {
         eprintln!("required-floor: KNOWN-RED-OBSERVATION-UNREADABLE {unreadable}");
     }
+    for unenrolled in &outcome.non_verdict_unenrolled {
+        eprintln!("required-floor: NON-VERDICT-UNENROLLED {unenrolled}");
+    }
+    for stale in &outcome.stale_non_verdict {
+        eprintln!("required-floor: STALE-NON-VERDICT {stale}");
+    }
     for gap in &outcome.route_gap {
         eprintln!("required-floor: ROUTE-GAP {gap}");
     }
     for stale in &outcome.stale_route_gap {
         eprintln!("required-floor: STALE-ROUTE-GAP {stale}");
     }
+    // THE VERDICT LINE, AND WHY A ZERO NEEDED A SENTENCE BESIDE IT.
+    //
+    // `failed=0` is a sentence a reader can finish alone, and finishes wrongly: it says nothing
+    // about whether the population that was supposed to answer actually answered. This exact
+    // misreading dispatched a session against a regression that did not exist — a run was
+    // compared to a baseline carrying a fix, `planned` matched on both sides, and `failed=0`
+    // supplied the confidence that the rest was equivalent. Separating the two questions removes
+    // the ability to finish that sentence: `unexpected_failures` is how many claims answered
+    // WRONG, `verdict_incomplete` is how many never answered AT ALL, and a run can be admitted
+    // while the second is large.
+    //
+    // ADMITTED IS NOT CLEAN, and the word carries that. `FloorAdmittedWithNonVerdictDebt` gates
+    // nothing by itself — the conjunct that gates is growth in the non-verdict population — but
+    // it refuses to let a run with 142 unanswered assertions render identically to one with
+    // none.
+    let verdict_incomplete =
+        outcome.known_red_runtime_errored.len() + outcome.known_red_observation_unreadable.len();
+    let verdict = if !required_floor_outcome_is_clean(outcome) {
+        "FloorRefused"
+    } else if verdict_incomplete > 0 {
+        "FloorAdmittedWithNonVerdictDebt"
+    } else {
+        "FloorClean"
+    };
+    eprintln!(
+        "required-floor: verdict={verdict} unexpected_failures={} verdict_incomplete={} \
+         non_verdict_unenrolled={} stale_non_verdict={}",
+        outcome.failures.len(),
+        verdict_incomplete,
+        outcome.non_verdict_unenrolled.len(),
+        outcome.stale_non_verdict.len()
+    );
 }
 
 /// Whether the floor outcome permits a green run.
 ///
-/// SEVEN CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
+/// EIGHT CAUSES, ONE STOPPED LINE — and the conjunction is written once here rather than at each
 /// caller, because a mode that forgot one of them would green a run the other refused. (The
 /// count is stated because a reader checks it; it was five before main added `route_gap` and
 /// `stale_route_gap`, and the sentence went on saying five through the merge that added them.
 /// It briefly said nine while `known_red_runtime_errored` and `known_red_observation_unreadable`
-/// were wired in here; they are REPORTED and deliberately NOT gating, so the count is seven
-/// again. Making them block reds lanes with no connection to the defect, which needs an
-/// approved design and a shadow phase rather than an author's judgement — and the honest
-/// reporting half does not have to wait for that decision.)
+/// were wired in here directly; that was reverted and the count returned to seven.)
+///
+/// THE EIGHTH IS `non_verdict_unenrolled`, AND IT IS NOT THOSE TWO ARMS MADE GATING. The
+/// distinction is the whole design. Those arms are HONEST OBSERVATIONS — they say correctly that
+/// an enrolled claim produced no verdict — and gating on them directly would red every lane
+/// holding a row of a population nobody has repaired. What was below floor is the COMPOSITION:
+/// this function returned CLEAN while an enrolled expected-red assertion had ceased to assert
+/// anything, so a true diagnostic sat beside a false conclusion drawn from it. The conjunct
+/// therefore gates on GROWTH at identity grain — an identity producing no verdict that
+/// `v2.workflow.floor_non_verdict` does not carry — which admits 142 → 0 in any order and
+/// refuses 142 → 143, and refuses a swap that leaves the count untouched.
 fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloorOutcome) -> bool {
     outcome.failures.is_empty()
+        && outcome.non_verdict_unenrolled.is_empty()
         && outcome.stale_quarantine.is_empty()
         && outcome.interrupted_before_verdict.is_empty()
         && outcome.completed_over_cost_requirement.is_empty()

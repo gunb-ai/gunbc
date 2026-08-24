@@ -90,13 +90,34 @@ data floor_non_verdict_measured_total: Int = 142
 // scope".
 data floor_non_verdict_dominant_cause_specimen: DeclarationRef = decl_ref(module_path: "test.claim.design_argument_witness", decl_name: "design_s1_argument_form_is_valid")
 
-// RUNG. The class sits at MITIGATABLE: every identity is typed, located and counted on the receipt
-// line, and the line does not stop. The ceiling is MECHANICALLY PREVENTABLE -- the gate is one
-// conjunct in required_floor_outcome_is_clean and the decidability is not in question -- and the
-// only thing between the two is the population above: adding the conjunct today converts 142
-// counted rows into a red with no owner, which is why the arm's own comment reserves the change.
-// The ordering is the work, and it is the same ordering the empty-decl-file bypass records: the
-// population is repaid first, the conjunct lands last.
+// RUNG, PER SEAM, AND THE GOVERNING RUNG IS THE MINIMUM ACROSS THEM.
+//
+// An earlier revision of this row read "the class sits at MITIGATABLE: every identity is typed,
+// located and counted on the receipt line, and the line does not stop", with the gating conjunct
+// named as a next rung. That was too generous, and the correction is a ruling rather than a
+// rewording: THE OBSERVATION ARM IS NOT THE DEFECT. `known_red_runtime_errored` and
+// `known_red_observation_unreadable` say something TRUE -- this enrolled claim produced no
+// Boolean verdict. What was wrong is the COMPOSITION that read them:
+//
+//   routing a thrown claim into its arm ................ mitigatable
+//   printing the count on the receipt line ............. mitigatable
+//   printing `failed=0` without distinguishing
+//     verdict incompleteness ........................... misleading projection
+//   returning CLEAN while an enrolled claim
+//     produced no verdict .............................. BELOW FLOOR
+//
+// Below floor is not a rung. It is outside the ladder and forbidden outright, so it is not a
+// stall to be tracked -- which is what the earlier revision made it -- and the remedy could not
+// wait on the population being repaid. A diagnostic can describe the evidence truthfully while
+// the gate draws a false conclusion from it, and that gap is where this class lived.
+//
+// WHAT CLOSED IT, and what deliberately did not. `v2.workflow.floor_non_verdict` freezes the
+// population's GROWTH at identity grain: an enrolled identity that produces no verdict and is
+// not on that roster stops the line. The two arms themselves are still not gating conjuncts,
+// and making them so is still not this author's call -- the ruling did not change that half.
+// So 142 -> 0 is admitted in any order, 142 -> 143 refuses, and a swap that leaves the count
+// unmoved refuses too, which is the case that makes the identity-grain decision load-bearing
+// rather than incidental.
 data floor_non_verdict_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: known_red_runtime_errored and known_red_observation_unreadable are conjuncts of v1_compiler.claim_executor required_floor_outcome_is_clean, established by execution against a discriminating red -- one enrolled identity made to throw, the run refusing. Precondition, not a follow-up: the measured population is repaid to zero first (the unresolved-name majority by giving each witness the import its subject needs, or by deleting the witness), so the conjunct lands over an empty collection rather than converting a counted silence into an uncounted red.")
 
 // WHERE THE ARMS AND THE GATE ACTUALLY LIVE. Cited rather than copied: this module must not become

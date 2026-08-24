@@ -41473,6 +41473,15 @@ pub struct RequiredFloorOutcome {
     /// either lets an enrollment cover a witness that has not actually run since the day it was
     /// enrolled.
     pub known_red_runtime_errored: Vec<String>,
+    /// BLOCKING. An enrolled expected-red identity that produced no verdict and is not enrolled
+    /// in `v2.workflow.floor_non_verdict`. This is the conjunct that makes the composition
+    /// honest: the arms above are true observations, and returning CLEAN over them while an
+    /// enrolled assertion has stopped asserting is what was below floor.
+    pub non_verdict_unenrolled: Vec<String>,
+    /// REPORTED, NOT BLOCKING, and the asymmetry with `stale_route_gap` is the content rather
+    /// than an oversight. A repaid row must not red the run that repaid it — that punishes the
+    /// fix — so staleness here reports its remedy and the growth direction is what is walled.
+    pub stale_non_verdict: Vec<String>,
     /// See `known_red_runtime_errored`.
     pub known_red_observation_unreadable: Vec<String>,
     /// Host tool could not be resolved — infra undecided, not budget-refused.
@@ -42713,6 +42722,80 @@ pub fn run_required_floor(
         }
     }
 
+    // THE NON-VERDICT ROSTER. See `v2.workflow.floor_non_verdict` for the contract; the short
+    // form is that an enrolled expected-red identity which produces NO VERDICT — it throws, or
+    // answers a non-Bool — must be enrolled here, and an unenrolled one STOPS THE LINE.
+    //
+    // THE POLARITY IS THE CONSTRUCTION. An identity that is not enrolled BLOCKS, so an EMPTY
+    // roster is the STRICTEST state rather than the most permissive one, and a read failure
+    // here cannot flatter a run — it can only red one that would otherwise be green. The
+    // opposite polarity (a roster of things to gate ON) would have made losing the roster
+    // produce a greener answer, which is the absorbing-fallback shape rebuilt inside the
+    // mechanism written to close an absorbing fallback.
+    let non_verdict_roster: HashSet<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_non_verdict.floor_non_verdict_roster",
+            false,
+        )
+        .map_err(|e| format!("floor_non_verdict_roster: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_non_verdict_roster: {e}"))?;
+        let mut out = HashSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => {
+                    if !out.insert(s.to_string()) {
+                        return Err(format!(
+                            "floor_non_verdict_roster: duplicate enrolled identity: {s}"
+                        ));
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_non_verdict_roster: expected a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        out
+    };
+    eprintln!(
+        "[floor-non-verdict] roster carries {} enrolled identity(ies)",
+        non_verdict_roster.len()
+    );
+
+    // A NON-VERDICT ROW THAT IS NOT ALSO EXPECTED-RED CAN NEVER FIRE, so it is refused rather
+    // than left in the tree. Only an ENROLLED identity reaches the arms this roster classifies;
+    // an unenrolled one that throws goes through the ordinary failure path. So such a row is not
+    // a guard sitting quiet — the mechanism cannot produce the state it names — and DESIGN's
+    // reachability rule is explicit that unreachable is not empty: a check whose red cannot be
+    // authored is a decoration, worse than absent, because it is cited as coverage.
+    {
+        let mut orphans: Vec<&String> = non_verdict_roster
+            .iter()
+            .filter(|q| !expected_red_roster.contains(q.as_str()))
+            .collect();
+        orphans.sort();
+        if !orphans.is_empty() {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=NonVerdictRowUnreachable count={} — these \
+                 identities are enrolled in v2.workflow.floor_non_verdict but NOT in \
+                 v2.workflow.floor_expected_red. Only an enrolled identity can reach the \
+                 non-verdict arms, so these rows can never classify anything: they read as debt \
+                 while being incapable of being debt. Enroll the identity as expected-red, or \
+                 delete the row: {}",
+                orphans.len(),
+                orphans
+                    .iter()
+                    .map(|q| q.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
+
     // CONTRADICTORY-INTERSECTION WALL: `floor_expected_red_roster` (this roster — removable
     // only by an OBSERVED PASS, per its own header) and `witness_deferral_freeze`'s
     // `frozen_path_deferrals` (`LegacyFrozenPathDeferral` — admitted as NEVER EXECUTED) make
@@ -42843,6 +42926,8 @@ pub fn run_required_floor(
         interrupted_before_verdict: Vec::new(),
         completed_over_cost_requirement: Vec::new(),
         known_red_runtime_errored: Vec::new(),
+        non_verdict_unenrolled: Vec::new(),
+        stale_non_verdict: Vec::new(),
         known_red_observation_unreadable: Vec::new(),
         host_tool_unresolved: Vec::new(),
         route_gap: Vec::new(),
@@ -42930,6 +43015,9 @@ pub fn run_required_floor(
     // "is this enrollment still real", which is exactly how a skip list rots.
     let mut route_gap_seen: HashSet<String> = HashSet::new();
     let mut route_gap_held: usize = 0;
+    // IDENTITY GRAIN, NEVER COUNTS. The whole point of the roster is the case where one
+    // identity is repaired while a different one begins throwing and the COUNT DOES NOT MOVE.
+    let mut non_verdict_seen: HashSet<String> = HashSet::new();
     let mut expected_red_seen: HashSet<String> = HashSet::new();
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
@@ -43309,6 +43397,19 @@ pub fn run_required_floor(
                             rendered
                         }
                     };
+                    non_verdict_seen.insert(claim.qualified.clone());
+                    if !non_verdict_roster.contains(claim.qualified.as_str()) {
+                        outcome.non_verdict_unenrolled.push(format!(
+                            "{} is enrolled as expected-red and produced NO VERDICT ({}), and it \
+                             is NOT enrolled in v2.workflow.floor_non_verdict. Enrollment as \
+                             expected-red admits a known SEMANTIC VERDICT -- this witness \
+                             reaches its subject and answers false -- and is not permission for \
+                             the subject to stop evaluating. Repair the witness or its subject. \
+                             Enrolling the identity records the debt; it does not make the \
+                             missing verdict acceptable, and the roster is frozen against growth.",
+                            claim.qualified, detail
+                        ));
+                    }
                     outcome.known_red_runtime_errored.push(format!(
                         "{} is enrolled as expected-red but RUNTIME-ERRORED, not failed: {}. \
                          Enrollment asserts an expected verdict; a claim that threw \
@@ -43321,6 +43422,17 @@ pub fn run_required_floor(
                 }
                 ExpectedRedArm::ObservationUnreadable => {
                     known_red_observation_unreadable_count += 1;
+                    non_verdict_seen.insert(claim.qualified.clone());
+                    if !non_verdict_roster.contains(claim.qualified.as_str()) {
+                        outcome.non_verdict_unenrolled.push(format!(
+                            "{} is enrolled as expected-red and produced NO VERDICT (returned \
+                             {:?}, which is not a Bool), and it is NOT enrolled in \
+                             v2.workflow.floor_non_verdict. Enrollment as expected-red admits a \
+                             known SEMANTIC VERDICT and is not permission for the subject to \
+                             stop producing one. Make the witness return a Bool.",
+                            claim.qualified, result
+                        ));
+                    }
                     outcome.known_red_observation_unreadable.push(format!(
                         "{} is enrolled as expected-red but returned something that is NOT A \
                          VERDICT ({:?}), so it is neither the enrolled failure nor a \
@@ -43579,6 +43691,36 @@ pub fn run_required_floor(
     // row — and separating them would ask the reader to learn two names for it. An identity
     // that executed and did not gap, and an identity that did not execute at all (renamed,
     // deleted, or declined), are distinguished in the message rather than in the mechanism.
+    // THE NON-VERDICT ROSTER'S OTHER DIRECTION, REPORTED AND NOT GATING. An identity enrolled
+    // here that produced a verdict this run has been repaired, and its row must come out — but
+    // saying so is the whole remedy. Refusing would make the merge that repairs the population
+    // the merge that reds the floor, which is how a repository teaches people not to repair
+    // debt. `added` is walled; `repaid` is announced.
+    {
+        let mut stale: Vec<&String> = non_verdict_roster
+            .iter()
+            .filter(|q| !non_verdict_seen.contains(*q))
+            .collect();
+        stale.sort();
+        for identity in stale {
+            let ran = receipted.contains(identity.as_str());
+            outcome.stale_non_verdict.push(if ran {
+                format!(
+                    "{identity} is enrolled in v2.workflow.floor_non_verdict but PRODUCED A \
+                     VERDICT this run — it reaches its subject again. Delete the row; the debt \
+                     is repaid."
+                )
+            } else {
+                format!(
+                    "{identity} is enrolled in v2.workflow.floor_non_verdict but did not \
+                     execute at all, so no non-verdict could be observed. It was renamed, \
+                     deleted, or declined. Delete the row or restore the identity to the routed \
+                     roster."
+                )
+            });
+        }
+    }
+
     {
         let mut stale: Vec<&String> = route_gap_roster
             .iter()
