@@ -517,8 +517,15 @@ mechanism, not an artifact of it.
 immune to a compiler that is WRONG, not to one that is IRRELEVANT.** If the binary measuring both
 arms was itself built from a contaminated mirror, the delta is real *for that compiler* and says
 nothing about the one the repository ships. So a surviving paired result should be stated as
-*"header state changes closure behaviour **in this compiler**"* rather than *"in gunbc"* — and the
-same one-dispatch fix upgrades it.
+*"header state changes closure behaviour **in this compiler**"* rather than *"in gunbc"*.
+
+**And the upgrade is bounded too** — a point caught in review on gunbc#9115 against wording this
+document also carried. Re-running the pair under a merge-base-built seed raises the claim only as far
+as **that seed's revision**: *"in the merge-base compiler."* It does **not** reach *"in gunbc"*, and
+it does not reach the compiler this repository ships. **A claim generalises exactly as far as the
+provenance of the binary that produced it, and no further.** Reaching the shipped compiler requires
+running the pair under the shipped compiler, which is a different control and usually an unavailable
+one.
 
 **Four lanes spent an afternoon authoring mechanism theories for output that had no source cause**,
 and every one of those theories was internally coherent. Being coherent was never evidence.
