@@ -8,6 +8,15 @@ import v2.std.integer { Int, int_gt }
 import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.nat { Nat }
+import std.measure {
+  Millisecond,
+  ByteSize,
+  millisecond,
+  millisecond_count,
+  byte_size,
+  byte_size_count,
+}
 import std.types { NonEmptyStr }
 
 // IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
@@ -562,3 +571,239 @@ fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> Bool {
     CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } => true
   }
 }
+
+// ── SHARED PREPARATION BUILDS: A SECOND UNIT OF COST, WITH ITS OWN WALL ───────────────────
+//
+// THE LAW THIS SECTION ENCODES: THE COMPUTATION THAT FIRST TRIGGERS A SHARED ARTIFACT IS NOT
+// THE COMPUTATION THAT OWNS ITS COST. First touch is PROVENANCE; the artifact's reuse boundary
+// decides attribution. A floor run's cost is therefore TWO terms with INDEPENDENT blocking
+// outcomes -- `PreparationOrSharedBuildCost + ClaimMarginalCost` -- and not one scalar the
+// per-claim limits above may be asked to answer for.
+//
+// WHY IT IS DECLARED RATHER THAN LEFT AS A HOST DETAIL. The bare-reference edge index
+// (`v1_compiler.cli_run` `both_closure_edge_index`, and through it `tree_bare_census_for_root`)
+// is memoized once per index -- the census trace reports two misses over two source roots
+// against ONE index address, `edge_index_construction { builds: 1 }` -- so its ~28s is neither
+// duplicated nor repeated. It was simply BILLED to whichever claim resolved an entry first:
+// `test.claim.qualified_spelling_identity_witness_test.qualified_spelling_takes_the_shared_layer`
+// at 57193ms against a 5000ms `required_floor_claim_cpu_safety_limit_ms`, while its sibling
+// reaching the identical computation milliseconds later measured 5ms. Three earlier modules
+// were quarantined down exactly this chain before the pattern was read correctly
+// (docs/plans/witness-cost-first-touch-attribution.md), each read as a slow test and each in
+// fact the same one-time build landing on whoever touched it first.
+//
+// WHAT THIS IS NOT. It is NOT a cost reduction and must not be cited as one: the same work
+// happens once either way and total run wall is unchanged. It is also NOT accounting
+// laundering -- moving the work outside the claim timer while leaving it merely informational
+// would mean no row blocks, the real cost still occurs, and nothing owns the refusal. THE
+// SAFETY WALL MOVES WITH THE COST, which is what the three limits and the refusal below are.
+//
+// NO PRORATION, EVER. A shared build's cost is never divided across the claims that consume
+// the artifact: a per-row fraction changes whenever the roster changes, which would make a
+// row's admissibility depend on how many unrelated consumers happen to be enrolled.
+
+// The shared builds a floor run pays before any per-claim timer starts. A CLOSED population --
+// each is an artifact this repository has measured being charged to a first toucher, and the
+// list grows only when another such artifact is FOUND, never by declaration.
+type FloorPreparationPhase =
+    ModulePathIndexBuild
+  | SharedModuleIndexBuild
+  | BareReferenceEdgeIndexBuild
+
+// The terminal disposition of ONE shared preparation build. `PreparationWithinLimits` carries
+// its observations too: a phase that reports nothing is indistinguishable from a phase that did
+// not run, and this population's whole defect history is cost that nobody was reporting.
+type FloorPreparationOutcome =
+    PreparationWithinLimits {
+      phase: FloorPreparationPhase
+      observed_cpu: Millisecond
+      observed_wall: Millisecond
+      observed_rss_growth: ByteSize
+    }
+  | FloorPreparationRefused {
+      phase: FloorPreparationPhase
+      observed_cpu: Millisecond
+      observed_wall: Millisecond
+      observed_rss_growth: ByteSize
+    }
+
+// THREE INDEPENDENT LIMITS FOR A DIFFERENT UNIT, and the reason they are not the claim numbers
+// is not that 5000ms is too small -- it is that 5000ms answers a DIFFERENT QUESTION. The claim
+// limits bound one witness's marginal evaluation; a shared build is one whole-corpus artifact
+// that every claim consumes. Reusing the claim figure here would refuse every healthy run, and
+// raising the claim figure to admit a shared build would admit the defect rather than measure
+// it -- the exact exit the quarantine row's dissolution trigger already forbids.
+//
+// EACH LIMIT IS DERIVED FROM THE RESOURCE IT PROTECTS, NOT FROM WHAT THE BUILD CURRENTLY COSTS.
+// That is what makes the claim limits legitimate -- `gunbc.witness_row_cost`
+// `witness_row_cost_migration_threshold_note` calls 5000ms "a FAIL-STOP PROTECTING THE EXECUTOR",
+// "never a budget, tolerance, or target" -- and it is the only derivation available here, because
+// measured-max-plus-headroom is the oracle the 2026-08-01 operator ruling names directly: a
+// measurement copied from the same current tree is not an oracle, and automating its update
+// collapses the assertion to `measure() == measure()`. A resource-derived line stays true when
+// the build gets faster OR slower; a measurement-derived one silently ratifies whatever the tree
+// happens to do today. The measured cold build is reported beside these numbers in the run and in
+// this section's opening receipt -- it is evidence ABOUT the build, never the source of its ceiling.
+//
+// TEMPORARY RESTORATION ENVELOPE, exactly as the two claim limits above are, and stated as such
+// rather than as re-founded permanent ceilings; the values below are PROPOSED FOR OPERATOR
+// RATIFICATION with their derivation visible, so a different ruling changes only the literal and
+// none of the structure.
+
+// THE RESOURCE: the CI job budget. `gunbc.witness_floor_workflow` declares the witnesses job at
+// `timeout_minutes: 180` -- 10,800,000ms -- and a job that exceeds it is killed by the runner with
+// no ledger at all, which is the harm this limit exists to preempt with a typed, located refusal
+// instead. THE POLICY: no single shared preparation build may consume more than ONE TENTH of that
+// budget. The fraction is the population's own arithmetic rather than a taste: `FloorPreparationPhase`
+// is closed at three members, so even all three at their ceiling leave 70% of the job for the claim
+// fold that is the run's actual product.
+//
+// THE CLOCK BASIS IS CPU, AND IT IS CHOSEN BY PURPOSE, never by whichever number read higher
+// (`required_floor_cost_basis`, and the same rule the claim pair follows): a shared preparation
+// build is pure in-process work on one thread, so CPU is what a runaway shows up on.
+fn required_floor_preparation_cpu_safety_limit() -> Millisecond {
+  millisecond(count: 1080000)
+}
+
+// The SAME resource and the same tenth, read on the wall clock and then deliberately LOOSENED to a
+// fifth of the job budget, for the reason the claim pair is split: a preparation build can be
+// legitimately descheduled by a co-tenant self-hosted runner for stretches that would wrongly read
+// as a runaway if judged on the CPU-tight figure. Never a mechanical copy of the CPU figure -- the
+// operator named "DO NOT set CPU and wall to the same 5000ms" as exactly the move to stop making.
+fn required_floor_preparation_wall_safety_limit() -> Millisecond {
+  millisecond(count: 2160000)
+}
+
+// THE THIRD AXIS EXISTS BECAUSE THE FIRST TWO CANNOT SEE IT. A shared build's characteristic harm
+// is not slowness but RESIDENCY: it is a corpus-scale structure retained for the whole run, and the
+// floor's own worst historical memory events are exactly this shape (one row `grew rss by 1.00GB`).
+// A build that stays inside both clocks while retaining gigabytes still endangers the executor.
+//
+// THE RESOURCE: the host memory cap, WITH SWAP DISABLED -- so exceeding it is an immediate kill, not
+// a spill -- and shared, so the kernel OOM-kills the LARGEST task in the slice when the AGGREGATE is
+// exceeded. A process can therefore be killed well under its own cap because of a peer, and the
+// quantity that decides whether it is the victim is its own size relative to its co-tenants. THE
+// POLICY: one shared preparation build may not grow the process by more than ONE TENTH of the 31 GiB
+// cap the execution environment declares -- 3 GiB, stated in bytes below. Beyond that a single
+// preparation phase is bidding to be the largest task in a shared slice, which is the condition for
+// being selected for the kill, and it is the same authority that already forbids whole-tree local
+// builds outright.
+fn required_floor_preparation_rss_growth_limit() -> ByteSize {
+  byte_size(count: 3221225472)
+}
+
+// THE DERIVATION. Any one axis crossing refuses the phase -- the three limits are independent
+// bounds on one unit, never tiers to be ordered against each other. There is no warn arm and no
+// widen arm: DESIGN §5 rules that a failure arm must refuse rather than widen, and a shared
+// build that "ran long but was allowed to continue" would be an observation with no remedy
+// attached, which is what the deleted per-claim warn tier already cost this module once.
+fn floor_preparation_outcome(
+  phase: FloorPreparationPhase,
+  observed_cpu: Millisecond,
+  observed_wall: Millisecond,
+  observed_rss_growth: ByteSize,
+  cpu_limit: Millisecond,
+  wall_limit: Millisecond,
+  rss_growth_limit: ByteSize,
+) -> FloorPreparationOutcome {
+  if millisecond_count(m: observed_cpu) > millisecond_count(m: cpu_limit) {
+    FloorPreparationRefused {
+      phase: phase,
+      observed_cpu: observed_cpu,
+      observed_wall: observed_wall,
+      observed_rss_growth: observed_rss_growth,
+    }
+  } else {
+    if millisecond_count(m: observed_wall) > millisecond_count(m: wall_limit) {
+      FloorPreparationRefused {
+        phase: phase,
+        observed_cpu: observed_cpu,
+        observed_wall: observed_wall,
+        observed_rss_growth: observed_rss_growth,
+      }
+    } else {
+      if byte_size_count(b: observed_rss_growth) > byte_size_count(b: rss_growth_limit) {
+        FloorPreparationRefused {
+          phase: phase,
+          observed_cpu: observed_cpu,
+          observed_wall: observed_wall,
+          observed_rss_growth: observed_rss_growth,
+        }
+      } else {
+        PreparationWithinLimits {
+          phase: phase,
+          observed_cpu: observed_cpu,
+          observed_wall: observed_wall,
+          observed_rss_growth: observed_rss_growth,
+        }
+      }
+    }
+  }
+}
+
+// A REFUSED PREPARATION STOPS THE RUN, and this predicate is the one place that is asserted so
+// no caller rediscovers it. The consequence for the claims is the part that must not be got
+// wrong: they are NOT EXECUTED, and a run that refuses here must produce no per-witness sheet at
+// all. Reporting a roster of zero-cost claims beside a refused preparation would be a fabricated
+// plausible output -- rows that read as measured and passing while nothing ever ran them.
+fn floor_preparation_outcome_blocks(outcome: FloorPreparationOutcome) -> Bool {
+  match outcome {
+    PreparationWithinLimits { phase: _, observed_cpu: _, observed_wall: _, observed_rss_growth: _ } => false
+    FloorPreparationRefused { phase: _, observed_cpu: _, observed_wall: _, observed_rss_growth: _ } => true
+  }
+}
+
+// TRIGGERED_BY IS NOT OWNED_BY, AND THE DISTINCTION IS STRUCTURAL HERE RATHER THAN PROSE.
+//
+// This is the law of the whole change stated as a type. The computation that first TRIGGERS a
+// shared artifact is not the computation that OWNS its cost; the artifact's reuse boundary decides
+// ownership. A `Bool` saying "it was already warm" cannot carry that: it records that someone else
+// went first while discarding WHO, which is exactly the fact an attribution model exists to keep.
+//
+// `BuiltByPreparation` is the intended state -- trigger and owner COINCIDE, which is what the warm
+// buys. `AlreadyWarmOnEntry` says preparation found the artifact built and names the phase or call
+// site that got there first; that name is PROVENANCE and never an assignment of cost. A run
+// reporting it is reporting a defect in ordering, not a claim about who should pay.
+type SharedBuildProvenance =
+    BuiltByPreparation
+  | AlreadyWarmOnEntry { triggered_by: String }
+
+// THE TWO TERMS, AND THEY ARE SUMMED FOR REPORTING ONLY, NEVER FOR ADMISSION. A floor run's cost is
+// `preparation_or_shared_build + claim_marginal` -- one term per UNIT OF ATTRIBUTION, not per phase
+// of execution. The split exists so neither term can be judged by the other's limits: the per-claim
+// safety deadlines answer a claim-level question and a whole-corpus shared build is a different
+// unit with its own resource-derived ceilings.
+//
+// NO PRORATION IS EXPRESSIBLE HERE, and that is structural rather than a rule someone must follow:
+// there is no per-claim share of the preparation term to compute, because the term is not indexed
+// by claim. A per-row fraction would change whenever the roster changes, making a row's
+// admissibility depend on how many unrelated consumers happen to be enrolled.
+type FloorRunCost {
+  preparation_or_shared_build: Millisecond
+  claim_marginal: Millisecond
+}
+
+// INDEPENDENT BLOCKING OUTCOMES, ASSERTED IN ONE PLACE SO NO CALLER RE-DERIVES IT. Either term can
+// block on its own and neither subsumes the other: a shared build past its ceiling refuses even
+// when every claim is healthy, and a claim past its deadline refuses even when preparation was
+// well inside its envelope. The disjunction is what "independent" means operationally -- this is
+// NOT a precedence rule, and there is deliberately no arm in which one outcome excuses the other.
+fn floor_run_blocks(
+  preparation: FloorPreparationOutcome,
+  claim: ClaimSafetyOutcome,
+) -> Bool {
+  floor_preparation_outcome_blocks(outcome: preparation)
+    || claim_safety_outcome_blocks(outcome: claim)
+}
+
+// §4b RUNG, DECLARED AT THE HONEST GRAIN. The model above is *mechanically preventable* only
+// where a caller actually consults it. The host (`v1_compiler.cli_run` `run_required_floor`)
+// reads the three limits from this module -- so the NUMBERS have a single authority and cannot
+// be re-spelled in Rust -- but MIRRORS the comparison and the refusal by hand rather than
+// evaluating `floor_preparation_outcome` through the frame. That mirror is *mitigatable*: a
+// divergence between the two is writable and nothing detects it. NEXT-RUNG TRIGGER: the host
+// calling this derivation through the hermetic frame it already holds, at which point the
+// mirrored branch is deleted rather than kept beside it (§4b(4) -- dissolution on climb).
+data floor_preparation_host_mirror_dissolve_on: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: v1_compiler.cli_run run_required_floor evaluates floor_preparation_outcome / floor_preparation_outcome_blocks through the hermetic frame instead of mirroring the three-axis comparison in Rust; the mirrored branch is deleted in the same change." as NonEmptyStr,
+)

@@ -10726,7 +10726,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     // requirement is unchanged by #8140: the walk moved AFTER plan evaluation (it is now
     // demand-directed on `schedules_discovery`), so this install precedes it by even
     // more, and the walk's whole-tree read is still policy-funnelled.
-    v1_compiler::cli_run::install_output_policy(&source_roots);
+    if let Err(why) = v1_compiler::cli_run::install_output_policy(&source_roots) {
+        eprintln!("claim_executor: {why}");
+        return Err(ExitCode::from(1));
+    }
     // Install the per-target group-marker syntax (GitHub Actions `::group::` vs a
     // plain-terminal header) from the .dag authority, so the parallel walk folds each
     // batch's host-effect traces into a collapsible group.
