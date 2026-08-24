@@ -8,8 +8,51 @@ fn srv1_deploy_fixture() -> RunnerHostDeploy {
   srv4_runner_host_deploy
 }
 
+// A FIXTURE MUST CONSTRUCT THE WORLD IT CLAIMS TO TEST. These witnesses assert what the ACTIVATION FOLD
+// does for a fully ready host, so every input has to be a fixture -- and the instance was not one: it
+// came from the production ci_cache_instance, whose intended_compile_pool is now the live
+// gunbc_compile_pool_placement row rather than a bare slice name. The moment that row became the
+// carrier, "a ready host activates" silently turned into a claim about THIS FLEET'S TOPOLOGY, and since
+// the row is CompilePoolInRunnerSlots the fold correctly refused and the witness reds.
+//
+// Declaring the pool on the fixture restores the intended subject. It does not weaken the wall: the
+// refusal paths are asserted by the negative witnesses beside these, and the live-topology answer has
+// its own tripwire (test.claim.host_compile_pool live_topology_doc, and the fleet-wide refusal witness
+// below) rather than being asserted here by accident.
+fn pool_declared_instance_fixture(host: HostIdentity) -> BuildCacheInstance {
+  let base = ci_cache_instance(host: host)
+  BuildCacheInstance {
+    identity: base.identity,
+    implementation: base.implementation,
+    endpoint: base.endpoint,
+    intended_unit: base.intended_unit,
+    intended_principal: base.intended_principal,
+    intended_storage: base.intended_storage,
+    intended_capacity: base.intended_capacity,
+    intended_compile_pool: CompilePoolSliceDeclared {
+      slice_unit: gunbc_managed_compile_pool_slice as String,
+    },
+  }
+}
+
 fn ready_instance_fixture(host: HostIdentity) -> BuildCacheInstance {
-  ci_cache_instance(host: host)
+  pool_declared_instance_fixture(host: host)
+}
+
+// THE LIVE ANSWER, ASSERTED ON PURPOSE RATHER THAN INHERITED BY ACCIDENT. On this fleet
+// gunbc_compile_pool_placement is CompilePoolInRunnerSlots, so no instance declares a managed pool and
+// activation refuses for every host. That is the designed state -- gunbc.host_compile_pool's producer
+// note and gunbc.runner_activation's pool-readiness note both say so -- and it was previously invisible
+// here because the fixture read the production row without anyone noticing it had become the subject.
+test fn witness_live_topology_refuses_activation_fleet_wide() -> Bool {
+  let d = srv1_deploy_fixture()
+  let live = ci_cache_instance(host: d.host_label as HostIdentity)
+  yields_command(
+    outcome: activation_for(
+      cache_ready: fully_verified_ready_for(instance: live, unit: live.intended_unit),
+      pool_ready: ready_pool_fixture(),
+    ),
+  ) == false
 }
 
 fn owner_fixture() -> gunbc.build_cache_instance.ProcessIdentity {
@@ -21,8 +64,18 @@ fn owner_fixture() -> gunbc.build_cache_instance.ProcessIdentity {
 }
 
 fn fully_verified_ready(host: HostIdentity, unit: NonEmptyStr) -> BuildCacheInstanceReady {
+  fully_verified_ready_for(instance: ready_instance_fixture(host: host), unit: unit)
+}
+
+// TAKES THE INSTANCE RATHER THAN DERIVING IT, so a witness can choose whether its subject is the
+// fixture world or the live fleet. Without this split the two are indistinguishable at the call site:
+// the live-topology witness below was written against fully_verified_ready and silently received the
+// POOL-DECLARED fixture, so it asserted a refusal that could never happen and returned false. Caught by
+// running it -- an assertion whose subject is chosen by a helper two calls away is exactly the kind that
+// reads correct and measures something else.
+fn fully_verified_ready_for(instance: BuildCacheInstance, unit: NonEmptyStr) -> BuildCacheInstanceReady {
   BuildCacheInstanceReady {
-    instance: ready_instance_fixture(host: host),
+    instance: instance,
     owner: owner_fixture(),
     managed_unit: unit,
     endpoint_verified: true,
