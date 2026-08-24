@@ -127,6 +127,24 @@ data actions_runner_slot_extract_script_scaffold: Disposition = Scaffold {
   }
 }
 
+// PRIVILEGE IS SPENT ONCE, TO SET OWNERSHIP -- everything downstream of that runs as the caller.
+// The prior form ran the whole sequence under sudo: rm, install -d, tar, then a recursive chown to
+// undo the root ownership tar had just created. That is privilege held across four operations to
+// reach a state one of them could have established directly, and the chown existed only because
+// the extract before it was privileged for no reason.
+//
+// It was also not a preference. The runner principal's NOPASSWD roster
+// (gunbc.fleet_posix_accounts fleet_posix_ci_runner_sudo_grants) grants install, rm, systemctl,
+// apt-get, visudo and tailscale -- it does not grant tar or chown, and never did. So the emitted
+// script named two binaries the principal executing it could not sudo, and nothing joined the two
+// authorities: the mismatch was discoverable only by running a wet apply on a real host, which is
+// the most expensive place a repository can learn what its own grant roster says. Measured on
+// srv3, an add-only materialization apply refused at the first ungranted sudo with zero slots
+// mutated.
+//
+// install -d -o/-g creates the directory already owned by job_user, so tar and the tarball cleanup
+// need no privilege at all, and the surviving sudo verbs are exactly two roster members.
+
 fn actions_runner_slot_extract_script(
   artifact: ActionsRunnerBinaryArtifact,
   slot_dir: NonEmptyStr,
@@ -140,17 +158,16 @@ fn actions_runner_slot_extract_script(
     join(["curl -fsSL '", url, "' -o /tmp/actions-runner.tar.gz"], ""),
     digest_shell_verify_line(digest: digest, file_path: "/tmp/actions-runner.tar.gz"),
     join(["sudo rm -rf '", slot_dir as String, "'"], ""),
-    join(["sudo install -d -m 755 '", slot_dir as String, "'"], ""),
-    join(["sudo tar xzf /tmp/actions-runner.tar.gz -C '", slot_dir as String, "'"], ""),
     join([
-      "sudo chown -R ",
+      "sudo install -d -m 755 -o ",
       job_user as String,
-      ":",
+      " -g ",
       job_user as String,
       " '",
       slot_dir as String,
       "'",
     ], ""),
+    join(["tar xzf /tmp/actions-runner.tar.gz -C '", slot_dir as String, "'"], ""),
     "rm -f /tmp/actions-runner.tar.gz",
     "",
   ], "\n")

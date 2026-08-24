@@ -174,7 +174,7 @@ fn idempotent_operation_inferred_tree(root: Node) -> InferredTree {
   let facts = idempotent_operation_inferred_facts(root: root)
   InferredTree {
     root: root,
-    facts: Map {
+    facts: PartialFunction {
       lookup: fn(_) {
         Present { value: facts }
       }

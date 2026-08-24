@@ -8,7 +8,7 @@ use self::FermiDepth::*;
 use self::HttpMethod::*;
 use self::TopologyNodeKind::*;
 pub use crate::std_algebra::{algebra_type_param_names, kernel_algebra_profile};
-pub use crate::std_algebra::{FreeMonoid, PartialFunction, PointwisePower};
+pub use crate::std_algebra::{FinitePowerSet, FinitelySupportedFunction, FreeMonoid};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -139,14 +139,18 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), "FreeMonoid".to_string());
             __m.insert("list".to_string(), "FreeMonoid".to_string());
-            __m.insert("Set".to_string(), "PointwisePower".to_string());
-            __m.insert("set".to_string(), "PointwisePower".to_string());
-            __m.insert("Map".to_string(), "PartialFunction".to_string());
-            __m.insert("map".to_string(), "PartialFunction".to_string());
+            __m.insert("Set".to_string(), "FinitePowerSet".to_string());
+            __m.insert("set".to_string(), "FinitePowerSet".to_string());
+            __m.insert("Map".to_string(), "FinitelySupportedFunction".to_string());
+            __m.insert("map".to_string(), "FinitelySupportedFunction".to_string());
             __m.insert("FreeMonoid".to_string(), "FreeMonoid".to_string());
             __m.insert("free_monoid".to_string(), "FreeMonoid".to_string());
             __m.insert("BooleanAlgebra".to_string(), "BooleanAlgebra".to_string());
             __m.insert("boolean_algebra".to_string(), "BooleanAlgebra".to_string());
+            __m.insert("FinitePowerSet".to_string(), "FinitePowerSet".to_string());
+            __m.insert("finite_power_set".to_string(), "FinitePowerSet".to_string());
+            __m.insert("FinitelySupportedFunction".to_string(), "FinitelySupportedFunction".to_string());
+            __m.insert("finitely_supported_function".to_string(), "FinitelySupportedFunction".to_string());
             __m.insert("PartialFunction".to_string(), "PartialFunction".to_string());
             __m.insert("partial_function".to_string(), "PartialFunction".to_string());
             __m.insert("PointwisePower".to_string(), "PointwisePower".to_string());
@@ -163,10 +167,12 @@ pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), "FreeMonoid".to_string());
             __m.insert("list".to_string(), "FreeMonoid".to_string());
-            __m.insert("Set".to_string(), "PointwisePower".to_string());
-            __m.insert("set".to_string(), "PointwisePower".to_string());
-            __m.insert("Map".to_string(), "PartialFunction".to_string());
-            __m.insert("map".to_string(), "PartialFunction".to_string());
+            __m.insert("Set".to_string(), "FinitePowerSet".to_string());
+            __m.insert("set".to_string(), "FinitePowerSet".to_string());
+            __m.insert("Map".to_string(), "FinitelySupportedFunction".to_string());
+            __m.insert("map".to_string(), "FinitelySupportedFunction".to_string());
+            __m.insert("PartialFunction".to_string(), "PartialFunction".to_string());
+            __m.insert("partial_function".to_string(), "PartialFunction".to_string());
             Rc::new(__m)
         };
     }
@@ -183,11 +189,13 @@ pub fn container_template_alias_algebra(name: String) -> Option<String> {
 
 pub fn canonical_container_names() -> Rc<Vec<String>> {
     Rc::new(vec![
-        "BooleanAlgebra".to_string(),
+        "FinitePowerSet".to_string(),
+        "FinitelySupportedFunction".to_string(),
         "FreeMonoid".to_string(),
         "List".to_string(),
         "Map".to_string(),
         "PartialFunction".to_string(),
+        "PointwisePower".to_string(),
         "Set".to_string(),
         "Witness".to_string(),
     ])
@@ -219,12 +227,12 @@ pub type Char = i64;
 
 pub type List<Element> = Vec<Element>;
 
-pub type Set<Element> = Rc<crate::std_algebra::PointwisePower<Element>>;
+pub type Set<Element> = Rc<crate::std_algebra::FinitePowerSet<Element>>;
 
-pub type Map<Key, Value> = Rc<crate::std_algebra::PartialFunction<Key, Value>>;
+pub type Map<Key, Value> = Rc<crate::std_algebra::FinitelySupportedFunction<Key, Value>>;
 
 pub fn list_length<T: Clone>(items: Rc<Vec<T>>) -> i64 {
-    items.iter().fold(0, |acc: i64, _: _| (acc + 1))
+    items.iter().fold(0, |acc: i64, _| (acc + 1))
 }
 
 pub type CommitSha = String;
