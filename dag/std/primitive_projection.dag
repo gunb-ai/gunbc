@@ -7,7 +7,7 @@ data primitive_projection_seed_boundary_note: String = "The declaration-to-primi
 
 data primitive_identity_slug_prefix: String = "primitive."
 
-type PrimitiveIdentity { slug: NonEmptyStr }
+type PrimitiveIdentity sole_constructor { slug: NonEmptyStr }
 
 fn primitive_identity_slug(name: String) -> PrimitiveIdentity {
   PrimitiveIdentity { slug: concat(primitive_identity_slug_prefix, name) as NonEmptyStr }
