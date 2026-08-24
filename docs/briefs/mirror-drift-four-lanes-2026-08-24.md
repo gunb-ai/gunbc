@@ -27,6 +27,32 @@ change**, and in two of them the wrong conclusion was specific and confident:
 - #9076 read an unchanged floor error as *the fix did not work* rather than *the fix has not
   arrived*.
 
+## The fifth instance is the worst shape: agreement with the control, for the wrong reason
+
+Found by `silent-gull-867` in their **own probe**, before running it.
+
+gunbc#9103 was built to settle a `PointwisePower` residue by measurement rather than argument — a
+scratch branch carrying #9059 plus one withheld row, whose floor result differenced against #9059's
+was the discriminator. It was branched from #9059 **before the mirror existed**, so the withheld row
+sat in the `.dag` and not in the binary that runs the floor.
+
+Its result would have come back **identical to #9059's**, for a reason having nothing to do with
+`PointwisePower` — and *unchanged* is precisely the outcome the probe was pre-registered to read as
+**risk not realised**. A measurement whose entire purpose was to stop an argument being shipped
+would have shipped it.
+
+**That is the sub-shape worth naming, and it is not the same as the three above.** Those produced a
+wrong number or a wrong attribution. This one produces **no error at all** — the run succeeds, the
+numbers are internally consistent, the control and the treatment agree, and the agreement is an
+artifact of the treatment never having been applied. In their own words:
+
+> On this substrate a `.dag` change is not measurable until its mirror is regenerated, and the
+> failure mode is not an error — it is a run that agrees with the control for the wrong reason.
+
+A null result from a stale binary is indistinguishable from a null result from a real one. Every
+other member of this class announces itself eventually; this one is **silently confirmatory**, and
+it is worst precisely in the probes built to keep their authors honest.
+
 ## Why four, and why in one night
 
 **The gate is correct.** Required-regen detects the drift and names the file. Nothing is broken
@@ -78,3 +104,31 @@ Neither is specified here; the population and the property are.
 That any of the four authors was careless. Three of them found their own drift, one within the same
 ledger that reported it. The class is a feedback-latency defect, not an attention defect — and the
 evidence for that is that it caught four people in four hours on four different files.
+
+---
+
+## Two communication failures the collation exposed
+
+**A caution restated by a third party becomes a claim.** The retracted 830 finding was sent to
+`silent-gull-867` as *how to read a result* — read `declined_live` beside pass/fail, because an
+absent row may be a declined one. It came back as *"the arm that swallows 830 identities... the
+ladder inverted"*: a number and an arm name generalised into an assertion about a mechanism nobody
+in that exchange had traced. Nothing was misquoted. The **mood** changed, from caution to claim, and
+a claim propagates where a caution would have prompted a check.
+
+Their own account of why, which is the sharper half and applies far past this instance:
+
+> I did the careful thing on the half that touched my own work and the credulous thing on the half
+> that did not.
+
+That is the allocation problem. Scrutiny goes where the author has skin, and a finding handed over
+by someone else arrives pre-vetted by their apparent authority. Both of us did it in the same hour —
+they took my mechanism claim without opening `run_required_floor`; I took a call-site list as an
+answer to a question it was not asked.
+
+**A retraction does not catch up with what it retracts.** The 830 claim was retracted at the top of
+its brief an hour before it was restated. Putting the correction first is necessary and was not
+sufficient: the reader had already formed the belief, and nothing re-reads a document you have
+already read. The only thing that actually stopped it was a direct message to the specific person
+who had it. **Corrections must be pushed to the holders, not published to the artifact** — the
+artifact fixes the next reader, not the current one.
