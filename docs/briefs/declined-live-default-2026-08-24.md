@@ -217,3 +217,75 @@ Recorded here *before* the result, so that the brief cannot later be read as hav
 confirmed by evidence it did not yet have. The distinction is the same one §5 draws between a
 fixture that plants a known input and a literal transcribed from the current tree, and it applies
 to a finding about defaults exactly as much as to a merge-blocking test.
+
+---
+
+## Challenged, verified in the seed, and sharpened: the intent was fail-closed on the OTHER axis
+
+`deep-ant-102` challenged this brief's central claim before their probe returned, on a code read
+rather than a measurement, and the challenge was substantial enough to have retracted the
+diagnosis. Recorded with the resolution because the near-miss is instructive.
+
+**Their reading.** The `.dag` producer's default (`Absent => ReadsLiveTree`) is not what the
+executing floor consults. In the seed, `DeclinedLiveTree` is constructed at one place, gated on a
+field set by `reads_live_tree_effective`:
+
+```rust
+let declared = parse_entry_live_tree_disposition(entry_path, content)?;
+if declared { return Ok(true); }
+Ok(effect_reach_derived_reads_live_tree_for_entry(entry_path, facts))
+```
+
+They read this as: undeclared falls through to an **effect-reach derivation over the import
+closure** — a determination, not a shrug — which would make this case not a member of the class
+at all, and would additionally make declaring `SubstrateInputsOnly` inert.
+
+**The call chain is exactly as they traced it. The last line of the callee reverses it:**
+
+```rust
+// Undeclared = ReadsLiveTree: a row must DECLARE it does not read the live
+// tree to become selection-eligible (fail-closed).
+Ok(declared.unwrap_or(true))
+```
+
+Undeclared returns **true**, so `reads_live_tree_effective` takes the early return and the
+effect-reach derivation is never reached:
+
+```
+undeclared           -> true  -> short-circuit -> DECLINED
+ReadsLiveTree        -> true  -> short-circuit -> DECLINED
+SubstrateInputsOnly  -> false -> effect-reach derivation decides
+```
+
+**Two things this settles, one of which corrects the brief above rather than confirming it.**
+
+*The diagnosis stands, and the seed states the intent explicitly.* `a row must DECLARE it does
+not read the live tree to become selection-eligible (fail-closed)`. The author was reasoning about
+**affected-set selection** — do not let a module become selection-eligible unless it has affirmed
+it is safe to. On that axis the default is genuinely fail-closed and correct. The defect is that
+the same bit is consumed by a **second** consumer, floor execution, where its meaning inverts:
+fail-closed on selection is **fail-open on evidence coverage**, because the conservative answer
+there is *do not run it*. One bit, two consumers, opposite safe directions — and only the first
+was named. That is a sharper statement than "the default renders ignorance as a claim," and it is
+the one to carry.
+
+*Declaring `SubstrateInputsOnly` is not a formality.* It is the **only route to the derivation at
+all**; undeclared short-circuits past it. So the earlier advice — declare explicitly — is right for
+a reason neither party had: not because the label admits a module, but because it is the sole path
+to the code that can.
+
+**Method note, which is the transferable part.** The challenge was raised *before* the probe
+returned, specifically so the pre-registered falsification condition could be sharpened rather
+than reinterpreted afterwards. Under the corrected reading the two arms predict a **difference**
+(undeclared → all five declined; declared → derivation decides), where the challenger's reading
+predicted identity. Had the number arrived first, a no-move would have been read as confirming the
+effect-reach hypothesis, when under the corrected control flow that path is unreachable for
+undeclared modules and a no-move would falsify *both* diagnoses. Getting the prediction right
+before the measurement is what keeps a correct number from producing a wrong conclusion.
+
+**Still open, and not resolved by any of this:** three in-repo notes describe two mechanisms and
+disagree about which one the floor consults — one asserts a column-zero scan in which undeclared
+EXECUTES and that the floor does not consult `reads_live_tree_effective`, against the call sites
+above. At least one is stale. A stale authority about which mechanism gates the floor is the
+premise-contamination class this repository keeps correcting itself for, and it is worth its own
+look independent of how the fixture count comes out.
