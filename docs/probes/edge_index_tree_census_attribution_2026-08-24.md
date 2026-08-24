@@ -193,18 +193,52 @@ magnitude is **unmeasured here**: it is forcible in isolation (below), but this 
 attribution repair and measuring a fourth term would have meant a rerun the finding does not
 need. Its existence and its input size are read from the producer, not estimated.
 
-**The frequency change is real but it is bounded, and "far more often" would overstate it.**
+**The fallback census's frequency change is bounded, because it memoizes.**
 `pool_bare_census` is memoized on the index like every other pool term, so however often the
-fallback fires, the census is built at most once per index. The cut therefore moves this cost
-from *conditionally paid* to *reliably paid* — 0-or-1 becomes 1 — rather than multiplying it by
-a fallback count. That is a genuine regression to forecast and it is a different one from a
-frequency multiplier; the quantity that grows without bound is the corpus the census is
-denominated in, not the number of times it runs.
+fallback fires, the census is built at most once per index. The cut moves that cost from
+*conditionally paid* to *reliably paid* — 0-or-1 becomes 1 — not from rare to frequent.
 
-So the honest forecast, with no invented number: **after the cut, every index that resolves any
-bare name without a declared edge pays one whole-pool symbol-index build in addition to its
-per-root censuses.** How many names resolve without a declared edge post-cut is currently
-uncounted, and nothing here estimates it.
+**And `pool_parse` is not conditional today at all**, so no step function attaches to it. A
+follow-up review proposed "today a process whose scoped census always hits pays zero; after the
+cut every process pays 14.24s." That is backwards on which path pays: the SCOPED census is what
+forces the parse, unconditionally, at the top of the same function, for the first bare-eligible
+file under a source root. A process whose names all resolve in the scoped census pays the parse
+in full — building that census is what requires it. The parent trace this lane was opened on
+records `bare_eligible=699` and `tree_census_misses=2` on an ordinary run, which is the parse
+already being paid.
+
+**THE QUANTITY THAT ACTUALLY MULTIPLIES IS `edge_index_bare_eligible`, and it is neither of the
+census terms.** `build_both_closure_edge_index` runs the whole per-file bare half — the
+identifier scan, the name-universe fold, and the resolve loop — only for files that are
+bare-eligible, and eligibility is decided by `source_declares_import_lines`, which is literally
+*does this file contain an `import ` line*:
+
+```
+fn source_declares_import_lines(content: &str) -> bool {
+    content.lines().any(|l| l.trim_start().starts_with("import "))
+}
+```
+
+The namespace cut deletes exactly those lines, corpus-wide. So eligibility is not merely more
+likely to miss after the cut — **every file becomes eligible**, and the population the per-file
+bare half is denominated in goes from the 699 in the trace to essentially the whole corpus.
+That is a multiplier, on the terms this probe did NOT decompose (`edge_index_bare_candidates`,
+`edge_index_bare_name_universe`, `edge_index_bare_resolve_loop`), and their per-file cost is
+unmeasured here.
+
+So the honest forecast, in three parts and with no invented number:
+
+1. `pool_parse` — already unconditional; unchanged by the cut except that more files reach it
+   before the memo warms. No step function.
+2. `pool_bare_census`'s whole-pool symbol index — conditional today, reliably paid after; a
+   step from 0-or-1 to 1 per index, bounded by the memo.
+3. the per-file bare half — denominated in `edge_index_bare_eligible`, which the cut takes from
+   699 toward the whole corpus. **This is the term with a multiplier on it**, and it is the one
+   nobody has measured per file.
+
+How many names resolve without a declared edge post-cut is uncounted, and nothing here estimates
+it; but the eligibility count does not need estimating, because eligibility is the negation of
+the very syntax the cut removes.
 
 ## This row can be forced in isolation
 
