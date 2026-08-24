@@ -125,9 +125,13 @@ type HostOperation sole_constructor {
 // floor's DeclinedLiveTree arm and DOES NOT EXECUTE -- so moving the red there would trade an
 // executing probe for a specification, which is the trap section 5 names.
 //
-// WHAT THE ADMISSION COSTS, stated so it is not read as free: the seal holds against every module in
-// the corpus except this one witness. That is one named, reviewed exception carrying an executing
-// red, not a general opening.
+// WHAT THE ADMISSION COSTS, stated as a CAPABILITY rather than as an intent, because admit_callers
+// gates WHO MAY CALL the mint and not WHAT THEY MAY BUILD with it. The admitted witness declaration
+// therefore holds GENERAL construction capability for this type -- it can build any HostOperation,
+// valid or invalid, not merely the mispaired one it exists for. The seal holds against every module
+// in the corpus except that one, and inside that one it does not hold at all. The residual risk is
+// small (it is a test declaration, and nothing production-facing can obtain a value through it), but
+// small-and-stated and small-and-implied are different rungs of the same honesty.
 fn host_operation(invocation: BoundOperationInvocation, native: LocalInvocation) -> HostOperation
   admit_callers: [
     decl_ref(module_path: "gunbc.host_operation_exec", decl_name: "systemctl_is_active_host_operation"),
