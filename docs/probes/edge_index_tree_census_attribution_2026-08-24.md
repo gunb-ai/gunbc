@@ -64,6 +64,44 @@ runs); no attempt is made here to close 1.8s of a 23s figure measured on a diffe
 | — global-bare fold | 1.00s |
 | — services fold | 0.01s |
 
+## The two closures DIVERGE — the duplicate-build hypothesis is refuted
+
+A candidate raised while this probe was running (smart-ram-730, from a
+`GUNBC_EDGE_INDEX_CENSUS_TRACE=1` run that names the two misses as `root=src/v2` and
+`root=dag` on ONE index address): the census keys on root, but its content is a symbol
+index over the ADJACENCY closure of the files under that root, and adjacency follows
+imports with no root restriction. If the two reached sets coincided, we would be building
+one symbol index twice and the root key would be buying nothing.
+
+**They do not coincide, and set cardinality alone settles it** — no digest is needed,
+because sets of different size are different sets. The `modules=` figures in the table
+above ARE the reached-set sizes: `build_symbol_index_census_nodes` receives exactly the
+`pool.nodes_by_file` list filtered to `reached`.
+
+| root | files under the root | modules reached | pulled in from the other tree |
+|---|---|---|---|
+| `dag` | 2610 | 2818 | 208 |
+| `src/v2` | 1265 | 1893 | 628 |
+| corpus | 3875 | | |
+
+So each root's closure does reach across into the other tree, which is what made the
+hypothesis worth raising — but neither closure is anywhere near the whole corpus and they
+differ by 925 modules.
+
+**The overlap is real and is bounded, not measured here.** Two subsets of a 3875-module
+corpus with sizes 2818 and 1893 intersect in at least 836 and at most 1893 modules, so
+somewhere between 836 and 1893 module-censuses are computed twice. That is a genuine
+duplication and it is the residue this probe leaves open; it is NOT the
+build-one-index-twice shape, and closing it would have to preserve the root-scoping,
+which exists so that a bare name resolves under the census exactly as it resolves under
+the root's whole-tree gate compile.
+
+**Boundary on the counts.** These are for source roots `dag` + `src/v2`, with the censuses
+forced directly rather than reached through an entry. The reached set is a function of the
+roots and the pool, not of the entry, so it carries across entries — but `misses=2` does
+not: a run given a different root set has a different denominator, and the trace that
+produced `tree_census_calls=699 / misses=2` was one witness entry.
+
 ## What this changes about the shape question
 
 - **The largest single term is a parse whose bodies are discarded.** `parse_with_table` builds
@@ -76,6 +114,10 @@ runs); no attempt is made here to close 1.8s of a 23s figure measured on a diffe
   re-insert is 6.8% of the fold and is earning its place rather than wasting it. The candidate
   repair that looked obvious before measuring — short-circuit the equality — would have bought
   ~0.14s across both roots. Recorded because it will look attractive again.
+- **The per-file build cost, priced net of the parse.** The census is ~1.48ms per module
+  censused (6.96s over 2818 + 1893). A figure of ~2.7ms/file circulated while this was being
+  measured; it is the same work divided by the same denominator with the 14.24s parse still
+  inside it, and it should not be quoted now that the parse has its own row.
 - **A second-order duplication is visible and is NOT repaired here.** The entries fold and the
   global-bare fold upgrade the same `(module_path, binding)` pairs under two key surfaces
   (1.13s + 1.00s on the `dag` root). Whether they are the same `Rc` at every site was not
