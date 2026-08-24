@@ -8601,7 +8601,7 @@ fn entry_source_from_index_or_disk(
     }))
 }
 
-/// Which budget a `ClaimOutcome::TimedOut` blew. The two are measured on different
+/// Which budget a `ClaimOutcome::BudgetInterrupted` / `CompletedOverBudget` row blew. The two are measured on different
 /// clocks and are not interchangeable: `Cpu` is thread CPU time (the stride-poll
 /// metric, so a witness slowed by cold I/O or governor time-slicing is not
 /// misclassified), `Wall` is whole-receipt wall time (emit + cargo subprocess I/O
@@ -8627,7 +8627,7 @@ pub enum BudgetKind {
 /// Keeping the two apart is what makes a cost distribution computable at all: a spread taken
 /// across a censoring boundary is an artifact of where the ceiling sits, not a fact about the
 /// witnesses. It is also the condition named in `claim_executor.rs`'s cost-basis seeding guard,
-/// which refuses to seed a basis from a deadline-killed row "until ClaimOutcome::TimedOut can
+/// which refuses to seed a basis from a deadline-killed row "until ClaimOutcome can
 /// distinguish killed from completed".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BudgetCompletion {
@@ -8635,31 +8635,53 @@ pub enum BudgetCompletion {
     CompletedOverBudget,
 }
 
-// WHY THIS IS A FIELD AND NOT A SIBLING VARIANT — the actual trade, recorded so the next person
-// weighing it has the argument rather than the outcome.
+// WHY THIS IS NO LONGER A FIELD ON ONE ARM — the trade, re-decided on evidence rather than on
+// the earlier argument's outcome.
 //
-// The discriminator sits INSIDE `TimedOut`, which is exactly what made the erasure writable: a
-// `TimedOut { .. }` wildcard absorbs it, and the classifier did precisely that. Had
-// passed-over-budget been a sibling `ClaimOutcome` variant, that wildcard would not have
-// compiled against it and the bug would have been a type error instead of a review miss.
+// The discriminator used to sit INSIDE a single `ClaimOutcome::TimedOut`, and that is exactly
+// what made the erasure writable: a `TimedOut { .. }` wildcard absorbs it. The prior note kept
+// it there and declared the hazard "paid for by review", with a falsifiable next-rung trigger:
+// THE NEXT CONSUMING SITE ADDED THAT DROPS THE AXIS. The trigger fired, and by more than one
+// site — five live projections were found dropping it, four in this seed and one in the `.dag`
+// AUTHORITY (`v2.workflow.floor_terminal_ledger` `claim_disposition`, wildcarding
+// `ClaimSafetyOutcome` and answering `BudgetRefusedBeforeVerdict`). THE MODEL HAD THE
+// DISTINCTION; EVERY PROJECTION OVER IT DROPPED IT. That is one habit of projecting a modelled
+// axis away, not five copies of one slip, and review is demonstrably not the mechanism that
+// stops it — the four seed sites were authored by the person who wrote the converters, on the
+// day he was most primed to look for them, one of them a fabricated receipt protected by its
+// own justifying comment.
 //
-// It is still a field, for a reason that is not inertia. The variant split this replaced was on
-// RAISE MECHANISM — in-eval poll versus completion-side backstop — which is not a distinction
-// any consumer should act on, and unifying it is what closed the absorption in the first place.
-// Passed-versus-interrupted IS a real distinction because it determines the remedy. Splitting
-// the variant again would re-fragment an event vocabulary that was just deliberately closed, so
-// the axis lives on the arm and the wildcard hazard is paid for by review.
+// THE PRIOR DECISION IS NOT OVERRULED, because it was about a different axis. It argued against
+// splitting on RAISE MECHANISM — in-eval poll versus completion-side backstop — which no
+// consumer should act on, and unifying that is what closed an earlier absorption. The split
+// here is on PASSED-VERSUS-INTERRUPTED, which that same note calls a real distinction because
+// IT DETERMINES THE REMEDY: an interrupted row produced no verdict and its elapsed figure is a
+// LOWER BOUND; a completed one passed, was reclassified on cost, and its figure is EXACT.
+// Rendering one as the other is what produced a ledger describing a single row three
+// inconsistent ways (`BUDGET-REFUSED`, `outcome=timed_out`, and "cost exactly 57193ms").
 //
-// NEXT-RUNG TRIGGER, falsifiable rather than a site count: `elapsed: Measured | LowerBound`
-// makes the bad read UNCONSTRUCTIBLE rather than merely reviewable — you cannot obtain the
-// number without deciding which kind you hold. It is not justified by today's population
-// (seven consuming sites), because that is the wrong denominator: the value scales with the
-// RATE at which consuming sites appear and the cost of one miss. So the trigger is a condition,
-// not a threshold — THE NEXT CONSUMING SITE ADDED THAT DROPS THE AXIS is the evidence that
-// arm-level is insufficient and the climb is earned. Today's rate evidence, for whoever reads
-// this next: four sites dropped it in one PR, authored by the person who wrote the converters,
-// on the day he was most primed to look for it, one of them a fabricated receipt protected by
-// its own justifying comment.
+// The field names carry the reading, so the bound cannot be spelled as a cost: the interrupted
+// arm has `elapsed_at_least_ms`, the completed arm `elapsed_ms`.
+//
+// `BudgetCompletion` IS DELIBERATELY NOT DELETED. It is the axis as data, and it is consumed
+// where a value has to travel — `BudgetRefusal`, the wire verdict's `completion`, and the
+// `budget_event` projection below. Deleting it here would force a second spelling of the same
+// two states beside it; a dissolution that spawns a duplicate has dissolved nothing (§2/§3).
+// What the split removes is the WRITABLE ERASURE, not the type.
+
+/// Both budget arms projected into one value, for a consumer that legitimately treats them
+/// alike and still has to render or transport the axis.
+///
+/// This is a PROJECTION, not a way back to the old shape: obtaining it is an explicit call, and
+/// the two arms remain separate cases in every `match` over `ClaimOutcome`, so a labelling
+/// consumer still cannot give one name to both by writing a wildcard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BudgetEvent {
+    pub elapsed_ms: u64,
+    pub budget_ms: u64,
+    pub kind: BudgetKind,
+    pub completion: BudgetCompletion,
+}
 
 impl BudgetCompletion {
     /// How the elapsed number may be READ. Rendered beside every budget figure so a reader
@@ -8668,6 +8690,57 @@ impl BudgetCompletion {
         match self {
             BudgetCompletion::Interrupted => "at least",
             BudgetCompletion::CompletedOverBudget => "exactly",
+        }
+    }
+}
+
+impl ClaimOutcome {
+    /// The budget arms projected; `None` for every other outcome.
+    pub fn budget_event(&self) -> Option<BudgetEvent> {
+        match self {
+            ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms,
+                budget_ms,
+                kind,
+            } => Some(BudgetEvent {
+                elapsed_ms: *elapsed_at_least_ms,
+                budget_ms: *budget_ms,
+                kind: *kind,
+                completion: BudgetCompletion::Interrupted,
+            }),
+            ClaimOutcome::CompletedOverBudget {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => Some(BudgetEvent {
+                elapsed_ms: *elapsed_ms,
+                budget_ms: *budget_ms,
+                kind: *kind,
+                completion: BudgetCompletion::CompletedOverBudget,
+            }),
+            _ => None,
+        }
+    }
+
+    /// The budget arm for a given `completion`, so a producer holding the axis as data does not
+    /// have to re-derive which variant carries it.
+    pub fn budget_outcome(
+        elapsed_ms: u64,
+        budget_ms: u64,
+        kind: BudgetKind,
+        completion: BudgetCompletion,
+    ) -> ClaimOutcome {
+        match completion {
+            BudgetCompletion::Interrupted => ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms: elapsed_ms,
+                budget_ms,
+                kind,
+            },
+            BudgetCompletion::CompletedOverBudget => ClaimOutcome::CompletedOverBudget {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            },
         }
     }
 }
@@ -8702,11 +8775,19 @@ pub enum ClaimOutcome {
     /// reclassified a budget refusal as a witness failure. Keeping the pair typed lets
     /// the mode be read off the value, and lets the receipt project a real
     /// `std.observation` `TimedOut { budget, elapsed }` instead of an opaque string.
-    TimedOut {
+    /// THE CLAIM WAS CUT OFF AT ITS BUDGET. It produced no verdict, and
+    /// `elapsed_at_least_ms` is a LOWER BOUND on its cost, never the cost.
+    BudgetInterrupted {
+        elapsed_at_least_ms: u64,
+        budget_ms: u64,
+        kind: BudgetKind,
+    },
+    /// THE CLAIM REACHED ITS VERDICT and was then reclassified for exceeding its budget.
+    /// `elapsed_ms` is an exact measurement, and the remedy is cost, not interruption.
+    CompletedOverBudget {
         elapsed_ms: u64,
         budget_ms: u64,
         kind: BudgetKind,
-        completion: BudgetCompletion,
     },
     /// A host-tool program could not be resolved to an existing executable path.
     /// Typed at the witness boundary so downstream classifiers do not substring-match
@@ -8889,11 +8970,7 @@ pub fn claim_terminality(
     policy: WitnessSafetyPolicy,
 ) -> ClaimTerminality {
     match outcome {
-        ClaimOutcome::TimedOut {
-            kind,
-            completion: BudgetCompletion::Interrupted,
-            ..
-        } => ClaimTerminality::SafetyInterrupted {
+        ClaimOutcome::BudgetInterrupted { kind, .. } => ClaimTerminality::SafetyInterrupted {
             raised_by: SafetyInterruptTrigger::from(*kind),
             elapsed_cpu_at_least_ms: (receipt.cpu_nanos / 1_000_000) as u64,
             elapsed_wall_at_least_ms: (receipt.wall_nanos / 1_000_000) as u64,
@@ -16029,6 +16106,10 @@ pub enum CiWitnessVerdict {
     NotBool,
     RuntimeError,
     BudgetRefused,
+    /// THE CLAIM PASSED AND WAS THEN RECLASSIFIED ON COST. Distinct from `BudgetRefused`
+    /// because it reached a verdict: the remedy is to pay the cost down, not to find out what
+    /// the claim would have answered.
+    PassedOverBudget,
     HostToolUnresolved,
     KnownRed,
     /// THE CLAIM NEVER REACHED ITS SUBJECT. Mirrors `WitnessRouteGap`. Distinct from every
@@ -16048,6 +16129,7 @@ impl CiWitnessVerdict {
             CiWitnessVerdict::NotBool => "NOT-BOOL",
             CiWitnessVerdict::RuntimeError => "ERROR",
             CiWitnessVerdict::BudgetRefused => "BUDGET-REFUSED",
+            CiWitnessVerdict::PassedOverBudget => "PASSED-OVER-BUDGET",
             CiWitnessVerdict::HostToolUnresolved => "TOOL-UNRESOLVED",
             CiWitnessVerdict::KnownRed => "KNOWN-RED",
             CiWitnessVerdict::RouteGap => "NO-ROUTE",
@@ -16095,7 +16177,11 @@ impl CiWitnessVerdict {
             ClaimOutcome::Fail => CiWitnessVerdict::Failed,
             ClaimOutcome::NotBool { .. } => CiWitnessVerdict::NotBool,
             ClaimOutcome::RuntimeError { .. } => CiWitnessVerdict::RuntimeError,
-            ClaimOutcome::TimedOut { .. } => CiWitnessVerdict::BudgetRefused,
+            // SITE 1 OF THE FIVE THAT DROPPED THE AXIS. `BudgetRefused` is true only of the
+            // interrupted arm; a completed-over-budget row REACHED ITS VERDICT and was refused
+            // nothing, so reporting it as a refusal erased the verdict it had already produced.
+            ClaimOutcome::BudgetInterrupted { .. } => CiWitnessVerdict::BudgetRefused,
+            ClaimOutcome::CompletedOverBudget { .. } => CiWitnessVerdict::PassedOverBudget,
             ClaimOutcome::HostToolUnresolved { .. } => CiWitnessVerdict::HostToolUnresolved,
             // NOT `Failed`, and NOT `KnownRed` even when enrolled: the roster this identity is
             // enrolled on is the ROUTE-GAP roster, not the expected-red one, and the row above
@@ -17607,19 +17693,17 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
                 ClaimOutcome::HostEffectRefused { operation, ground }
             }
             v1_interpreter::InterpError::EvalBudgetExceeded { cpu_ms, budget_ms } => {
-                ClaimOutcome::TimedOut {
-                    elapsed_ms: cpu_ms,
+                ClaimOutcome::BudgetInterrupted {
+                    elapsed_at_least_ms: cpu_ms,
                     budget_ms,
                     kind: BudgetKind::Cpu,
-                    completion: BudgetCompletion::Interrupted,
                 }
             }
             v1_interpreter::InterpError::WitnessWallBudgetExceeded { wall_ms, budget_ms } => {
-                ClaimOutcome::TimedOut {
-                    elapsed_ms: wall_ms,
+                ClaimOutcome::BudgetInterrupted {
+                    elapsed_at_least_ms: wall_ms,
                     budget_ms,
                     kind: BudgetKind::Wall,
-                    completion: BudgetCompletion::Interrupted,
                 }
             }
             other => ClaimOutcome::RuntimeError {
@@ -17936,6 +18020,9 @@ pub enum ClaimDisposition {
     KnownRedHeld,
     KnownRedNowPassing,
     BudgetRefusedBeforeVerdict,
+    /// REACHED ITS VERDICT, then exceeded its budget. Deliberately NOT a `…BeforeVerdict` arm:
+    /// the whole defect this split repairs was a name asserting the verdict was never produced.
+    PassedOverBudget,
     HostToolUnresolvedBeforeVerdict,
     RouteGapBeforeVerdict,
     RuntimeErroredBeforeVerdict,
@@ -17961,7 +18048,17 @@ pub fn claim_disposition(row: &ClaimTerminalRow) -> ClaimDisposition {
         // distinguish being cut off at a budget from throwing.
         (ClaimOutcome::NotBool { .. }, _) => ClaimDisposition::ObservationUnreadableBeforeVerdict,
         (ClaimOutcome::RuntimeError { .. }, _) => ClaimDisposition::RuntimeErroredBeforeVerdict,
-        (ClaimOutcome::TimedOut { .. }, _) => ClaimDisposition::BudgetRefusedBeforeVerdict,
+        // SITE 2, AND THE WORST OF THE FIVE: the disposition's NAME asserts BEFORE VERDICT, so a
+        // completed-over-budget row was recorded as having produced no verdict when it demonstrably
+        // had one. The other four produce a wrong label; this one produced a wrong FACT.
+        (ClaimOutcome::BudgetInterrupted { .. }, _) => ClaimDisposition::BudgetRefusedBeforeVerdict,
+        (ClaimOutcome::CompletedOverBudget { .. }, false) => ClaimDisposition::PassedOverBudget,
+        // ENROLLED AND PASSING IS STILL NOW-PASSING. The cost half is not lost by this choice:
+        // it travels on the cost channel (`completed_over_cost_requirement`), which is where the
+        // floor already reports such a row alongside `stale_quarantine`. This surface has one
+        // channel per row, so the arm answers the question it is asked — did the enrollment's
+        // predicted failure occur — and the answer is no.
+        (ClaimOutcome::CompletedOverBudget { .. }, true) => ClaimDisposition::KnownRedNowPassing,
         (ClaimOutcome::HostToolUnresolved { .. }, _) => {
             ClaimDisposition::HostToolUnresolvedBeforeVerdict
         }
@@ -17987,7 +18084,9 @@ pub fn claim_terminal_tag(outcome: &ClaimOutcome) -> &'static str {
         ClaimOutcome::Fail => "returned-false",
         ClaimOutcome::NotBool { .. } => "returned-unreadable",
         ClaimOutcome::RuntimeError { .. } => "runtime-errored",
-        ClaimOutcome::TimedOut { .. } => "budget-refused",
+        // SITE 3.
+        ClaimOutcome::BudgetInterrupted { .. } => "budget-refused",
+        ClaimOutcome::CompletedOverBudget { .. } => "passed-over-budget",
         ClaimOutcome::HostToolUnresolved { .. } => "host-tool-unresolved",
         ClaimOutcome::HostEffectRefused { .. } => "route-gap",
     }
@@ -18005,10 +18104,8 @@ pub fn claim_terminal_detail(outcome: &ClaimOutcome) -> String {
         ClaimOutcome::Pass | ClaimOutcome::Fail => String::new(),
         ClaimOutcome::NotBool { got } => got.clone(),
         ClaimOutcome::RuntimeError { message } => message.clone(),
-        ClaimOutcome::TimedOut { kind, .. } => match kind {
-            BudgetKind::Cpu => "cpu".to_string(),
-            BudgetKind::Wall => "wall".to_string(),
-        },
+        ClaimOutcome::BudgetInterrupted { kind, .. }
+        | ClaimOutcome::CompletedOverBudget { kind, .. } => kind.label().to_string(),
         ClaimOutcome::HostToolUnresolved { name, .. } => name.clone(),
         ClaimOutcome::HostEffectRefused { operation, .. } => operation.clone(),
     }
@@ -18021,6 +18118,7 @@ pub fn claim_disposition_wire(disposition: ClaimDisposition) -> &'static str {
         ClaimDisposition::KnownRedHeld => "known-red-held",
         ClaimDisposition::KnownRedNowPassing => "known-red-now-passing",
         ClaimDisposition::BudgetRefusedBeforeVerdict => "budget-refused-before-verdict",
+        ClaimDisposition::PassedOverBudget => "passed-over-budget",
         ClaimDisposition::HostToolUnresolvedBeforeVerdict => "host-tool-unresolved-before-verdict",
         ClaimDisposition::RouteGapBeforeVerdict => "route-gap-before-verdict",
         ClaimDisposition::RuntimeErroredBeforeVerdict => "runtime-errored-before-verdict",
@@ -18049,14 +18147,8 @@ pub fn seed_ledger_row(
 fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
     match outcome {
         ClaimOutcome::Pass => ExpectedRedArm::NowPassing,
-        ClaimOutcome::TimedOut {
-            completion: BudgetCompletion::Interrupted,
-            ..
-        } => ExpectedRedArm::BudgetRefused,
-        ClaimOutcome::TimedOut {
-            completion: BudgetCompletion::CompletedOverBudget,
-            ..
-        } => ExpectedRedArm::PassedOverBudget,
+        ClaimOutcome::BudgetInterrupted { .. } => ExpectedRedArm::BudgetRefused,
+        ClaimOutcome::CompletedOverBudget { .. } => ExpectedRedArm::PassedOverBudget,
         ClaimOutcome::Fail => ExpectedRedArm::Held,
         // THESE TWO WERE FOLDED INTO `Held` AND ARE NOT AGREEMENT. Only `Fail` is: the
         // enrollment predicts a failing verdict, and only a failing verdict can hold it.
@@ -18074,11 +18166,10 @@ fn budget_completion_outcome(
 ) -> ClaimOutcome {
     match (budget, outcome) {
         (Some(budget_ms), ClaimOutcome::Pass) if cpu_nanos > u128::from(budget_ms) * 1_000_000 => {
-            ClaimOutcome::TimedOut {
+            ClaimOutcome::CompletedOverBudget {
                 elapsed_ms: (cpu_nanos / 1_000_000) as u64,
                 budget_ms,
                 kind: BudgetKind::Cpu,
-                completion: BudgetCompletion::CompletedOverBudget,
             }
         }
         (_, o) => o,
@@ -18095,11 +18186,10 @@ fn wall_budget_completion_outcome(
 ) -> ClaimOutcome {
     match (budget, outcome) {
         (Some(budget_ms), ClaimOutcome::Pass) if wall_nanos > u128::from(budget_ms) * 1_000_000 => {
-            ClaimOutcome::TimedOut {
+            ClaimOutcome::CompletedOverBudget {
                 elapsed_ms: (wall_nanos / 1_000_000) as u64,
                 budget_ms,
                 kind: BudgetKind::Wall,
-                completion: BudgetCompletion::CompletedOverBudget,
             }
         }
         (_, o) => o,
@@ -18120,26 +18210,21 @@ mod budget_completion_tests {
         // the coupling that let a reworded message silently change the floor's failure
         // classification downstream.
         match budget_completion_outcome(Some(5), ClaimOutcome::Pass, 6_000_000) {
-            ClaimOutcome::TimedOut {
+            ClaimOutcome::CompletedOverBudget {
                 elapsed_ms,
                 budget_ms,
                 kind,
-                completion,
             } => {
                 assert_eq!(budget_ms, 5);
                 assert_eq!(elapsed_ms, 6);
                 assert_eq!(kind, BudgetKind::Cpu, "CPU budget must not report as wall");
-                // Binding `completion` rather than `..` is the point: this fn is one of the two
-                // producers of CompletedOverBudget, so if it ever emitted Interrupted the
-                // elapsed above would silently become a lower bound and 6 would stop being a
-                // measurement. A `..` here would have accepted that.
-                assert_eq!(
-                    completion,
-                    BudgetCompletion::CompletedOverBudget,
-                    "the completion-side backstop observes an exact elapsed, never a bound"
-                );
+                // MATCHING THE VARIANT rather than a field is now what carries this: this fn
+                // is one of the two producers of the completed arm, and if it ever emitted
+                // `BudgetInterrupted` the elapsed above would be a lower bound and 6 would stop
+                // being a measurement. The old shape asserted that as a field equality; the
+                // arm head asserts it structurally, and the `other =>` below is the RED.
             }
-            other => panic!("expected TimedOut, got {other:?}"),
+            other => panic!("expected CompletedOverBudget, got {other:?}"),
         }
     }
 
@@ -18195,7 +18280,7 @@ mod budget_completion_tests {
         // naming quibble.
         assert!(matches!(
             budget_completion_outcome(Some(budget_ms), ClaimOutcome::Pass, receipt.wall_nanos),
-            ClaimOutcome::TimedOut { .. }
+            ClaimOutcome::CompletedOverBudget { .. }
         ));
     }
 
@@ -18218,23 +18303,80 @@ mod budget_completion_tests {
     #[test]
     fn pass_over_wall_budget_converts_to_typed_refusal() {
         match wall_budget_completion_outcome(Some(600), ClaimOutcome::Pass, 601_000_000_000) {
-            ClaimOutcome::TimedOut {
+            ClaimOutcome::CompletedOverBudget {
                 elapsed_ms,
                 budget_ms,
                 kind,
-                completion,
             } => {
                 assert_eq!(budget_ms, 600);
                 assert_eq!(elapsed_ms, 601_000);
                 assert_eq!(kind, BudgetKind::Wall, "wall budget must not report as CPU");
-                assert_eq!(
-                    completion,
-                    BudgetCompletion::CompletedOverBudget,
-                    "the completion-side backstop observes an exact elapsed, never a bound"
-                );
             }
-            other => panic!("expected TimedOut, got {other:?}"),
+            other => panic!("expected CompletedOverBudget, got {other:?}"),
         }
+    }
+
+    /// THE THREE PROJECTIONS THAT DROPPED THE AXIS, ASSERTED IN ONE PLACE.
+    ///
+    /// RED against the pre-split code: with one `TimedOut` variant carrying `completion`, every
+    /// one of these projections was written as `TimedOut { .. }` and answered the interrupted
+    /// row's label for BOTH rows, so each pair below was equal rather than distinct. The pairing
+    /// is the whole assertion — a test of the completed row alone would pass against a mapping
+    /// that had simply been re-pointed, and a test of the interrupted row alone would pass
+    /// against the erasure it exists to catch.
+    ///
+    /// It stays enrolled after the wall lands: it is the permanent control that the two arms
+    /// keep projecting apart, not scaffolding for the change (DESIGN §4b meta-obligation 4).
+    #[test]
+    fn the_two_budget_arms_project_apart_in_every_consumer() {
+        let interrupted = ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms: 57_193,
+            budget_ms: 5_000,
+            kind: BudgetKind::Cpu,
+        };
+        let completed = ClaimOutcome::CompletedOverBudget {
+            elapsed_ms: 57_193,
+            budget_ms: 5_000,
+            kind: BudgetKind::Cpu,
+        };
+
+        // 1. THE VERDICT. `BudgetRefused` over a row that reached its verdict is the label that
+        //    put BUDGET-REFUSED on the floor's per-row line for a completed claim.
+        assert_eq!(
+            CiWitnessVerdict::from_outcome(&interrupted, false),
+            CiWitnessVerdict::BudgetRefused
+        );
+        assert_eq!(
+            CiWitnessVerdict::from_outcome(&completed, false),
+            CiWitnessVerdict::PassedOverBudget
+        );
+
+        // 2. THE DISPOSITION, and the one that asserted a FACT rather than a label: a name
+        //    ending in `BeforeVerdict` for a claim whose verdict the same ledger reported.
+        let row = |outcome: ClaimOutcome| ClaimTerminalRow {
+            qualified: "m.f".to_string(),
+            outcome,
+            expected_red: false,
+        };
+        assert_eq!(
+            claim_disposition(&row(interrupted.clone())),
+            ClaimDisposition::BudgetRefusedBeforeVerdict
+        );
+        assert_eq!(
+            claim_disposition(&row(completed.clone())),
+            ClaimDisposition::PassedOverBudget
+        );
+
+        // 3. THE WIRE TAG AND 4. THE EXECUTION LABEL — the two strings the ledger's over-cost
+        //    and per-row lines are rendered from. `outcome=timed_out` was this one.
+        assert_ne!(
+            claim_terminal_tag(&interrupted),
+            claim_terminal_tag(&completed)
+        );
+        assert_ne!(
+            witness_execution_outcome_label(&interrupted),
+            witness_execution_outcome_label(&completed)
+        );
     }
 
     /// The two clocks must stay distinguishable. A CPU kill and a wall kill have different
@@ -18252,14 +18394,14 @@ mod budget_completion_tests {
         );
         assert!(matches!(
             cpu,
-            ClaimOutcome::TimedOut {
+            ClaimOutcome::CompletedOverBudget {
                 kind: BudgetKind::Cpu,
                 ..
             }
         ));
         assert!(matches!(
             wall,
-            ClaimOutcome::TimedOut {
+            ClaimOutcome::CompletedOverBudget {
                 kind: BudgetKind::Wall,
                 ..
             }
@@ -20458,14 +20600,22 @@ pub fn project_witness_cost_receipt(
                 // `std.observation` `TimedOut` carries { basis, budget, elapsed } and has no
                 // completion field yet, so there is nowhere on the carrier to put it — and
                 // fabricating a value to reach a more specific arm is exactly what the floor
-                // component receipt note already forbids for the first pair. This is the last
-                // `completion: _` in the seed and it dissolves when that std arm gains
-                // `completion` beside `basis`; every other consumer now reads the axis.
-                ClaimOutcome::TimedOut {
+                // component receipt note already forbids for the first pair. It dissolves when
+                // that std arm gains `completion` beside `basis`, at which point this or-pattern
+                // splits into two arms; every other consumer now reads the axis.
+                //
+                // THE DROP IS NOW WRITTEN, NOT WILDCARDED: both arms are named in the head, so
+                // this projection cannot silently acquire a third budget arm the way a
+                // `TimedOut { .. }` would have.
+                ClaimOutcome::BudgetInterrupted {
+                    elapsed_at_least_ms: elapsed_ms,
+                    budget_ms,
+                    kind,
+                }
+                | ClaimOutcome::CompletedOverBudget {
                     elapsed_ms,
                     budget_ms,
                     kind,
-                    completion: _,
                 } => {
                     // The clock the deadline was enforced on travels WITH the pair, so a
                     // reader of the event can tell a thread-CPU fail-stop from a wall
@@ -26244,17 +26394,31 @@ fn run_discovery_rows(
             // Rendered so the elapsed value is never mistaken for a completed duration:
             // the row was killed AT the budget, so this is a ceiling, not a cost. The
             // clock (cpu vs wall) is named because the two have different remedies.
-            ClaimOutcome::TimedOut {
-                elapsed_ms,
+            // BOTH ARMS RENDER, and the reading comes from the arm rather than from a field
+            // this format could have wildcarded: `at least` for an interruption's ceiling,
+            // `exactly` for a completed cost.
+            ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms,
                 budget_ms,
                 kind,
-                completion,
             } => summary.failures.push(format!(
-                "{} ({}) over its {} budget: cost is {} {}ms against a {}ms budget",
+                "{} ({}) over its {} budget: cost is at least {}ms against a {}ms budget",
                 row.function,
                 row.entry,
                 kind.label(),
-                completion.elapsed_reading(),
+                elapsed_at_least_ms,
+                budget_ms
+            )),
+            ClaimOutcome::CompletedOverBudget {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => summary.failures.push(format!(
+                "{} ({}) reached its verdict and then exceeded its {} budget: cost is exactly \
+                 {}ms against a {}ms budget",
+                row.function,
+                row.entry,
+                kind.label(),
                 elapsed_ms,
                 budget_ms
             )),
@@ -41987,7 +42151,10 @@ fn witness_execution_outcome_label(outcome: &ClaimOutcome) -> &'static str {
         ClaimOutcome::Fail => "fail",
         ClaimOutcome::NotBool { .. } => "not_bool",
         ClaimOutcome::RuntimeError { .. } => "runtime_error",
-        ClaimOutcome::TimedOut { .. } => "timed_out",
+        // SITE 4. "timed_out" over both arms is what put `outcome=timed_out` on the over-cost
+        // line of a row the same ledger reported as having completed.
+        ClaimOutcome::BudgetInterrupted { .. } => "budget_interrupted",
+        ClaimOutcome::CompletedOverBudget { .. } => "completed_over_budget",
         ClaimOutcome::HostToolUnresolved { .. } => "host_tool_unresolved",
         ClaimOutcome::HostEffectRefused { .. } => "host_effect_refused",
     }
@@ -43863,14 +44030,18 @@ pub fn run_required_floor(
                 ExpectedRedArm::BudgetRefused => {
                     known_red_budget_refused += 1;
                     let detail = match &result {
-                        ClaimOutcome::TimedOut {
-                            elapsed_ms,
+                        // The arm reached here is the interrupted one BY CONSTRUCTION —
+                        // `ExpectedRedArm::BudgetRefused` has exactly one producer — so the
+                        // reading is `at least` and cannot be anything else. Matching the
+                        // completed arm here would be unreachable, which is why it is not
+                        // written: an unreachable arm rendering "exactly" would be a decoration
+                        // whose red no input can produce.
+                        ClaimOutcome::BudgetInterrupted {
+                            elapsed_at_least_ms,
                             budget_ms,
                             kind,
-                            completion,
                         } => format!(
-                            "{kind:?}, cost {} {elapsed_ms}ms against {budget_ms}ms",
-                            completion.elapsed_reading()
+                            "{kind:?}, cost at least {elapsed_at_least_ms}ms against {budget_ms}ms"
                         ),
                         other => format!("{other:?}"),
                     };
@@ -43902,11 +44073,10 @@ pub fn run_required_floor(
                 ExpectedRedArm::PassedOverBudget => {
                     known_red_passed_over_budget += 1;
                     let cost = match &result {
-                        ClaimOutcome::TimedOut {
+                        ClaimOutcome::CompletedOverBudget {
                             elapsed_ms,
                             budget_ms,
                             kind,
-                            ..
                         } => format!("{kind:?}, cost exactly {elapsed_ms}ms against {budget_ms}ms"),
                         other => format!("{other:?}"),
                     };
@@ -44081,56 +44251,55 @@ pub fn run_required_floor(
                     ));
                 }
             }
-            ClaimOutcome::TimedOut {
+            // AND AN UNENROLLED BUDGET REFUSAL IS NOT A DEFECT EITHER. The enrolled arm above
+            // already rules that a budget refusal produces no verdict and therefore is not a
+            // failure; that fact is a property of the interruption, not of the roster, so it
+            // holds identically for a row nobody enrolled. Reporting it in `failures` said the
+            // opposite — `failures` is the channel whose remedy is "fix the defect", and it is
+            // what the alert signature reads to distinguish a regression from a cost debt. A
+            // row that was preempted before answering has no defect to fix and may well be
+            // passing, so routing it here made an unmeasured cost indistinguishable from a
+            // broken witness, in the direction that manufactures alarm.
+            //
+            // The consequence this closes is concrete: a row that PASSES and exceeds its budget
+            // had no honest state anywhere. Enrolled, it asserted an expected failure that does
+            // not occur and reported twice. Unenrolled, it landed here and read as a defect.
+            // Cost is not a verdict, so the verdict channels cannot carry it — and now they do
+            // not. The line still stops, because the cost is still owed; it stops saying the
+            // true thing about why.
+            // TWO READINGS, AND THEY ARE NOT THE SAME CLAIM. `Interrupted` means the deadline
+            // fired before the witness answered: no verdict exists, the figure is a LOWER BOUND
+            // and the row's real cost is unmeasured. `CompletedOverBudget` means the witness ran
+            // to completion and then was found over budget: the verdict IS known and the figure
+            // is EXACT. Printing one sentence for both would repeat the conflation this arm
+            // exists to remove — asserting "correctness unknown" over a row that demonstrably
+            // answered is as wrong as calling a cost a defect.
+            ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms,
+                budget_ms,
+                kind,
+            } => outcome.interrupted_before_verdict.push(format!(
+                "{} was BUDGET-REFUSED and went UNDECIDED: {kind:?}, cost at least \
+                 {elapsed_at_least_ms}ms against {budget_ms}ms. Not enrolled as expected-red, so \
+                 nothing claims it is broken — but the deadline preempted the verdict, so \
+                 whether it passes is UNKNOWN and its real cost is UNMEASURED: the figure \
+                 is the interrupt point, not this row's cost. Reduce the cost, or move it \
+                 to a lane declaring its own ceiling, so the witness reaches a verdict.",
+                claim.qualified
+            )),
+            ClaimOutcome::CompletedOverBudget {
                 elapsed_ms,
                 budget_ms,
                 kind,
-                completion,
-                // AND AN UNENROLLED BUDGET REFUSAL IS NOT A DEFECT EITHER. The enrolled arm above
-                // already rules that a budget refusal produces no verdict and therefore is not a
-                // failure; that fact is a property of the interruption, not of the roster, so it
-                // holds identically for a row nobody enrolled. Reporting it in `failures` said the
-                // opposite — `failures` is the channel whose remedy is "fix the defect", and it is
-                // what the alert signature reads to distinguish a regression from a cost debt. A
-                // row that was preempted before answering has no defect to fix and may well be
-                // passing, so routing it here made an unmeasured cost indistinguishable from a
-                // broken witness, in the direction that manufactures alarm.
-                //
-                // The consequence this closes is concrete: a row that PASSES and exceeds its budget
-                // had no honest state anywhere. Enrolled, it asserted an expected failure that does
-                // not occur and reported twice. Unenrolled, it landed here and read as a defect.
-                // Cost is not a verdict, so the verdict channels cannot carry it — and now they do
-                // not. The line still stops, because the cost is still owed; it stops saying the
-                // true thing about why.
-                // TWO READINGS, AND THEY ARE NOT THE SAME CLAIM. `Interrupted` means the deadline
-                // fired before the witness answered: no verdict exists, the figure is a LOWER BOUND
-                // and the row's real cost is unmeasured. `CompletedOverBudget` means the witness ran
-                // to completion and then was found over budget: the verdict IS known and the figure
-                // is EXACT. Printing one sentence for both would repeat the conflation this arm
-                // exists to remove — asserting "correctness unknown" over a row that demonstrably
-                // answered is as wrong as calling a cost a defect.
-            } => match completion {
-                BudgetCompletion::Interrupted => outcome.interrupted_before_verdict.push(format!(
-                    "{} was BUDGET-REFUSED and went UNDECIDED: {kind:?}, cost at least \
-                     {elapsed_ms}ms against {budget_ms}ms. Not enrolled as expected-red, so \
-                     nothing claims it is broken — but the deadline preempted the verdict, so \
-                     whether it passes is UNKNOWN and its real cost is UNMEASURED: the figure \
-                     is the interrupt point, not this row's cost. Reduce the cost, or move it \
-                     to a lane declaring its own ceiling, so the witness reaches a verdict.",
-                    claim.qualified
-                )),
-                BudgetCompletion::CompletedOverBudget => {
-                    outcome.completed_over_cost_requirement.push(format!(
-                        "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
-                     exactly {elapsed_ms}ms against {budget_ms}ms. The witness ran to \
-                     completion, so this is a measurement rather than a bound and the cost is \
-                     known and actionable. This is a cost debt only — it is not a defect and \
-                     it does not belong on the expected-red roster, which asserts an expected \
-                     FAILURE this row does not exhibit.",
-                        claim.qualified
-                    ))
-                }
-            },
+            } => outcome.completed_over_cost_requirement.push(format!(
+                "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
+                 exactly {elapsed_ms}ms against {budget_ms}ms. The witness ran to \
+                 completion, so this is a measurement rather than a bound and the cost is \
+                 known and actionable. This is a cost debt only — it is not a defect and \
+                 it does not belong on the expected-red roster, which asserts an expected \
+                 FAILURE this row does not exhibit.",
+                claim.qualified
+            )),
         }
     }
     outcome.receipt_identities = receipted.len();
@@ -45015,23 +45184,29 @@ fn witness_eval_verdict_from_claim_outcome(
                 ground: hermetic_effect_ground_verdict(ground),
             }
         }
-        ClaimOutcome::TimedOut {
+        // THE WIRE VERDICT STILL CARRIES THE AXIS AS DATA, which is why `BudgetCompletion`
+        // survives the split: a value has to travel here, and re-deriving it from the arm at
+        // the far end would be a second spelling of the same two states.
+        ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms,
+            budget_ms,
+            kind,
+        } => crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::BudgetExceeded {
+            elapsed_ms: *elapsed_at_least_ms as i64,
+            budget_ms: *budget_ms as i64,
+            kind: kind.label().to_string(),
+            completion:
+                crate::v1_compiler_expected_red_roster_join::BudgetVerdictCompletion::Interrupted,
+        },
+        ClaimOutcome::CompletedOverBudget {
             elapsed_ms,
             budget_ms,
             kind,
-            completion,
         } => crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::BudgetExceeded {
             elapsed_ms: *elapsed_ms as i64,
             budget_ms: *budget_ms as i64,
             kind: kind.label().to_string(),
-            completion: match completion {
-                BudgetCompletion::Interrupted => {
-                    crate::v1_compiler_expected_red_roster_join::BudgetVerdictCompletion::Interrupted
-                }
-                BudgetCompletion::CompletedOverBudget => {
-                    crate::v1_compiler_expected_red_roster_join::BudgetVerdictCompletion::CompletedOverBudget
-                }
-            },
+            completion: crate::v1_compiler_expected_red_roster_join::BudgetVerdictCompletion::CompletedOverBudget,
         },
     }
 }
