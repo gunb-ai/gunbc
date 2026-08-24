@@ -571,6 +571,82 @@ It pairs with a clause owned by `deep-ant-102`: before weighing which of two res
 One failure from two sides: two measurements with no shared elements, and two measurements over
 unequal denominators.
 
+## The treatment that never arrived: a `.dag` change is not measurable until its mirror is regenerated
+
+Four lanes hit this in one night on four different files. It is the same shape as
+`quiet-pike-368`'s "treatment that cannot reach the instrument" above, but it is worth its own
+section because on this substrate it is not an exotic mistake — it is the default.
+
+`gunbc compile`, the floor's strict preparation, and every typecheck run the **seed binary**, built
+from `src/v1/stage0/src/*.rs`. A `.dag` edit reaches an artifact **only through regen**. So a
+correct fix in `dag/**.dag` produces a run byte-identical to the control until its mirror is
+installed.
+
+Receipt, from this document's own lane. Three rows were added to `kernel_algebra_profile_value`; CI's
+floor refused with exactly the error the rows were meant to close. Two phases earlier, the same
+ledger said:
+
+```
+required-ci: regen FAIL generated surface drift: std_algebra.rs
+...  (17 minutes later)
+required-ci: floor refused: ... 'Node(std.algebra.PartialFunction)' establishes no method surface
+```
+
+The fix was correct and had not arrived.
+
+### Why this member of the class is the worst one
+
+The other instances produce a wrong number or a wrong attribution. This one produces **no error at
+all**: the run succeeds, the figures are internally consistent, and control and treatment agree —
+because the treatment was never applied. **A null from a stale binary is indistinguishable from a
+null from a real one.**
+
+That makes it *silently confirmatory*, and worst precisely in the probes built to keep their author
+honest. A branch cut to A/B a withheld row carried the same staleness, and its pre-registration read
+*unchanged → the risk is not realised*. A stale binary hands back exactly that string, and the
+pre-registration is what would have made the author believe it.
+
+> A `.dag` change is not measurable until its mirror is regenerated, and the failure mode is not an
+> error — it is a run that agrees with the control for the wrong reason.
+
+Check `grep -c '<your new symbol>' src/v1/stage0/src/<mirror>.rs` before reading any result, and
+regenerate before cutting an A/B branch. Note the feedback loop is one full CI round-trip:
+`.githooks/pre-commit` and `pre-push` run `cargo fmt` and nothing else, so there is no local regen
+check at all.
+
+## When the ledger gets it right: two failures whose ORDER is the diagnosis
+
+Every other section here collects an instrument failing. This one is the same class seen from the
+side where the instrument won, and a document that only collects failures teaches half the lesson.
+
+The regen line above named `std_algebra.rs` **seventeen minutes before** the floor refused for
+exactly that reason. Having both in one ledger is what made the diagnosis available — the relation
+between the two facts, not either fact alone.
+
+That is a direct argument for CI's independent-phases design (`phases_run=4 failed=2`, every phase
+runs even after an earlier one fails). **A line-stopping regen would have shown the drift and hidden
+the floor error**, leaving one fact instead of a relation, and the next run would have read as *the
+fix did not work* rather than *the fix has not arrived*. Those have opposite remedies.
+
+## Corrections are pushed to holders, not published to artifacts
+
+A retracted claim in this lane was corrected **at the top of its own brief, an hour before it was
+restated by someone who had already read the brief**. Putting the correction first was necessary and
+not sufficient: nothing re-reads a document you have already read. The only thing that stopped the
+claim propagating was a direct message to the person holding it.
+
+Two halves, and each belongs to a different party:
+
+- **The sender's half.** The claim was originally sent as a *caution about how to read a result* and
+  came back as a *claim about a mechanism*. Nothing was misquoted — **the mood changed**, and a claim
+  propagates where a caution would have prompted a check.
+- **The reader's half.** The reader traced the mechanism carefully on the half that touched their own
+  work and took the other half on trust: *the careful thing on the half that touched my own work and
+  the credulous thing on the half that did not.* That allocation is the general failure; the specific
+  claim is incidental.
+
+The artifact fixes the next reader. It never fixes the current one.
+
 ## Neighbours already recorded, and how this differs
 
 - `cargo` exiting 0 without compiling is the same rule for a different harness.
