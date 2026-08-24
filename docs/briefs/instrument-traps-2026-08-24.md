@@ -1295,3 +1295,60 @@ actively cataloguing the class.
 
 **A rule whose domain is uncomputed is not a weak rule. It is a rule with a silent exemption list,
 and the people most confident it is being applied are the ones most likely to be on it.**
+
+## The fix was more dangerous than the defect: a wrong query outranks a wrong list
+
+*Immediately after the entry above, and by its own authors. This is the one to read if you read only
+two.*
+
+The previous entry ends by replacing a remembered list of held PRs with a **computed query** — *every
+open PR carrying a HOLD comment* — on the reasoning that a list drifts and a query cannot.
+
+**The query returned 11 of 41. Nothing said so.**
+
+    my pattern  startswith("## HOLD")   limit 200   ->  13
+    corrected   test("^#*\s*HOLD")      limit 200   ->  41   (matches the census exactly)
+    corrected   test("^#*\s*HOLD")      DEFAULT     ->  11
+
+**Two independent silent narrows, composing.**
+
+1. **The pattern.** My holds begin `## HOLD`; the other author's begin `HOLD — do not merge…` with no
+   `##`. Two spellings of one concept, and `startswith("## HOLD")` cannot distinguish *no holds here*
+   from *holds spelled the other way*.
+2. **The default limit.** `gh pr list` caps at 30 without being asked and without saying so — the same
+   silent truncation as `gh pr view --json files` at 100, in a different command, hit again by people
+   who had documented the first one that morning.
+
+Either alone under-reports. Together they returned **27%** of the domain with the confident shape of a
+complete answer.
+
+### Why this is worse than the list it replaced
+
+**A wrong list is obviously incomplete. A wrong query looks authoritative.**
+
+Had we acted on it, it would have released 11 PRs and left **30 frozen permanently** — and the freeze
+would have been invisible, because the artifact that would have shown the omission is the very query
+that omitted them. A list at least invites the question *is anything missing?*; a query answers that
+question, wrongly, and is believed.
+
+**The generalisation is uncomfortable and it is the point:** *"stop maintaining the set, recompute
+it"* is correct and is not sufficient. Recomputation moves the failure from **staleness**, which is
+loud and expected, to **an under-specified predicate**, which is silent and trusted. The computed
+domain still has a domain — the pattern, the limit, the corpus the tool consents to search — and none
+of those announce themselves.
+
+### The practice that caught the second half
+
+The same exchange corrected a related claim of mine. I had written that one hold rationale — *do not
+move a file under a running measurement* — survives independently and reaches **#9026 alone**. True of
+my 13. Across all 41 it reaches **seven**: `9079 9075 9028 9026 9024 9007 8974`.
+
+It was caught for one reason, in the other author's words:
+
+> I would not have caught that if you had not stated your number **with its denominator attached** —
+> *"on my 13"* is what made the gap visible.
+
+**A count carrying its denominator is falsifiable by anyone holding a larger one.** The same count
+stated bare — *"it reaches #9026 alone"* — is not wrong so much as **unaskable**, because nothing in
+it invites the question *of what?* That is the cheapest habit in this entire document and the only one
+that has repeatedly caught errors before they cost anything.
