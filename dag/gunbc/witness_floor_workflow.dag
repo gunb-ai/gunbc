@@ -630,10 +630,7 @@ fn prepared_bound_steps() -> List<WitnessFloorBoundStep> {
 // it consumed nothing. That is why the failure surfaced as a runner lottery instead of a refusal.
 //
 // Cargo is deliberately NOT listed on the run step: it invokes a prebuilt binary and does not
-// shell out to cargo. Listing it would trade one false declaration for another. By the same rule
-// the CENSUS run step below stays neutral rather than copying this one: `--required-cited-symbol`
-// runs no regen phase and spawns no rustfmt, so declaring the consumption would be the same
-// false declaration pointing the other way.
+// shell out to cargo. Listing it would trade one false declaration for another.
 fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
   append(
     prepared_bound_steps(),
