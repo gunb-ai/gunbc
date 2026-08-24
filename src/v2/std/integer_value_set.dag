@@ -7,6 +7,7 @@ import v2.std.diagnostic {
   None,
   Outcome,
   Rejected,
+  diagnostics_merge,
   diagnostics_singleton,
   node_locus,
   Unavailable
@@ -74,7 +75,7 @@ fn integer_value_set_from_node(value_set: Node) -> Outcome<IntegerValueSet> {
       }
   } else {
     match find_named_child(root: value_set, name: ^integer_value_set_field_kind) {
-      Accepted { value: found_kind, diagnostics: _ } =>
+      Accepted { value: found_kind, diagnostics: kind_ds } =>
         if found_kind == integer_value_set_atom(id: ^integer_value_set_kind_unbounded) {
           if count(value_set.children) == 1 {
             match find_named_child(root: value_set, name: ^integer_value_set_field_interval) {
@@ -85,7 +86,7 @@ fn integer_value_set_from_node(value_set: Node) -> Outcome<IntegerValueSet> {
                   )
                 }
               Rejected { diagnostics: _ } =>
-                Accepted { value: IntegerValueSetUnbounded, diagnostics: None }
+                Accepted { value: IntegerValueSetUnbounded, diagnostics: kind_ds }
             }
           } else {
             Rejected {
@@ -97,9 +98,12 @@ fn integer_value_set_from_node(value_set: Node) -> Outcome<IntegerValueSet> {
         } else if found_kind == integer_value_set_atom(id: ^integer_value_set_kind_interval) {
           if count(value_set.children) == 2 {
             match find_named_child(root: value_set, name: ^integer_value_set_field_interval) {
-              Accepted { value: interval, diagnostics: _ } =>
+              Accepted { value: interval, diagnostics: interval_ds } =>
                 if integer_interval_spec_node_contains(container: interval, contained: interval) {
-                  Accepted { value: IntegerValueSetInterval { interval: interval }, diagnostics: None }
+                  Accepted {
+                    value: IntegerValueSetInterval { interval: interval },
+                    diagnostics: diagnostics_merge(outer: kind_ds, inner: interval_ds)
+                  }
                 } else {
                   Rejected {
                     diagnostics: diagnostics_singleton(
