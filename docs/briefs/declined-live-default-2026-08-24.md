@@ -386,3 +386,65 @@ writing one. The habit is the load-bearing part, and the habit is what failed.
 The citation is now symbolic and stays true across every revision: `parse_entry_live_tree_disposition`,
 its `Option<bool>` local, and its `unwrap_or` tail. Note that the symbolic form is also *shorter*
 and says more — it names what the reader should look for rather than where it happened to sit.
+
+---
+
+## The class splits in two, and the split decides the repair
+
+Asked whether all three members share the carrier shape, `deep-ant-102` checked instead of
+generalising. **Two do, one does not**, and that is a better result than three-of-a-kind because
+the difference predicts which fix is correct. Both halves verified here by symbol before being
+recorded.
+
+### Carrier too narrow — the third state never reaches the consumer
+
+The value is destroyed at a boundary, so no consumer can recover it however carefully it is
+written. **The fix DELETES the collapse.**
+
+- **live-tree disposition.** `parse_entry_live_tree_disposition` holds `Option<bool>` internally
+  and returns `Result<bool, String>` via `unwrap_or(true)`.
+- **floor scanner.** `witness_file_from_source` returns `Option<InventoryWitnessFile>` and ends
+  `if functions.is_empty() { return None; }`. That `None` conflates two different facts — *this
+  file has no test declarations at all* and *this file has test declarations of a kind I do not
+  recognise*. The 13 `test data`-only files are the second, reported as the first.
+
+The scanner's own source carries a comment directly beneath that return calling it a **§3 defect,
+one fact two computations in one binary, deliberately not fixed**. The file already knows.
+
+**Independent corroboration nobody arranged:** the operator prescribed exactly this repair for the
+scanner — model `DiscoveredTestDeclaration = TestFunction { identity } | TestData { identity }` and
+let the executor decide per kind — and warned specifically *against* the alternative of adding
+`test data` to the existing `Vec<String>`. That is carrier widening, ruled from the opposite
+direction, before either finding had been connected to the other.
+
+### Arm discards a good answer — the third state arrives and is thrown away
+
+The value survives to the consumer intact; the consumer chooses to widen instead of using it.
+**The fix ADDS a typed refusal.**
+
+- **bare-name closure.** `resolve_in` returns `Option<String>`, and `None` is both expressible and
+  returned. The consumer reads:
+
+  ```rust
+  let target_module = match resolve_in(&census) {
+      Some(m) => Some(m),
+      None => resolve_in(&pool_bare_census(index)?),
+  };
+  ```
+
+  *Not found in this scope* is a real answer that arrives undamaged, and the arm discards it to ask
+  a bigger question. This is §5's absorbing fallback proper — nothing is missing, something is
+  refused.
+
+### The diagnostic question, which replaces the single-class framing
+
+> **Does the third state reach the consumer?**
+> **If yes it is an arm — add a refusal. If no it is a carrier — delete the collapse.**
+
+Same symptom from the outside; opposite repairs. And getting it backwards is not a wash: **a
+deletion where an addition is needed leaves the widening arm intact**, so the carrier is fixed, the
+value now arrives, and the arm quietly discards it exactly as before — with the collapse gone, the
+evidence that anything is wrong goes with it. The repair would look complete and measure clean.
+
+That failure mode is the same one that made this night's guard reviews hard: a fix at the wrong
+level is not merely insufficient, it removes the symptom that would have located the real one.
