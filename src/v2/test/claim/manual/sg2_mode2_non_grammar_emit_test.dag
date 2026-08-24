@@ -92,14 +92,14 @@ fn sg2_mode2_facts_lookup(_key: Node) -> Optional<InferredFacts> {
 
 data sg2_mode2_inferred_tree: InferredTree = InferredTree {
   root: rust_sg2_instantiation_source_type_node(),
-  facts: Map {
+  facts: PartialFunction {
     lookup: sg2_mode2_facts_lookup
   }
 }
 
 data sg2_mode2_perturbed_inferred_tree: InferredTree = InferredTree {
   root: rust_sg2_foobar_xy_no_rc_source_type_node(),
-  facts: Map {
+  facts: PartialFunction {
     lookup: sg2_mode2_facts_lookup
   }
 }

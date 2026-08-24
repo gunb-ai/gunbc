@@ -41,7 +41,7 @@ pub use crate::v1_compiler_emit_core_support::{
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
-pub use crate::v1_compiler_infer::{build_params_scope, extend_scope};
+pub use crate::v1_compiler_infer::{build_params_scope, call_param_caller_labels, extend_scope};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index};
@@ -658,21 +658,6 @@ pub fn lookup_func_sig_in_scope(
     ))
 }
 
-pub fn typed_named_arg_matches(
-    arg: Rc<Node>,
-    name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    {
-        let n = arg_name_at(arg.clone(), source_indices.clone());
-        if (n.clone() == None) {
-            false
-        } else {
-            (n.clone().unwrap() == name.clone())
-        }
-    }
-}
-
 pub fn order_typed_call_args(
     args: Rc<Vec<Rc<Node>>>,
     func: String,
@@ -710,16 +695,20 @@ pub fn order_typed_call_args(
                             }
                         },
                     );
-                    let param_name_set = sig.params.clone().iter().cloned().fold(
+                    let param_label_set = sig.params.clone().iter().cloned().fold(
                         v1_rt::rc_empty_map::<String, bool>(),
                         |acc: Rc<HashMap<String, bool>>, param: Rc<Node>| {
-                            v1_rt::rc_map_insert(
+                            call_param_caller_labels(param_node_name_at(
+                                param.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ))
+                            .iter()
+                            .cloned()
+                            .fold(
                                 acc,
-                                param_node_name_at(
-                                    param.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ),
-                                true,
+                                |labels: Rc<HashMap<String, bool>>, label: String| {
+                                    v1_rt::rc_map_insert(labels, label.clone(), true)
+                                },
                             )
                         },
                     );
@@ -727,15 +716,32 @@ pub fn order_typed_call_args(
                         let mut __result = Vec::new();
                         for param in sig.params.clone().iter().cloned() {
                             __result.extend(
-                                (*match v1_rt::map_get(
-                                    &arg_map,
-                                    param_node_name_at(
+                                (*{
+                                    let param_name = param_node_name_at(
                                         param.clone(),
                                         scope.type_env.clone().source_indices.clone(),
-                                    ),
-                                ) {
-                                    Some(arg) => Rc::new(vec![arg.clone()]),
-                                    None => Rc::new(vec![]),
+                                    );
+                                    let matching = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for label in call_param_caller_labels(param_name.clone())
+                                            .iter()
+                                            .cloned()
+                                        {
+                                            __result.extend(
+                                                (*match v1_rt::map_get(&arg_map, label.clone()) {
+                                                    Some(arg) => Rc::new(vec![arg.clone()]),
+                                                    None => Rc::new(vec![]),
+                                                })
+                                                .iter()
+                                                .cloned(),
+                                            );
+                                        }
+                                        __result
+                                    });
+                                    match matching.clone().first().cloned() {
+                                        Some(arg) => Rc::new(vec![arg.clone()]),
+                                        None => Rc::new(vec![]),
+                                    }
                                 })
                                 .iter()
                                 .cloned(),
@@ -754,7 +760,7 @@ pub fn order_typed_call_args(
                                 if (n.clone() == None) {
                                     true
                                 } else {
-                                    (emit_map_has(param_name_set.clone(), n.clone().unwrap())
+                                    (emit_map_has(param_label_set.clone(), n.clone().unwrap())
                                         == false)
                                 }
                             } {

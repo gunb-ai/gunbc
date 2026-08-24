@@ -176,7 +176,7 @@ fn arrow_body_form_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn arrow_body_form_eval_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map { lookup: arrow_body_form_eval_facts_lookup }
+    facts: PartialFunction { lookup: arrow_body_form_eval_facts_lookup }
   }
 }
 

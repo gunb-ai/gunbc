@@ -35,7 +35,7 @@ import v2.std.compilers.lexing {
   TokenRule,
   lex_rule_set_token_class_member
 }
-import v2.std.collection { Absent, List, Map, Optional, PointwisePower, Present }
+import v2.std.collection { Absent, List, Map, Optional, PointwisePower, Present, empty_map, map_insert }
 import v2.std.logic { Bool, bool_boolean_algebra }
 import extdeps.languages.lean.overflow { lean_upstream_fixed_width_overflow_returns_rule }
 import std.algebra { Cons, Empty }
@@ -617,65 +617,63 @@ fn lean_fixed_int_spec_facts(
   width: LeanIntegerWidth,
   overflow: LeanAdmittedOverflowSemantics
 ) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          v2.std.optional.Present { value: lean_integer_width_node(width: width) }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          v2.std.optional.Present { value: lean_signedness_node(signedness: signedness) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
-      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
-          v2.std.optional.Present { value: lean_overflow_semantics_node(semantics: overflow.semantics) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(
+            empty_map(),
+            discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+            lean_inhabitant_atom(id: facts.surface_spelling)
+          ),
+          discriminant(v: ModelCoreFactAxisWidth {}),
+          lean_integer_width_node(width: width)
+        ),
+        discriminant(v: ModelCoreFactAxisSignedness {}),
+        lean_signedness_node(signedness: signedness)
+      ),
+      discriminant(v: ModelCoreFactAxisEncoding {}),
+      lean_inhabitant_atom(id: facts.representation)
+    ),
+    discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
+    lean_overflow_semantics_node(semantics: overflow.semantics)
+  )
 }
 
 fn lean_bool_spec_facts(facts: LeanPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      empty_map(),
+      discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      lean_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    lean_inhabitant_atom(id: facts.representation)
+  )
 }
 
 fn lean_width_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      empty_map(),
+      discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      lean_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    lean_inhabitant_atom(id: facts.representation)
+  )
 }
 
 fn lean_overflow_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      empty_map(),
+      discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      lean_inhabitant_atom(id: facts.surface_spelling)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    lean_inhabitant_atom(id: facts.representation)
+  )
 }
 
 fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> PrimitiveFactBundle {

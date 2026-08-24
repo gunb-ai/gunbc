@@ -87,9 +87,6 @@ type Networks {
 service docker.ContainerStats {
   config {
     endpoint: docker_default_endpoint
-    auth: None
-
-    retry: { max_attempts: 3, backoff: exponential, retry_on: [500, 502, 503, 504] }
   }
 
   operation GetStats {
