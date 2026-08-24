@@ -3403,31 +3403,7 @@ fn collect_type_node_realized_surface_names(n: Node, shared_types: Set<String>, 
   rust_identifier_tokens(s: render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
 }
 
-// DECLARATION POSITIONS ARE NOT SIGNATURE POSITIONS, and measuring the first cut is what showed it.
-// Rendering only type_annotation / params / inferred closed the four NonEmptyDiagnostics blocks, the
-// three NonEmptyStr blocks and Edge -- every one of which reaches the emitted text through a
-// function signature -- and left three that do not: `type String = FreeMonoid<Char>` and
-// `type StateDurabilityInstant = EpochMs` realize their Int through an ALIAS RHS, and
-// ProgramAssemblyFoldOk's `index` is a coproduct VARIANT FIELD. Neither position is a signature, so
-// neither was walked. The recursion below mirrors collect_type_node_import_surface_names exactly --
-// the same peel, the same child_type_node descent -- because the question is the same question
-// asked of the realized spelling instead of the authored one.
-fn collect_type_node_realized_surface_names_rec(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> List<String> {
-  let peeled = normalize_access_type_node(n: n)
-  let own = collect_type_node_realized_surface_names(n: peeled, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-  let child_names = peeled.children |> flat_map(ch =>
-    collect_type_node_realized_surface_names_rec(n: child_type_node(ch: ch), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-  )
-  dedupe_nonempty_strings(items: concat(own, child_names))
-}
-
 fn collect_item_realized_surface_names(item: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> List<String> {
-  let from_decl_children = item.children |> flat_map(ch =>
-    collect_type_node_realized_surface_names_rec(n: child_type_node(ch: ch), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-  )
-  let from_alias_rhs = if is_bare_leaf_item(item: item) {
-    collect_type_node_realized_surface_names(n: resolved_type(n: item), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-  } else { [] }
   let from_ann = match item.type_annotation {
     Present { value: t } => collect_type_node_realized_surface_names(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
     Absent => []
@@ -3439,7 +3415,7 @@ fn collect_item_realized_surface_names(item: Node, shared_types: Set<String>, so
     Present { value: Resolved { node: rt } } => collect_type_node_realized_surface_names(n: rt, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
     _ => []
   }
-  unique_strings(items: concat(concat(from_decl_children, from_alias_rhs), concat(from_ann, concat(from_params, from_inferred))))
+  unique_strings(items: concat(from_ann, concat(from_params, from_inferred)))
 }
 
 fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> List<String> {
