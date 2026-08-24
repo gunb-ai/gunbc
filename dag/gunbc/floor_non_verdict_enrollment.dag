@@ -64,6 +64,20 @@ type PopulationBasis
 // measures, and writing 43 here would be a count copied from a branch that has not landed --
 // exactly the fix-carrying baseline that produced the false regression this carrier was dispatched
 // under. The row is re-measured when that PR merges, and the basis arm is what says it must be.
+//
+// THE FALSE REGRESSION THE LINE ABOVE NAMES, stated once so the reference resolves: the brief was
+// that 99 witnesses went PASSED -> RUNTIME-ERRORED across 330f63c514..5482863b4e while the floor
+// reported failed=0. An identity-set diff shows no such transition -- the 99 were baselined
+// against a branch head already carrying the fix, so they were compared to a tree they never ran
+// in. The brief was wrong about the cause and right about the smell, and the smell is this module.
+//
+// THE MEASUREMENT IS NOT TRANSCRIBED IN PROSE ANYWHERE, per the 2026-08-24 bankruptcy ruling
+// (#9132: name the instrument, never transcribe its output). It lives below as typed rows whose
+// PopulationBasis names the run and head each was measured on, so a reader can tell a figure from
+// a receipt -- the distinction a markdown board cannot carry. A probe document holding these same
+// counts was deleted from this change for that reason, rather than left as the one file
+// re-establishing a corpus main had just emptied.
+
 data floor_non_verdict_population_basis: PopulationBasis = MeasuredOnOneRun {
   run: "github actions witnesses.yml run 32681700364",
   head_commit: "5482863b4e8c01c91bb0261481acfd727cea552b",
