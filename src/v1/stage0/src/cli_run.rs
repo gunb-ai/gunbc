@@ -54,6 +54,7 @@ mod phase_profile;
 #[path = "required_regen_host.rs"]
 mod required_regen_host;
 pub(crate) mod shared_fill;
+pub(crate) mod terminal_ledger_publish;
 pub(crate) mod test_module_hygiene_bridge;
 pub use floor_discovery_snapshot::{
     append_discovery_trace_row, build_floor_discovery_request,
@@ -478,6 +479,200 @@ fn test_sig_or_none(
     }
 }
 
+#[cfg(test)]
+mod bare_reference_scanner_tests {
+    use super::{bare_identifier_candidates, module_self_declared_names};
+
+    /// Every coproduct shape the corpus actually writes. The multiline form is the one
+    /// review 55386 caught being missed, and it is how `std.spatial_frame` declares
+    /// `ExtentInFrame` and `std.realization_schedule` declares `Predicted` — two of the
+    /// four variants this guard exists for.
+    #[test]
+    fn self_declared_names_collect_every_coproduct_form() {
+        let src = "module std.probe\n\
+                   type VisibilityScope = Repo | Org | Network | World\n\
+                   type FrameExtent\n\
+                     = ExtentInFrame { length: FrameLength }\n\
+                     | ExtentFrameUnregistered { identity: Id }\n\
+                   type CostBasis\n\
+                     = Predicted\n\
+                     | Measured\n\
+                   type CostAccount<S> {\n\
+                     time: Measure<Time, S>\n\
+                   }\n\
+                   type Result<ok, err> = Ok { value: ok } | Err { value: err }\n\
+                   data volume_row: Int = 3\n\
+                   fn trim_one(s: String) -> String { s }\n";
+        let names = module_self_declared_names(src);
+        for expected in [
+            "VisibilityScope",
+            "Repo",
+            "Org",
+            "Network",
+            "World",
+            "FrameExtent",
+            "ExtentInFrame",
+            "ExtentFrameUnregistered",
+            "CostBasis",
+            "Predicted",
+            "Measured",
+            "CostAccount",
+            "S",
+            "Result",
+            "ok",
+            "err",
+            "Ok",
+            "Err",
+            "volume_row",
+            "trim_one",
+        ] {
+            assert!(
+                names.contains(expected),
+                "missing self-declared name {expected}"
+            );
+        }
+    }
+
+    /// A coproduct may be spaced out. `std.measure`'s `Dimension` puts blank lines
+    /// between groups of variants and `Volume` sits after one; breaking the block scan
+    /// on the blank line dropped it and silently reopened the edge this guard closes.
+    #[test]
+    fn blank_lines_do_not_end_a_coproduct_block() {
+        let src = "module std.measure\n\
+                   type Dimension\n\
+                     = Length\n\
+                     | Mass\n\
+                   \n\
+                     | Area\n\
+                     | Volume\n\
+                   \n\
+                   type Scale =\n\
+                     | Nano\n";
+        let names = module_self_declared_names(src);
+        for expected in [
+            "Dimension",
+            "Length",
+            "Mass",
+            "Area",
+            "Volume",
+            "Scale",
+            "Nano",
+        ] {
+            assert!(
+                names.contains(expected),
+                "missing {expected} across a blank line"
+            );
+        }
+    }
+
+    // A type ALIAS does not declare its target. `type List<element> = FreeMonoid<element>`
+    // declares `List`; `FreeMonoid` is a REFERENCE OUT, and collecting it here suppressed
+    // the closure edge to whichever module declares it — an UNDER-pull, the dangerous
+    // direction. Review 55399 called this correctly. An earlier revision carried it as a
+    // marked known gap; a marked gap records how debt ENDS, it does not authorize creating
+    // it, and this one pointed the wrong way.
+    //
+    // The discriminator is the right-hand side's own shape: a coproduct alternates (`|`) or
+    // carries a record payload (`{`), an alias does neither.
+    //
+    // THE ARM THAT SHAPE CANNOT DECIDE, named rather than left to be found: `type X = Foo`
+    // with a bare capitalized RHS is an alias under this rule, but the same bytes are how a
+    // single-alternative coproduct would spell itself if the grammar admits one — same text,
+    // opposite correct answers. Censused across `dag` + `src/v2` + `src/v1` rather than
+    // assumed: 60 occurrences, and every one decides ALIAS. 47 name a type declared in
+    // ANOTHER module (unambiguous alias — the suppressed edge was real, so this class is 47
+    // instances wide, not one). The other 13 name a type declared in the SAME FILE, each
+    // hand-checked: `type FileEntry {` under `type FileClassification = FileEntry`,
+    // `type ParseTableRealization {` under `type ParseTable`, and eleven more of that shape.
+    // Those 13 are inert either way — a same-file `type` head is already in this set via the
+    // declaration-head arm, so the resolve loop skips the name before the pool is consulted.
+    // ZERO of the 60 is a single-alternative coproduct.
+    //
+    // What is NOT claimed: that the ambiguity is impossible. `type X = Foo` where `Foo` is
+    // declared nowhere is undecidable from the RHS alone, and someone can author one
+    // tomorrow. The residual failure would be an OVER-pull, not an under-pull.
+    #[test]
+    fn an_alias_target_is_a_reference_out_not_a_declared_variant() {
+        let names = module_self_declared_names(
+            "type List<element> = FreeMonoid<element>\ntype Bit = Bool\n",
+        );
+        assert!(names.contains("List"), "the alias itself is declared here");
+        assert!(
+            names.contains("element"),
+            "its type parameter is bound here"
+        );
+        assert!(
+            !names.contains("FreeMonoid"),
+            "an alias TARGET is a reference out — collecting it suppresses a real closure edge"
+        );
+        assert!(
+            !names.contains("Bool"),
+            "same for a non-generic alias target"
+        );
+    }
+
+    #[test]
+    fn a_single_variant_coproduct_with_a_payload_is_still_a_declaration() {
+        let names =
+            module_self_declared_names("type FrameExtent = ExtentInFrame { length: Int }\n");
+        assert!(
+            names.contains("ExtentInFrame"),
+            "a record payload marks a variant, not an alias — the brace is the discriminator"
+        );
+    }
+
+    /// A record body's field labels are not declarations the module exports.
+    #[test]
+    fn record_field_labels_are_not_self_declared() {
+        let src = "module std.probe\n\
+                   type CostAccount {\n\
+                     observation: Observation\n\
+                   }\n";
+        let names = module_self_declared_names(src);
+        assert!(names.contains("CostAccount"));
+        assert!(
+            !names.contains("observation"),
+            "field label collected as a declaration"
+        );
+    }
+
+    /// A parenthesis-free arrow lambda binds its parameter. The guard keys on the
+    /// PRECEDING token, not the arrow, because a match arm head is also `ident =>` and
+    /// binding one would suppress a real edge — a silent under-pull.
+    #[test]
+    fn bare_arrow_lambda_parameter_is_bound_but_a_match_arm_head_is_not() {
+        let src = "module std.probe\n\
+                   fn f(xs: List<Row>) -> Bool {\n\
+                     xs |> any(t => t.name == name)\n\
+                   }\n\
+                   fn g(o: Optional<Int>) -> Int {\n\
+                     match o {\n\
+                       Absent => 0\n\
+                       Present { value: v } => v\n\
+                     }\n\
+                   }\n";
+        let c = bare_identifier_candidates(src);
+        assert!(
+            c.bound.contains("t"),
+            "lambda parameter not treated as a binder"
+        );
+        assert!(
+            !c.bound.contains("Absent"),
+            "match arm head bound — this would silently drop a real closure edge"
+        );
+    }
+
+    /// The other two legal preceding tokens: a comma and a named argument's colon.
+    #[test]
+    fn named_argument_and_comma_positioned_lambdas_bind_too() {
+        let src = "module std.probe\n\
+                   fn f(xs: List<Int>) -> Int {\n\
+                     fold(xs, init: 0, f: acc => acc)\n\
+                   }\n";
+        let c = bare_identifier_candidates(src);
+        assert!(c.bound.contains("acc"));
+    }
+}
 #[cfg(test)]
 mod stage0_cargo_manifest_parser_tests {
     use super::{parse_stage0_cargo_manifest_bin_paths, Stage0CargoManifestBinParse};
@@ -2130,6 +2325,9 @@ const COMMIT_WORKFLOW_AUTHORITY_REL: &str = "dag/gunbc/commit_workflow.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 const WITNESS_EXCLUSION_FRONTIER_DATA_NAME: &str = "witness_exclusion_frontier";
+/// The v2 entry roster the emission phase compiles — one `.dag` row, so re-deciding
+/// which entry the gate compiles is an authoring change, never a Rust edit.
+const REQUIRED_V2_EMISSION_ENTRIES_DATA_NAME: &str = "required_v2_emission_entries";
 /// The `WitnessConsumerCadence` variant names a `witness_exclusion_frontier` row may carry
 /// (`std.witness_admission` authority). `DiscoverySelection` is deliberately absent — an
 /// exclusion row claiming discovery is a contradiction and the reader refuses it.
@@ -2630,39 +2828,74 @@ pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, St
                 .into_owned()
         })
         .collect();
-    let index = build_module_path_index(&abs_roots);
     let entry_root = workspace.join(roots.entry().repo_relative_path());
-    let mut entry_paths = Vec::new();
-    collect_dag_files_result(&entry_root, &mut entry_paths)?;
+    regen_input_sources_over_roots(&entry_root, &abs_roots)
+}
 
-    let mut seen: std::collections::HashMap<String, (String, String)> =
-        std::collections::HashMap::new();
-    let mut queue: Vec<String> = Vec::new();
+/// `regen_input_sources` with its roots supplied rather than derived from the
+/// repository layout — the seam the regression test drives with a controlled
+/// fixture. The production entry point above is the only caller that computes
+/// the roots; everything below this line is root-agnostic, so the test exercises
+/// THE SAME code path production does rather than a re-implementation of it.
+fn regen_input_sources_over_roots(
+    entry_root: &Path,
+    abs_roots: &[String],
+) -> Result<Vec<(String, String)>, String> {
+    let mut entry_paths = Vec::new();
+    collect_dag_files_result(entry_root, &mut entry_paths)?;
+
+    // Seed: every `.dag` under the entry root that declares a module path.
+    let mut seeds: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
     for path in &entry_paths {
         let content =
             std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
         let rel = workspace_relative_repo_path(&path.to_string_lossy());
-        if let Some(module_path) = extract_module_path(&content) {
-            seen.insert(module_path, (rel, content.clone()));
-        }
-        queue.push(content);
-    }
-    while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            if seen.contains_key(&module_path) {
-                continue;
-            }
-            if let Some(rel_path) = index.get(&module_path) {
-                let file_path = workspace.join(rel_path);
-                let file_content = std::fs::read_to_string(&file_path)
-                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
-                seen.insert(module_path, (rel_path.clone(), file_content.clone()));
-                queue.push(file_content);
-            }
+        if extract_module_path(&content).is_some() {
+            seeds.push(Rc::new(v1_compiler_compile::SourceFile {
+                path: rel,
+                content,
+            }));
         }
     }
-    let mut result: Vec<(String, String)> = seen.into_values().collect();
+
+    // Grow the closure through `extend_sources_to_both_closure_fixpoint` — import
+    // edges PLUS dotted-reference PLUS bare-reference modules, to a joint fixpoint —
+    // rather than the import-only walk this function used to run.
+    //
+    // WHY (§3 de-fork). An `import` line and a qualified or bare reference are the
+    // SAME dependency edge. A walk that follows only imports is therefore not a
+    // narrower closure — it is a closure that goes BLIND the moment a module spells
+    // a dependency any other way. That function's own doc-comment calls itself "The
+    // ONE closure-extension authority" and names the loaders that call it: "Both
+    // source loaders — the per-entry witness loader and the affected-set
+    // compile-clean gate loader". There are THREE. This one was the third, and it
+    // is the one whose subject feeds regeneration of the seed itself.
+    //
+    // So the single-authority claim was true of its own enumeration and false of
+    // the concept it named — the fork survived precisely because the prose asserting
+    // its absence was load-bearing and never re-audited against the call graph.
+    //
+    // The same class was already repaired once, for the gate loader, which had run
+    // only `extend_with_reference_closure` and dropped providers reached purely by
+    // bare name (ARM1 ref-only = 3 unresolved-type diags; +bare = 0).
+    //
+    // LATENT HERE, FATAL NEXT DOOR. On this branch every seed dependency is still
+    // spelled as an import, so the import-only walk happens to reach everything and
+    // the defect cannot be observed from the corpus alone — which is why it has sat
+    // here unnoticed. On `integration/namespace-cut`, where the `dag/` imports are
+    // deleted, the identical code admits `src/v1` and NOTHING else: the queue drains
+    // on its first pass and regen refuses with `unresolved type 'std.types.SourceSpan'`
+    // while `std.types` sits present and correct in the authority. The regression
+    // test below fixes the behaviour independently of either corpus.
+    let mei = build_multi_entry_index(abs_roots);
+    let closure = extend_sources_to_both_closure_fixpoint(seeds, &mei)?;
+
+    let mut result: Vec<(String, String)> = closure
+        .into_iter()
+        .map(|s| (s.path.clone(), s.content.clone()))
+        .collect();
     result.sort_by(|a, b| a.0.cmp(&b.0));
+    result.dedup_by(|a, b| a.0 == b.0);
     Ok(result)
 }
 
@@ -3094,11 +3327,84 @@ const COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY: &str = "dag/gunbc/compile_clean_dia
 /// Whether `UnlistedImportUse` blocks compile-clean per the single policy row
 /// (`compile_clean_unlisted_import_use_enforcement` in `gunbc.compile_clean_diagnostic_policy`).
 /// Both the floor receipt path and the CLI transport must read this — never restate the predicate.
+/// The policy entry's OWN import closure, as an explicit source set.
+///
+/// Why this exists rather than a whole-tree resolve: reading one nullary `Bool` used to cost a
+/// full resolve+typecheck over `default_source_roots()` — the whole tree — which is both
+/// enormously oversized (the policy module has three imports) and, more seriously, a function
+/// answering a question about the CALLER's world by consulting a DIFFERENT one. Measured, same
+/// probe, only the caller's roots varied: 216ms when the caller's roots happened to match the
+/// whole-tree key, 44886ms when they did not and the resolve paid a cold whole-tree load
+/// (`docs/probes/qualified_name_resolution_cost_2026-08-23.md`).
+///
+/// FAIL-CLOSED BY CONSTRUCTION (DESIGN §5): every arm that cannot produce the exact closure
+/// REFUSES with a typed, located message naming the module and the file. It must never fall back
+/// to the whole tree — that arm would restore today's cost, zero the deficit's frequency by
+/// construction, and make the widening unrankable ever after. Note the contrast with
+/// `resolve_virtual_source_with_imports`, whose BFS silently SKIPS an import it cannot resolve;
+/// a silent skip here would narrow the policy closure and answer from a graph missing the very
+/// module the answer depends on.
+fn compile_clean_policy_entry_closure_sources(
+    roots: &[String],
+    entry_rel: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let ws = process_workspace_root();
+    let module_index = build_module_path_index(roots);
+    let read = |rel: &str| -> Result<String, String> {
+        let abs = ws.join(rel);
+        std::fs::read_to_string(&abs).map_err(|e| {
+            format!(
+                "compile_clean_diagnostic_policy closure: cannot read `{}` ({e})",
+                abs.display()
+            )
+        })
+    };
+
+    let entry_content = read(entry_rel)?;
+    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+    let mut queue: Vec<String> = vec![entry_content.clone()];
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            let Some(rel_path) = module_index.get(&module_path) else {
+                return Err(format!(
+                    "compile_clean_diagnostic_policy closure: import `{module_path}` \
+                     (reached from `{entry_rel}`) names no module in the source roots"
+                ));
+            };
+            // `entry_rel` may be absolute (an entry argument typically is) while the module
+            // index stores workspace-relative keys, so compare canonically — a string compare
+            // would miss and admit the entry twice under two spellings.
+            if same_canonical_file(rel_path, entry_rel) || seen.contains_key(rel_path) {
+                continue;
+            }
+            let file_content = read(rel_path)?;
+            seen.insert(
+                rel_path.clone(),
+                Rc::new(v1_compiler_compile::SourceFile {
+                    path: rel_path.clone(),
+                    content: file_content.clone(),
+                }),
+            );
+            queue.push(file_content);
+        }
+    }
+
+    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+        seen.into_iter().map(|(_, v)| v).collect();
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    sources.push(Rc::new(v1_compiler_compile::SourceFile {
+        path: entry_rel.to_string(),
+        content: entry_content,
+    }));
+    Ok(sources)
+}
+
 pub fn compile_clean_unlisted_import_use_blocks_from_policy() -> Result<bool, String> {
     let roots = default_source_roots();
     let entry = resolve_entry_file_under_roots(&roots, COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY)
         .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
-    let (graph, indices) = resolve_entry_graph_shared(&roots, &entry)
+    let sources = compile_clean_policy_entry_closure_sources(&roots, &entry)?;
+    let (graph, indices) = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
         .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
     match v1_interpreter::run_in_context_with_args(
@@ -3180,6 +3486,11 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
                 // the same reason WhereRefinementUnenforced does.
                 | crate::v1_std_core::CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. }
                 | crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished { .. }
+                // The service-config reference-judgment deferral is non-blocking, so it must
+                // be admitted HERE or it would be counted by neither predicate — rendered to
+                // the terminal while every count the gate reports reads zero for it, which is
+                // the frontier-claiming-to-be-counted failure the comment above names.
+                | crate::v1_std_core::CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. }
         )
 }
 
@@ -4754,6 +5065,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => {
             "ConstructorCallAdmissionRefused"
         }
+        CompilerDiagnostic::AdmitCallersEntryNotDeclRef { .. } => "AdmitCallersEntryNotDeclRef",
         CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
@@ -4765,6 +5077,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::SourceAnnotationRefused { .. } => "SourceAnnotationRefused",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
+        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => {
+            "ServiceConfigReferenceJudgmentDeferred"
+        }
     };
     let name = match d.diagnostic.as_ref() {
         CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
@@ -4796,6 +5111,10 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OptionalCastNotEliminated { source_type, .. } => source_type.clone(),
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field, .. } => field.clone(),
         CompilerDiagnostic::ConstructorCallAdmissionRefused {
+            constructor_decl_name,
+            ..
+        } => constructor_decl_name.clone(),
+        CompilerDiagnostic::AdmitCallersEntryNotDeclRef {
             constructor_decl_name,
             ..
         } => constructor_decl_name.clone(),
@@ -4836,6 +5155,11 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TransportEmissionNotModeled {
             service, operation, ..
         } => format!("{service}.{operation}"),
+        // The NAME is the config FIELD, not the referenced spelling: the burn-down this
+        // histogram feeds is the list of service-config fields still awaiting the reference
+        // judgment, and keying on the referenced name would spread one unjudged field across
+        // a row per service that happens to use a different word in it.
+        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { field, .. } => field.clone(),
     };
     (class.to_string(), name)
 }
@@ -5432,6 +5756,64 @@ mod compile_clean_via_index_verdict_equivalence {
     }
 
     /// §5 discriminating RED: an unresolved import must red BOTH paths.
+    /// CAUSAL control for the regen-closure de-fork — the companion to
+    /// `regen_subject_admits_a_provider_reached_only_by_reference`.
+    ///
+    /// That test proves the provider ENTERS the subject. It does not prove the
+    /// provider enters BECAUSE OF THE REFERENCE, and those are different claims:
+    /// if the closure admitted every module in the wider roots for some unrelated
+    /// reason, the admitting test would still pass while the reference edge did no
+    /// work at all. That is the both-arms-green failure one level up — a test whose
+    /// subject is present for reasons the test does not control.
+    ///
+    /// So this fixture is byte-identical to that one EXCEPT that the seed does not
+    /// name the provider. The provider must then be ABSENT from the subject. Taken
+    /// together the pair establishes the edge is causal: reference present ->
+    /// admitted, reference absent -> not admitted, everything else held fixed.
+    #[test]
+    fn regen_subject_omits_a_provider_nothing_references() {
+        let base = super::workspace_root()
+            .join("target")
+            .join(format!("regen-closure-causal-{}", std::process::id()));
+        let entry_root = base.join("seed");
+        let provider_root = base.join("corpus");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&entry_root).expect("create entry root");
+        fs::create_dir_all(&provider_root).expect("create provider root");
+
+        // The ONLY difference from the admitting test: no reference to the provider.
+        fs::write(
+            entry_root.join("seed.dag"),
+            "module v1.regen_seed_probe\nfn probe() -> Int {\n  1\n}\n",
+        )
+        .expect("write seed");
+        fs::write(
+            provider_root.join("provider.dag"),
+            "module std.regen_provider_probe\nfn regen_provider_probe_answer() -> Int {\n  7\n}\n",
+        )
+        .expect("write provider");
+
+        let roots = vec![
+            entry_root.to_string_lossy().into_owned(),
+            provider_root.to_string_lossy().into_owned(),
+        ];
+        let admitted = super::regen_input_sources_over_roots(&entry_root, &roots)
+            .expect("regen subject over the fixture roots");
+
+        let _ = fs::remove_dir_all(&base);
+
+        assert!(
+            !admitted
+                .iter()
+                .any(|(_, c)| c.contains("module std.regen_provider_probe")),
+            "an unreferenced provider must NOT be admitted -- if it is, the closure is \
+             widening the subject rather than following edges, and the admitting test \
+             proves nothing about causality; admitted {} module(s): {:?}",
+            admitted.len(),
+            admitted.iter().map(|(p, _)| p).collect::<Vec<_>>()
+        );
+    }
+
     #[test]
     fn planted_unresolved_import_agrees_red() {
         let corpus = Corpus::new(
@@ -5452,6 +5834,80 @@ mod compile_clean_via_index_verdict_equivalence {
     /// §5 discriminating RED: a `SourceAnnotationRefused` in a module outside the
     /// scoped compile-clean closure must surface through whole-tree census fill —
     /// compiling only the affected entry must not hide annotation debt elsewhere.
+    /// DISCRIMINATING RED for the regen-closure de-fork.
+    ///
+    /// A seed module that reaches its provider by REFERENCE ONLY -- no `import`
+    /// line anywhere -- must still have that provider admitted to the regen
+    /// subject. Before the de-fork, `regen_input_sources` grew its closure with
+    /// `extract_import_paths` alone, so this fixture's provider was dropped.
+    ///
+    /// THE FIXTURE'S SHAPE IS THE WHOLE CONTROL, and an earlier version of this
+    /// test got it wrong in a way worth recording: it wrote both modules into ONE
+    /// directory and passed that directory as the entry root. `collect_dag_files_result`
+    /// then picked the provider up as a SEED, so the closure was never asked to
+    /// find anything and the test passed against the old import-only walk too --
+    /// green in both arms, therefore evidence of nothing. The provider must live
+    /// OUTSIDE the entry root and inside the wider root set, which is exactly
+    /// production's shape: entry root `src/v1`, providers under `dag/`.
+    #[test]
+    fn regen_subject_admits_a_provider_reached_only_by_reference() {
+        let base = super::workspace_root()
+            .join("target")
+            .join(format!("regen-closure-defork-{}", std::process::id()));
+        let entry_root = base.join("seed");
+        let provider_root = base.join("corpus");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&entry_root).expect("create entry root");
+        fs::create_dir_all(&provider_root).expect("create provider root");
+
+        fs::write(
+            entry_root.join("seed.dag"),
+            "module v1.regen_seed_probe\nfn probe() -> Int {\n  regen_provider_probe_answer()\n}\n",
+        )
+        .expect("write seed");
+        fs::write(
+            provider_root.join("provider.dag"),
+            "module std.regen_provider_probe\nfn regen_provider_probe_answer() -> Int {\n  7\n}\n",
+        )
+        .expect("write provider");
+
+        // Preconditions, asserted rather than assumed -- if a later edit adds an
+        // import to the fixture, or moves the provider under the entry root, this
+        // test would keep passing while testing nothing (which is how its first
+        // version failed).
+        let seed_text = fs::read_to_string(entry_root.join("seed.dag")).expect("read seed");
+        assert!(
+            super::extract_import_paths(&seed_text).is_empty(),
+            "fixture precondition: the seed reaches its provider by reference only"
+        );
+        let mut entry_files = Vec::new();
+        super::collect_dag_files_result(&entry_root, &mut entry_files).expect("walk entry root");
+        assert_eq!(
+            entry_files.len(),
+            1,
+            "fixture precondition: the provider must NOT be reachable as a seed"
+        );
+
+        let roots = vec![
+            entry_root.to_string_lossy().into_owned(),
+            provider_root.to_string_lossy().into_owned(),
+        ];
+        let admitted = super::regen_input_sources_over_roots(&entry_root, &roots)
+            .expect("regen subject over the fixture roots");
+
+        let _ = fs::remove_dir_all(&base);
+
+        assert!(
+            admitted
+                .iter()
+                .any(|(_, c)| c.contains("module std.regen_provider_probe")),
+            "a provider reached only by reference must be admitted to the regen subject; \
+             admitted {} module(s): {:?}",
+            admitted.len(),
+            admitted.iter().map(|(p, _)| p).collect::<Vec<_>>()
+        );
+    }
+
     #[test]
     fn out_of_closure_annotation_refusal_blocks_scoped_compile_clean() {
         let corpus = Corpus::new(
@@ -6486,6 +6942,609 @@ pub fn load_sources_for_entry_with_pool_index(
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
+// ── THE V2 EMISSION TRANSACTION: ONE PRODUCER, TWO CONSUMERS ─────────────────
+//
+// WHY THIS EXISTS AT ALL. On 2026-08-23 `gunbc compile --source-root dag --source-root
+// src/v2 --entry src/v2/compiler/03_ingest.dag` refused outright on main -- no emitted
+// tree, no cargo log -- while every required phase stayed green for hours. The required
+// run parses `src/v1` .dag, compares the regen mirrors, and folds the witness floor;
+// NONE OF THE THREE COMPILES A v2 ENTRY, so the emission path had no observer at all.
+// The break was a trailing `//` annotation block with no declaration after it, authored
+// under `dag/test/manual/`, which no required phase reads either.
+//
+// WHY IT IS A SHARED FUNCTION AND NOT A SECOND CALLER. The gate MUST refuse wherever
+// the cargo board's producer refuses, or it can green while the board is broken -- two
+// answers to one question, which is the failure this whole lane keeps finding. The board
+// runs `gunbc compile --entry M --target rust --dependency-pool-index primary-precedence`
+// (`docs/probes/curated_cargo_probe_one.sh`, whose EMIT_REFUSE verdict is exactly that
+// command exiting nonzero). So the emission transaction lives HERE, and BOTH the CLI's
+// `--entry` arm and the required phase call it. Keeping two callers equal by hand would
+// have been a fork with three live parameters to drift on -- the pool-index policy, the
+// census population, and the silent-pick gate -- and the first draft of this phase had
+// already drifted on the first of them.
+//
+// WHAT MAKES ONE SMALL ENTRY SUFFICIENT FOR THE ESCAPED CLASS, measured rather than
+// argued. An `--entry` compile is scoped in what it EMITS (the reference-derived closure)
+// and whole-tree in what it PARSES: every indexed module outside the closure enters the
+// name census, so the census parse reaches the whole of `dag` + `src/v2`. Measured on a
+// tree carrying the day's two fixes:
+//
+//   entry                        closure   census   emitted   wall
+//   dag/std/abi.dag                    4    3,847         9    135s
+//   src/v2/compiler/03_ingest.dag    ~180    ~3,670      176    349s
+//
+// and with the real specimen planted back into `dag/test/manual/` the SMALL entry refuses,
+// naming the file and byte range of the offending annotation. So the large entry's extra
+// 214s buys emission coverage of the compiler's own closure, not coverage of the class
+// that escaped. The entry roster is a `.dag` row (`gunbc.ci_layer_roots`
+// `required_v2_emission_entries`) precisely so that trade is re-decidable without a Rust
+// edit.
+//
+// WHAT THE INVARIANT IS, AND WHAT IT IS NOT. NOT a file count: a legitimate compiler
+// change may alter a closure's size, so `emitted == 177` is a CHANGE DETECTOR wearing an
+// invariant's clothes. The invariant is that emission COMPLETED -- the transaction ran to
+// its end and produced a tree -- and the refusal predicate is not restated here either:
+// it is `v1_compiler_compile` `stage0_self_compile_refusal_message`, the same authority
+// the CLI already stops on (a blocking diagnostic, or an empty emitted file set), plus
+// the CLI's own silent-pick gate. A gate that refused on ANY diagnostic would be
+// permanently red -- 03_ingest carries 503 advisory diagnostics and 0 blocking -- so
+// advisory diagnostics are COUNTED and reported and never refused on.
+//
+// WHAT THIS DOES NOT CATCH, named rather than left to be inferred: a rustc error in the
+// emitted tree (nothing here compiles the emission), a semantic regression that still
+// emits, or an emission break confined to a closure the configured entry does not reach.
+
+/// The `.dag` entry paths a required v2-emission phase compiles, read live from
+/// `gunbc.ci_layer_roots` `required_v2_emission_entries`. A `List<String>` rather than a
+/// scalar because the axis is "which entries", not "the entry" -- adding a second entry
+/// is a row, never a second host reader.
+pub fn required_v2_emission_entries() -> Vec<String> {
+    static ENTRIES: OnceLock<Vec<String>> = OnceLock::new();
+    ENTRIES
+        .get_or_init(|| {
+            string_list_data_from_ci_layer_roots_source(
+                ci_layer_roots_authority_content(),
+                REQUIRED_V2_EMISSION_ENTRIES_DATA_NAME,
+            )
+        })
+        .clone()
+}
+
+/// WHAT HAPPENED TO THE EMISSION, AS THREE STATES RATHER THAN TWO.
+///
+/// An `Option<refusal>` beside a counts line is a two-state carrier asked to express
+/// three, and the third state is the dangerous one: a run that never reached the compiler
+/// renders as `emitted=0 blocking=0`, which is byte-identical to a clean run of an empty
+/// subject and is told apart only by whether an ADJACENT line exists. A parser that reads
+/// one line at a time cannot make that distinction, and neither can a person skimming.
+/// So the disposition is a variant, every rendering carries it, and "did not run" is
+/// structurally unable to be read as "ran and found nothing".
+#[derive(Debug, Clone)]
+pub enum EntryEmissionDisposition {
+    /// The transaction ran to its end and produced a tree.
+    Completed { emitted_count: usize },
+    /// The compiler REACHED the subject and refused it. `cause` is the refusal verbatim.
+    Refused { phase: String, cause: String },
+    /// The transaction never ran: an earlier step could not reach the subject at all.
+    /// Distinct from `Refused` because the remedies differ -- a missing entry sends the
+    /// caller to their invocation, a refusal sends them to the corpus.
+    NotExecuted {
+        earlier_phase: String,
+        cause: String,
+    },
+}
+
+impl EntryEmissionDisposition {
+    /// The single word every rendering of this run carries, so one line is self-describing.
+    pub fn tag(&self) -> &'static str {
+        match self {
+            EntryEmissionDisposition::Completed { .. } => "EmissionCompleted",
+            EntryEmissionDisposition::Refused { .. } => "EmissionRefused",
+            EntryEmissionDisposition::NotExecuted { .. } => "EmissionNotExecuted",
+        }
+    }
+
+    pub fn is_completed(&self) -> bool {
+        matches!(self, EntryEmissionDisposition::Completed { .. })
+    }
+}
+
+/// One entry's emission transaction, measured. Counts are reported whatever the
+/// disposition, because a stopped line is analysed before it restarts (DESIGN §5) -- but
+/// they are reported BESIDE a disposition that says which state produced them, never in
+/// place of one.
+#[derive(Debug, Clone)]
+pub struct EntryEmissionRun {
+    pub entry: String,
+    pub closure_modules: usize,
+    pub census_modules: usize,
+    pub blocking_diagnostics: usize,
+    pub advisory_diagnostics: usize,
+    pub wall_ms: u128,
+    pub disposition: EntryEmissionDisposition,
+    /// `None` exactly when the disposition is `NotExecuted` -- there is no result to hold.
+    pub result: Option<Rc<v1_compiler_compile::PipelineResult>>,
+    pub silent_pick: crate::v1_rt::SilentPickTelemetry,
+}
+
+impl EntryEmissionRun {
+    /// The self-describing line both consumers print. One line, one disposition, no
+    /// state inferable only from the presence of a neighbour.
+    pub fn measurement_line(&self, prefix: &str) -> String {
+        format!(
+            "{prefix}: {} entry={} closure={} census={} emitted={} blocking={} advisory={} wall_ms={}",
+            self.disposition.tag(),
+            self.entry,
+            self.closure_modules,
+            self.census_modules,
+            match &self.disposition {
+                EntryEmissionDisposition::Completed { emitted_count } => emitted_count.to_string(),
+                // NOT "0": a transaction that never ran has no emitted count, and a zero
+                // there reads as a clean empty emission to anything summing the column.
+                EntryEmissionDisposition::Refused { .. } => self
+                    .result
+                    .as_ref()
+                    .map(|r| r.files.len().to_string())
+                    .unwrap_or_else(|| "n/a".to_string()),
+                EntryEmissionDisposition::NotExecuted { .. } => "n/a".to_string(),
+            },
+            match self.disposition {
+                EntryEmissionDisposition::NotExecuted { .. } =>
+                    "n/a".to_string(),
+                _ => self.blocking_diagnostics.to_string(),
+            },
+            match self.disposition {
+                EntryEmissionDisposition::NotExecuted { .. } =>
+                    "n/a".to_string(),
+                _ => self.advisory_diagnostics.to_string(),
+            },
+            self.wall_ms,
+        )
+    }
+}
+
+/// AN ENTRY OUTSIDE THE WORKSPACE ROOT IS A REFUSAL, NOT A PANIC, and the pair is the
+/// assertion: an existing file outside the repo and an existing file inside it must reach
+/// different fates through the SAME argument.
+///
+/// RED against the pre-fix code: the outside-the-root case did not return at all -- it
+/// panicked in `repo_relative_path_normalized` while keying the module graph, so this test
+/// aborts the process rather than failing an assertion. The inside-the-root control is what
+/// makes the refusal specific rather than a function that refuses everything.
+///
+/// The absent-file arm is included because it is the neighbouring refusal a wrong fix would
+/// collapse into: "does not exist" and "exists but is not ours" are different facts with
+/// different remedies (create the file vs move it into the tree), and one message for both
+/// would be the state-space conflation this file is full of warnings about.
+#[cfg(test)]
+mod entry_admission_tests {
+    use super::*;
+
+    fn cause_of(run: &EntryEmissionRun) -> (String, String) {
+        match &run.disposition {
+            EntryEmissionDisposition::NotExecuted {
+                earlier_phase,
+                cause,
+            } => (earlier_phase.clone(), cause.clone()),
+            other => panic!("expected NotExecuted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_entry_outside_the_workspace_root_refuses_instead_of_panicking() {
+        // THE FILENAME CARRIES THE PID because this fleet runs concurrent `cargo test`
+        // invocations on one host: a fixed name lets two runs write and delete the same path,
+        // and the loser sees the file vanish mid-test. That failure would surface as this test
+        // flaking on the ABSENT-file arm -- reporting the neighbouring refusal it exists to
+        // hold apart -- which is the most confusing possible symptom for the least
+        // interesting possible cause (review 55343, non-blocking; taken because a flake class
+        // costs more to diagnose later than to remove now).
+        let outside = std::env::temp_dir().join(format!(
+            "gunbc_entry_admission_probe_{}.dag",
+            std::process::id()
+        ));
+        std::fs::write(
+            &outside,
+            "module probe
+",
+        )
+        .expect("fixture write");
+        let run = compile_entry_emission(
+            &["dag".to_string()],
+            outside.to_str().expect("utf8 fixture path"),
+            false,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let (phase, cause) = cause_of(&run);
+        assert_eq!(phase, "entry-admission");
+        assert!(
+            cause.contains("outside the workspace root"),
+            "the refusal must say WHY, not merely that it refused: {cause}"
+        );
+        assert!(
+            cause.contains(&process_workspace_root().display().to_string()),
+            "the refusal must name the root it resolved, or it is unactionable: {cause}"
+        );
+        let _ = std::fs::remove_file(&outside);
+    }
+
+    /// THE ADMISSION PREDICATE IS THE PROCESS-ROOT ONE, ASSERTED DIRECTLY, because the
+    /// difference between the two candidates is not observable through
+    /// `compile_entry_emission` in any environment where the process root and the
+    /// compile-time root COINCIDE -- which is every environment this test runs in, including
+    /// CI. So the discriminating input cannot be authored at the outer boundary, and claiming
+    /// a fixture had proven it would be the decoration §4b warns about.
+    ///
+    /// What IS authorable is the predicate-level distinction, and that is what this asserts:
+    /// for a path outside the process root, `repo_relative_path` refuses while
+    /// `try_repo_relative_path_normalized` is the helper whose baked-root arm made the
+    /// widening possible. The RED is real -- swap the call in `compile_entry_emission` back to
+    /// the `try_` helper and the second assertion here is the one that documents why that is
+    /// wrong for a user-supplied path (review 55344).
+    #[test]
+    fn the_entry_predicate_anchors_on_the_process_root_only() {
+        let outside = std::env::temp_dir().join(format!(
+            "gunbc_entry_predicate_probe_{}.dag",
+            std::process::id()
+        ));
+        std::fs::write(&outside, "module probe\n").expect("fixture write");
+        assert!(
+            repo_relative_path(&outside).is_err(),
+            "the process-root anchor must refuse a path outside the repository"
+        );
+        assert!(
+            repo_relative_path(&process_workspace_root().join("dag")).is_ok(),
+            "and must admit one inside it, or it refuses everything"
+        );
+        let _ = std::fs::remove_file(&outside);
+    }
+
+    #[test]
+    fn a_missing_entry_keeps_its_own_distinct_refusal() {
+        let run = compile_entry_emission(
+            &["dag".to_string()],
+            "dag/definitely_not_a_real_entry_file.dag",
+            false,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let (phase, cause) = cause_of(&run);
+        assert_eq!(
+            phase, "entry-read",
+            "an absent file and a file outside the root are different facts"
+        );
+        assert!(cause.contains("does not exist"), "{cause}");
+    }
+}
+
+fn entry_emission_not_executed(
+    entry_path: &str,
+    started: std::time::Instant,
+    earlier_phase: &str,
+    cause: String,
+) -> EntryEmissionRun {
+    EntryEmissionRun {
+        entry: entry_path.to_string(),
+        closure_modules: 0,
+        census_modules: 0,
+        blocking_diagnostics: 0,
+        advisory_diagnostics: 0,
+        wall_ms: started.elapsed().as_millis(),
+        disposition: EntryEmissionDisposition::NotExecuted {
+            earlier_phase: earlier_phase.to_string(),
+            cause,
+        },
+        result: None,
+        silent_pick: crate::v1_rt::SilentPickTelemetry::default(),
+    }
+}
+
+/// THE EMISSION TRANSACTION. One entry, one render target, over `source_roots`.
+///
+/// Both consumers call this and neither reimplements it: `gunbc compile --entry` (which
+/// then writes the tree and renders diagnostics) and `claim_executor --required-v2-emission`
+/// (which drops the tree and reads only the disposition). That is what makes "the gate is
+/// green" and "the board's producer emitted" the same fact rather than two.
+///
+/// Silent-pick telemetry is captured INSIDE the transaction because the CLI's own gate
+/// reads it: a run that leaves it to the caller lets one consumer refuse where the other
+/// does not.
+pub fn compile_entry_emission(
+    source_roots: &[String],
+    entry_path: &str,
+    primary_precedence: bool,
+    render_target: crate::v1_compiler_artifact::RenderTarget,
+) -> EntryEmissionRun {
+    let started = std::time::Instant::now();
+    // The entry is a FILE, so it is anchored against the workspace root directly rather
+    // than through `anchor_source_root`, which asserts a directory and panics on a path.
+    let entry_abs = if std::path::Path::new(entry_path).is_absolute() {
+        std::path::PathBuf::from(entry_path)
+    } else {
+        process_workspace_root().join(entry_path)
+    };
+    if !entry_abs.is_file() {
+        return entry_emission_not_executed(
+            entry_path,
+            started,
+            "entry-read",
+            format!(
+                "entry file does not exist: {entry_path} (--entry names a repo path, not a module path)"
+            ),
+        );
+    }
+    // AN ENTRY OUTSIDE THE WORKSPACE ROOT REFUSES HERE, WHERE THE PATH IS STILL A CLI
+    // ARGUMENT, instead of panicking four frames down in module-graph keying.
+    //
+    // THE PREDICATE IS `repo_relative_path`, NOT `try_repo_relative_path_normalized`, and the
+    // difference is load-bearing (review 55344). The `try_` helper has a third arm that strips
+    // the COMPILE-TIME `workspace_root()`, which exists so sccache-embedded absolute spellings
+    // from another runner checkout still key correctly -- an internal concern about paths the
+    // compiler produced. Reused for a USER-SUPPLIED path it becomes a widening fallback: on a
+    // host where the build checkout still exists, `--entry /that/other/checkout/x.dag` would be
+    // admitted and keyed as though it belonged to THIS tree, silently mixing two trees. That is
+    // the §5 failure arm that widens instead of refusing, inside the guard added to stop a
+    // different §5 failure. `repo_relative_path` anchors against the PROCESS root only and is
+    // already fail-closed by its own contract.
+    //
+    // HAND-RUST RECEIPT: this adds NO new path predicate. It consumes the existing gate, whose
+    // authority is `gunbc.cli_run_repo_grant` `cli_run_repo_path_admissible` and whose
+    // Rust/authority equivalence is pinned by
+    // `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag` together with
+    // this file's `cli_run_repo_grant_equivalence_tests`. Its dissolve-on is that module's:
+    // cli_run.rs Chunk F (docs/plans/cli-run-reconcile-defork.md), when the refusal becomes the
+    // located `std.access.AccessDecision::Deny` from the single grant policy. Routing a second
+    // hand-rolled containment check beside it would have been the §3 fork this receipt exists
+    // to prevent.
+    //
+    // `repo_relative_path_normalized` panics for a path it cannot anchor, and that is the
+    // right shape THERE: by the time a path reaches module-index keying, being unanchorable
+    // is a broken invariant and not an input. But `--entry` is an INPUT, and an existing
+    // file outside the repository is an ordinary thing to hand it -- a scratch fixture in
+    // `/tmp` is what anyone probing this compiler writes first. The existence check above
+    // passes for such a file, so it used to reach the keying panic: `rc=101`, no phase, no
+    // located cause, and a caller reading only stdout sees an empty result indistinguishable
+    // from a clean compile (measured 2026-08-24 while validating an annotation-grain probe).
+    //
+    // A panic is loud and fabricates nothing, so this is not silent wrongness -- it is an
+    // untyped, unlocated failure where §5 asks for a typed located diagnostic. The refusal
+    // names both the path and the root, because "not under the workspace root" is unactionable
+    // without saying which root the process resolved.
+    if repo_relative_path(&entry_abs).is_err() {
+        return entry_emission_not_executed(
+            entry_path,
+            started,
+            "entry-admission",
+            format!(
+                "entry file is outside the workspace root: {} is not under {} \
+                 (--entry names a path inside the repository; a fixture written elsewhere, \
+                 such as /tmp, cannot be keyed into the module graph -- write it under a \
+                 source root and delete it afterwards)",
+                entry_abs.display(),
+                process_workspace_root().display()
+            ),
+        );
+    }
+
+    crate::v1_rt::resolution_silent_pick_enable();
+    // ONE INDEX BUILD, NOT TWO. The closure loader and the census fill both need the
+    // module index, and calling `load_sources_for_entry_with_pool_index` and then building
+    // a second index for the census parsed ~3,800 modules twice per invocation (review
+    // 55167). Building it here and handing the SAME index to both also removes the
+    // possibility that the closure and the census are computed against different
+    // populations, which is a correctness property and not only a cost one.
+    let index: Rc<MultiEntryIndex> = if primary_precedence {
+        Rc::new(build_multi_entry_index_primary_precedence(source_roots))
+    } else {
+        // Strict routes through the process-shared index, so a second `--entry` compile in
+        // one process is a cache hit rather than a rebuild.
+        process_shared_index(source_roots)
+    };
+    let closure = match load_sources_for_entry_with_pool(&index, entry_path) {
+        Ok(closure) => closure,
+        Err(e) => {
+            let _ = crate::v1_rt::resolution_silent_pick_disable();
+            return entry_emission_not_executed(
+                entry_path,
+                started,
+                "closure-load",
+                format!("reference-derived closure load failed: {e}"),
+            );
+        }
+    };
+    let closure_modules: std::collections::HashSet<String> = closure
+        .iter()
+        .filter_map(|s| extract_module_path(&s.content))
+        .collect();
+
+    // Everything indexed and outside the closure enters the NAME CENSUS only. This is
+    // what makes the transaction see a parse break anywhere under the source roots, and
+    // membership is keyed on MODULE PATH rather than file path because the closure loader
+    // and the index normalize paths differently -- a file-path compare would fail to
+    // exclude closure modules and double-load them into the census.
+    let mut census_only: Vec<Rc<v1_compiler_compile::SourceFile>> = index
+        .source_files
+        .iter()
+        .filter(
+            |(module_path, _): &(&String, &Rc<v1_compiler_compile::SourceFile>)| {
+                !closure_modules.contains(*module_path)
+            },
+        )
+        .map(|(_, source)| source.clone())
+        .collect();
+    census_only.sort_by(|a, b| a.path.cmp(&b.path));
+    let census_modules = census_only.len();
+
+    let options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
+        analyze_complexity: false,
+        census_only_sources: Rc::new(census_only.into()),
+    });
+    let result = v1_compiler_compile::compile_sources_with_options(
+        Rc::new(closure.clone().into()),
+        render_target,
+        options,
+    );
+    let silent_pick = crate::v1_rt::resolution_silent_pick_disable();
+
+    // ONE REFUSAL AUTHORITY, NOT A SECOND ONE SPELLED HERE. `stage0_self_compile_refusal_message`
+    // is what `gunbc compile` itself stops on; restating "blocking, or zero files" would be
+    // a second representation of one rule (DESIGN §2/§3), free to drift.
+    let refusal = v1_compiler_compile::stage0_self_compile_refusal_message(
+        format!("compile of {entry_path}"),
+        result.clone(),
+    );
+    let blocking =
+        v1_compiler_compile::interpreter_blocking_diagnostic_messages(result.diagnostics.clone())
+            .len();
+    // The silent-pick gate is part of the CLI's refusal, so it is part of the transaction's:
+    // a gate that skipped it would green on a tree `gunbc compile` exits nonzero on.
+    let disposition = match refusal {
+        Some(cause) => EntryEmissionDisposition::Refused {
+            phase: "emit".to_string(),
+            cause,
+        },
+        None if !silent_pick.fn_parent_first_hits.is_empty() => EntryEmissionDisposition::Refused {
+            phase: "silent-pick-gate".to_string(),
+            cause: format!(
+                "{} fn_parent_first_hit silent pick(s) in this compile",
+                silent_pick.fn_parent_first_hits.len()
+            ),
+        },
+        None => EntryEmissionDisposition::Completed {
+            emitted_count: result.files.len(),
+        },
+    };
+
+    EntryEmissionRun {
+        entry: entry_path.to_string(),
+        closure_modules: closure.len(),
+        census_modules,
+        blocking_diagnostics: blocking,
+        // Derived from one population rather than scanned twice, so the two counts cannot
+        // disagree with the total.
+        advisory_diagnostics: result.diagnostics.len().saturating_sub(blocking),
+        wall_ms: started.elapsed().as_millis(),
+        disposition,
+        result: Some(result),
+        silent_pick,
+    }
+}
+
+/// Every configured entry, each compiled whatever the previous one did. A first refusal
+/// hiding the rest is the failure the required run's phase ordering already refuses to
+/// make (the stopped-line audit: it reports everything, it never greens).
+///
+/// The pool-index policy is `primary-precedence`, matching the board's own invocation
+/// (`docs/probes/curated_cargo_probe_one.sh`) rather than the CLI's default -- the gate
+/// and the board must resolve the same modules or they are measuring different programs.
+pub fn run_required_v2_emission(source_roots: &[String]) -> Result<Vec<EntryEmissionRun>, String> {
+    let entries = required_v2_emission_entries();
+    if entries.is_empty() {
+        // An EMPTY ROSTER REFUSES. Zero entries compiled is not zero breaks -- it is the
+        // phase failing to reach any subject, and reporting it as clean is the
+        // empty-observation narrow (DESIGN, recurring failure modes).
+        return Err(
+            "gunbc.ci_layer_roots required_v2_emission_entries is empty — the phase has no subject"
+                .to_string(),
+        );
+    }
+    Ok(entries
+        .iter()
+        .map(|entry| {
+            compile_entry_emission(
+                source_roots,
+                entry,
+                true,
+                crate::v1_compiler_artifact::RenderTarget::Rust,
+            )
+        })
+        .collect())
+}
+
+/// THE PHASE'S OWN EVIDENCE, EXECUTED RATHER THAN DESCRIBED.
+///
+/// Two controlled fixture roots, authored to differ in ONE thing: `fixtures/v2_emission_gate/red`
+/// holds the real specimen -- a standalone `//` block trailing a module with no declaration
+/// after it -- and `fixtures/v2_emission_gate/green` holds the same block moved above the
+/// declaration it describes, which is the placement DESIGN §4c admits. The RED must refuse
+/// and the GREEN must complete; either flipping is a failure, because a gate that cannot go
+/// red is a decoration and a gate that cannot go green is not usable.
+///
+/// The fixture roots are their OWN source roots, so this runs in well under a second and
+/// does not depend on the state of the repository corpus -- an oracle authored
+/// independently of the tree it will judge (DESIGN §5, on what may serve as an oracle).
+pub fn run_required_v2_emission_selftest() -> Vec<String> {
+    let mut failures = Vec::new();
+    let red_root = "fixtures/v2_emission_gate/red".to_string();
+    let green_root = "fixtures/v2_emission_gate/green".to_string();
+
+    let red = compile_entry_emission(
+        &[red_root],
+        "fixtures/v2_emission_gate/red/subject.dag",
+        true,
+        crate::v1_compiler_artifact::RenderTarget::Rust,
+    );
+    match &red.disposition {
+        EntryEmissionDisposition::Completed { emitted_count } => failures.push(format!(
+            "selftest RED did not refuse: {emitted_count} file(s) emitted from the trailing-annotation fixture"
+        )),
+        // The refusal must be the ANNOTATION one. A fixture that refuses for an unrelated
+        // reason would keep this control permanently green while the class it stands for
+        // went unobserved.
+        //
+        // The expected sentence is ASKED FOR rather than spelled: it comes from the single
+        // message authority, `std_source_annotation` `annotation_attachment_refusal_message`,
+        // keyed on the typed variant `UnattachedAtScopeEnd` that this fixture provokes. A
+        // literal here would have been a positional pointer into a message -- a second
+        // spelling of a sentence one function owns, which a rewording silently invalidates
+        // (DESIGN §3). Grounded this way, a rewording moves both sides together and the
+        // check cannot rot; the variant, not the wording, is the identity being asserted.
+        EntryEmissionDisposition::Refused { cause, .. } => {
+            let expected = crate::std_source_annotation::annotation_attachment_refusal_message(
+                Rc::new(
+                    crate::std_source_annotation::AnnotationAttachmentRefusal::UnattachedAtScopeEnd {
+                        origin: Rc::new(crate::std_types::SourceSpan {
+                            file: String::new(),
+                            start: 0,
+                            end: 0,
+                        }),
+                    },
+                ),
+            );
+            if !cause.contains(&expected) {
+                failures.push(format!(
+                    "selftest RED refused for the wrong cause; expected the UnattachedAtScopeEnd refusal ({expected}), got: {cause}"
+                ));
+            }
+        }
+        EntryEmissionDisposition::NotExecuted {
+            earlier_phase,
+            cause,
+        } => failures.push(format!(
+            "selftest RED never ran ({earlier_phase}): {cause}"
+        )),
+    }
+
+    let green = compile_entry_emission(
+        &[green_root],
+        "fixtures/v2_emission_gate/green/subject.dag",
+        true,
+        crate::v1_compiler_artifact::RenderTarget::Rust,
+    );
+    match &green.disposition {
+        EntryEmissionDisposition::Completed { .. } => {}
+        EntryEmissionDisposition::Refused { phase, cause } => {
+            failures.push(format!("selftest GREEN refused at {phase}: {cause}"))
+        }
+        EntryEmissionDisposition::NotExecuted {
+            earlier_phase,
+            cause,
+        } => failures.push(format!(
+            "selftest GREEN never ran ({earlier_phase}): {cause}"
+        )),
+    }
+    failures
+}
+
 /// Import-edge closure ONLY — no reference-derived or bare-reference extension.
 /// Host twin for witnesses proving a module's cross-module bindings come from
 /// declared `import` edges, not pool membership or bare-reference coincidence
@@ -6915,6 +7974,40 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             continue;
         }
         let name = &content[start..i];
+        // A PARENTHESIS-FREE arrow lambda binds its single parameter: `any(t => ...)`,
+        // `map(rm => ...)`, `fold(xs, init: 0, f: acc => ...)`. `destructuring_bound_spans`
+        // only recognises the parenthesised form `(a, b) =>` and the pattern form
+        // `{ .. } =>`, so this one leaked its binder into the reference set — and a
+        // one-letter binder resolves against the WHOLE POOL, where some module
+        // somewhere declares `fn t`. Receipt: `dag/std/algebra.dag`'s
+        // `any(t => t.name == name)` pulled `dag/test/claim/pcb_footprint_witness_test.dag`
+        // (which declares `fn t(component, terminal)`) and through it the entire PCB
+        // product corpus into the v1 seed's compile closure.
+        //
+        // The guard is the PRECEDING token, not the arrow alone: a match arm head is
+        // also `ident =>` but is preceded by `{`, `}` or a newline, whereas a lambda
+        // parameter sits in argument position — after `(`, `,` or a named-argument
+        // `:`. Measured over the corpus, all 4397 sites matching that shape are
+        // lambdas; no match-arm head is preceded by any of the three.
+        let is_bare_arrow_lambda_param = {
+            let mut j = i;
+            while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            let arrow = content.as_bytes()[j..].starts_with(b"=>");
+            let mut k = start;
+            while k > 0 && bytes[k - 1].is_ascii_whitespace() {
+                k -= 1;
+            }
+            let prev = if k > 0 { bytes[k - 1] } else { b'\0' };
+            arrow && matches!(prev, b'(' | b',' | b':')
+        };
+        if is_bare_arrow_lambda_param {
+            out.bound.insert(name.to_string());
+            prev_token = Some(name);
+            just_saw_colon = false;
+            continue;
+        }
         let was_after_colon = just_saw_colon;
         just_saw_colon = false;
         // Binding occurrence (`let repo`, `data repo`) — a name being BOUND is
@@ -7033,6 +8126,139 @@ struct BothClosureEdgeIndex {
     bare_scan_eligible: HashSet<String>,
 }
 
+/// The names a module declares FOR ITSELF, including the variant heads of its own
+/// coproducts.
+///
+/// The bare census indexes top-level declaration heads. A coproduct VARIANT is not
+/// one, so a module that declares `type VisibilityScope = Repo | Org | Network | World`
+/// and then writes `World` was scanned as referencing some other module — and the
+/// pool happens to contain `type World sole_constructor` in `dag/product/spatial_world.dag`,
+/// so `std.cache_interface` acquired a closure edge to the spatial product corpus.
+///
+/// Three more of the identical shape in one closure: `Volume` (a variant of
+/// `std.measure`'s own `Dimension`, pulled `gunbc.roadmap_model`), `Measured` (a
+/// variant of `std.realization_schedule`'s own coproduct, pulled `std.observation`),
+/// and `ExtentInFrame` (a variant in `std.spatial_frame`, pulled `std.attribution`).
+///
+/// This is not a tiebreak and not a policy: a name the module itself declares is
+/// bound by that declaration, so it can never be a reference OUT. Skipping it is the
+/// language's own scoping rule, not a heuristic about which candidate is likelier.
+fn module_self_declared_names(content: &str) -> BTreeSet<String> {
+    let content: &str = &annotation_erased_scan_text(content);
+    let mut out = BTreeSet::new();
+    let ident_head = |s: &str| -> Option<String> {
+        let s = s.trim_start();
+        let mut end = 0;
+        for (idx, c) in s.char_indices() {
+            if c.is_alphanumeric() || c == '_' {
+                end = idx + c.len_utf8();
+            } else {
+                break;
+            }
+        }
+        if end == 0 {
+            None
+        } else {
+            Some(s[..end].to_string())
+        }
+    };
+    let mut in_coproduct = false;
+    for line in content.lines() {
+        let l = line.trim_start();
+        let decl_head = [
+            "pub type ",
+            "pub data ",
+            "pub fn ",
+            "pub func ",
+            "type ",
+            "data ",
+            "fn ",
+            "func ",
+            "test fn ",
+            "test data ",
+        ]
+        .iter()
+        .find_map(|k| l.strip_prefix(*k));
+        if let Some(rest) = decl_head {
+            if let Some(name) = ident_head(rest) {
+                out.insert(name);
+            }
+            // TYPE PARAMETERS on the declaration head. `type Result<ok, err> = Ok { value: ok }
+            // | Err { value: err }` in `std.error_primitives` binds `ok` and `err`; scanned as
+            // references they resolved against the whole pool to `fn ok(out: String) ->
+            // SshSessionExecResult` in a spark serving witness test, so `std.error_primitives`
+            // acquired closure edges to that witness and to `extdeps.ssh.session` — and
+            // `extdeps.dns.domain_name`'s `Ok { value: labels |> list_push(label) }` then
+            // typed `labels` as `SshSessionExecResult`.
+            let after_name = rest.trim_start();
+            let ident_end = after_name
+                .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+                .unwrap_or(after_name.len());
+            let tail = after_name[ident_end..].trim_start();
+            if let Some(params) = tail.strip_prefix('<').and_then(|s| s.split_once('>')) {
+                for part in params.0.split(',') {
+                    if let Some(name) = ident_head(part) {
+                        out.insert(name);
+                    }
+                }
+            }
+            // `type X = ...` opens a coproduct whose variant heads continue on this
+            // line and on following lines beginning with `|`. The MULTILINE form puts
+            // the `=` on the NEXT line instead —
+            //
+            //     type FrameExtent
+            //       = ExtentInFrame { length: FrameLength }
+            //       | ExtentFrameUnregistered { .. }
+            //
+            // — so a bare `type X` head opens one too, pending its `=`. Review 55386
+            // caught this: without it `ExtentInFrame` and `Predicted` were never
+            // collected, two of the four variants this guard exists for, and the
+            // closure improvement measured for their modules came from those modules
+            // leaving the closure for an unrelated reason. Right conclusion, wrong
+            // evidence.
+            //
+            // The same-line extraction below is gated on the LINE's own `=` rather than
+            // on the flag, so widening the flag cannot silently disable it.
+            let is_type_head = l.starts_with("type ") || l.starts_with("pub type ");
+            in_coproduct = is_type_head;
+            if is_type_head {
+                if let Some((_, body)) = l.split_once('=') {
+                    // An ALIAS is not a declaration of its target. `type List<element> =
+                    // FreeMonoid<element>` declares `List`; `FreeMonoid` is a REFERENCE
+                    // OUT, and collecting it here suppresses the closure edge to whoever
+                    // declares it — an under-pull, the dangerous direction (review 55399).
+                    // The discriminator is the RHS's own shape: a coproduct alternates
+                    // (`|`) or carries a record payload (`{`); an alias does neither.
+                    let is_alias = !body.contains('|') && !body.contains('{');
+                    if is_alias {
+                        in_coproduct = false;
+                    } else {
+                        for part in body.split('|') {
+                            if let Some(name) = ident_head(part) {
+                                out.insert(name);
+                            }
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+        if l.starts_with('|') || (in_coproduct && l.starts_with('=')) {
+            in_coproduct = true;
+            for part in l.trim_start_matches(['|', '=']).split('|') {
+                if let Some(name) = ident_head(part) {
+                    out.insert(name);
+                }
+            }
+            continue;
+        }
+        if !l.is_empty() && !l.starts_with('|') {
+            in_coproduct = in_coproduct && l.starts_with('{');
+        }
+    }
+    out
+}
+
 fn source_declares_import_lines(content: &str) -> bool {
     content
         .lines()
@@ -7089,10 +8315,11 @@ fn bare_reference_pull_paths_for_source(
     let Some(root) = source_tree_root_of(&index.source_roots, &file_rel) else {
         return Ok(Vec::new());
     };
-    let census_started = std::time::Instant::now();
-    let census = tree_bare_census_for_root(index, &root)?;
+    let (census, census_nanos) =
+        nanos_net_of_pool_parse(|| tree_bare_census_for_root(index, &root));
+    let census = census?;
     resolve_stage_slot_add(|st| {
-        st.edge_index_tree_census += census_started.elapsed().as_nanos();
+        st.edge_index_tree_census += census_nanos;
         st.edge_index_tree_census_calls += 1;
     });
     let referencing_module = extract_module_path(&sf.content).unwrap_or_default();
@@ -7144,10 +8371,16 @@ fn bare_reference_pull_paths_for_source(
     resolve_stage_slot_add(|st| {
         st.edge_index_bare_name_universe += universe_started.elapsed().as_nanos();
     });
+    let self_declared = module_self_declared_names(&sf.content);
     let mut pulled: Vec<String> = Vec::new();
     let mut pulled_set: HashSet<String> = HashSet::new();
     let resolve_loop_started = std::time::Instant::now();
+    let resolve_loop_pool_before = resolve_stage_slot_snapshot().pool_parse;
     for (name, service_head) in all_names {
+        // Bound by this module's own declaration — see `module_self_declared_names`.
+        if !service_head && self_declared.contains(&name) {
+            continue;
+        }
         let in_call_position = candidates.call_position.contains(&name);
         let pullable = |binding: &Rc<crate::v1_compiler_infer_env::TypeBinding>| {
             in_call_position
@@ -7155,24 +8388,37 @@ fn bare_reference_pull_paths_for_source(
                 || binding.resolved.type_annotation.is_some()
                 || binding.resolved.connective != crate::v1_std_core::Connective::NoConnective
         };
-        let resolve_in = |census: &Rc<SymbolIndex>| -> Option<String> {
+        // Returns WHAT was selected and, beside it, WHICH CENSUS STATE produced the
+        // selection. The state is the census's own verdict — `GlobalBareUniqueBinding`
+        // versus `GlobalBareAmbiguousBinding` — and it is the authority on whether a
+        // bare name has competing declarations. Reconstructing that from source with a
+        // declaration-head scanner does not work: a line-leading `=`/`|` regex
+        // undercounts (it misses `type Connective = Conj | Disj | NoConnective | Arrow`
+        // entirely) and a permissive one overcounts (it reads an alias target and a
+        // `data` initializer's head as variants), and the two answers differ by 30x on
+        // the same trace. The census already knows; carrying its verdict costs nothing.
+        let resolve_in = |census: &Rc<SymbolIndex>| -> (Option<String>, &'static str) {
             if service_head {
-                return v1_rt::map_get(&census.services, name.clone())
-                    .map(|entry| entry.module_path.clone());
+                return (
+                    v1_rt::map_get(&census.services, name.clone())
+                        .map(|entry| entry.module_path.clone()),
+                    "service",
+                );
             }
             match v1_rt::map_get(&census.global_bare, name.clone()) {
                 Some(state) => match state.as_ref() {
                     GlobalBareLookupState::GlobalBareUniqueBinding {
                         module_path,
                         binding,
-                    } => {
+                    } => (
                         if pullable(binding) {
                             Some(module_path.clone())
                         } else {
                             None
-                        }
-                    }
-                    GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
+                        },
+                        "unique",
+                    ),
+                    GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => (
                         crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
                             referencing_module.clone(),
                             candidates.clone(),
@@ -7183,22 +8429,39 @@ fn bare_reference_pull_paths_for_source(
                             } else {
                                 None
                             }
-                        })
-                    }
+                        }),
+                        "ambiguous",
+                    ),
                 },
-                None => {
+                None => (
                     if in_call_position {
                         v1_rt::map_get(&census.services, name.clone())
                             .map(|entry| entry.module_path.clone())
                     } else {
                         None
-                    }
-                }
+                    },
+                    "absent",
+                ),
             }
         };
-        let target_module = match resolve_in(&census) {
-            Some(m) => Some(m),
-            None => resolve_in(&pool_bare_census(index)?),
+        // WHICH ARM ANSWERED is a fact the caller needs and this match used to destroy
+        // one line after computing it: `Some(m) => Some(m)` collapsed a scoped-census hit
+        // and a whole-pool fallback hit into one `Option<String>`, so a name that the
+        // file's own tree could NOT resolve — and that only the pool answered — was
+        // indistinguishable from one resolved in scope. The two have different meanings:
+        // the second is the closure depending on ambient pool membership rather than on
+        // anything the file's tree provides, and it is exactly the state a zero-import
+        // corpus can sit in while looking green.
+        //
+        // Carrying the provenance costs nothing (the arms already know it) and makes the
+        // existing `GUNBC_BARE_PULL_TRACE` line answer "how was this resolved", not only
+        // "what did it resolve to".
+        let (target_module, resolution_arm, census_state) = match resolve_in(&census) {
+            (Some(m), state) => (Some(m), "scoped", state),
+            (None, _) => {
+                let (m, state) = resolve_in(&pool_bare_census(index)?);
+                (m, "pool-fallback", state)
+            }
         };
         let Some(module_path) = target_module else {
             continue;
@@ -7229,8 +8492,8 @@ fn bare_reference_pull_paths_for_source(
         let dep_rel = workspace_relative_repo_path(&dep.path);
         if std::env::var("GUNBC_BARE_PULL_TRACE").is_ok() {
             eprintln!(
-                "[bare-pull] {} -> '{}' -> {} ({})",
-                file_rel, name, module_path, dep_rel
+                "[bare-pull] {} -> '{}' -> {} ({}) [{} {}]",
+                file_rel, name, module_path, dep_rel, resolution_arm, census_state
             );
         }
         if !index.module_graph_facts.declares_repo_path(&dep_rel) {
@@ -7247,8 +8510,18 @@ fn bare_reference_pull_paths_for_source(
             }
         }
     }
+    // `pool_bare_census` is the loop's cross-tree fallback and forces the same shared
+    // parse. In practice the census above has already forced it, so this delta is
+    // normally zero — but "normally" is an ordering accident and the row must not
+    // depend on one.
+    let resolve_loop_pool = resolve_stage_slot_snapshot()
+        .pool_parse
+        .saturating_sub(resolve_loop_pool_before);
     resolve_stage_slot_add(|st| {
-        st.edge_index_bare_resolve_loop += resolve_loop_started.elapsed().as_nanos();
+        st.edge_index_bare_resolve_loop += resolve_loop_started
+            .elapsed()
+            .as_nanos()
+            .saturating_sub(resolve_loop_pool);
     });
     Ok(pulled)
 }
@@ -7308,10 +8581,11 @@ fn build_both_closure_edge_index(
             continue;
         }
         bare_scan_eligible.insert(file_rel.clone());
-        let bare_started = std::time::Instant::now();
-        let bare_paths = bare_reference_pull_paths_for_source(sf, index)?;
+        let (bare_paths, bare_nanos) =
+            nanos_net_of_pool_parse(|| bare_reference_pull_paths_for_source(sf, index));
+        let bare_paths = bare_paths?;
         resolve_stage_slot_add(|st| {
-            st.edge_index_bare_half += bare_started.elapsed().as_nanos();
+            st.edge_index_bare_half += bare_nanos;
             st.edge_index_bare_eligible += 1;
         });
         bare_out.insert(file_rel, bare_paths);
@@ -7351,9 +8625,9 @@ fn extend_with_bare_reference_closure(
     // Sub-attribution inside the bare-reference closure (entry-graph-union slice 1). The
     // fixpoint measured ~100% of `load`; these three rows say WHICH of its parts, which is
     // what decides whether the fix is a memo, an incremental closure, or a union graph.
-    let edge_started = std::time::Instant::now();
-    let edges = both_closure_edge_index(index)?;
-    resolve_stage_slot_add(|s| s.load_bare_edge_index += edge_started.elapsed().as_nanos());
+    let (edges, edge_nanos) = nanos_net_of_pool_parse(|| both_closure_edge_index(index));
+    let edges = edges?;
+    resolve_stage_slot_add(|s| s.load_bare_edge_index += edge_nanos);
     let lookup_started = std::time::Instant::now();
     let lookup = path_to_source_lookup(&index.source_files);
     resolve_stage_slot_add(|s| {
@@ -7521,7 +8795,7 @@ fn entry_source_from_index_or_disk(
     }))
 }
 
-/// Which budget a `ClaimOutcome::TimedOut` blew. The two are measured on different
+/// Which budget a `ClaimOutcome::BudgetInterrupted` / `CompletedOverBudget` row blew. The two are measured on different
 /// clocks and are not interchangeable: `Cpu` is thread CPU time (the stride-poll
 /// metric, so a witness slowed by cold I/O or governor time-slicing is not
 /// misclassified), `Wall` is whole-receipt wall time (emit + cargo subprocess I/O
@@ -7547,7 +8821,7 @@ pub enum BudgetKind {
 /// Keeping the two apart is what makes a cost distribution computable at all: a spread taken
 /// across a censoring boundary is an artifact of where the ceiling sits, not a fact about the
 /// witnesses. It is also the condition named in `claim_executor.rs`'s cost-basis seeding guard,
-/// which refuses to seed a basis from a deadline-killed row "until ClaimOutcome::TimedOut can
+/// which refuses to seed a basis from a deadline-killed row "until ClaimOutcome can
 /// distinguish killed from completed".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BudgetCompletion {
@@ -7555,31 +8829,53 @@ pub enum BudgetCompletion {
     CompletedOverBudget,
 }
 
-// WHY THIS IS A FIELD AND NOT A SIBLING VARIANT — the actual trade, recorded so the next person
-// weighing it has the argument rather than the outcome.
+// WHY THIS IS NO LONGER A FIELD ON ONE ARM — the trade, re-decided on evidence rather than on
+// the earlier argument's outcome.
 //
-// The discriminator sits INSIDE `TimedOut`, which is exactly what made the erasure writable: a
-// `TimedOut { .. }` wildcard absorbs it, and the classifier did precisely that. Had
-// passed-over-budget been a sibling `ClaimOutcome` variant, that wildcard would not have
-// compiled against it and the bug would have been a type error instead of a review miss.
+// The discriminator used to sit INSIDE a single `ClaimOutcome::TimedOut`, and that is exactly
+// what made the erasure writable: a `TimedOut { .. }` wildcard absorbs it. The prior note kept
+// it there and declared the hazard "paid for by review", with a falsifiable next-rung trigger:
+// THE NEXT CONSUMING SITE ADDED THAT DROPS THE AXIS. The trigger fired, and by more than one
+// site — five live projections were found dropping it, four in this seed and one in the `.dag`
+// AUTHORITY (`v2.workflow.floor_terminal_ledger` `claim_disposition`, wildcarding
+// `ClaimSafetyOutcome` and answering `BudgetRefusedBeforeVerdict`). THE MODEL HAD THE
+// DISTINCTION; EVERY PROJECTION OVER IT DROPPED IT. That is one habit of projecting a modelled
+// axis away, not five copies of one slip, and review is demonstrably not the mechanism that
+// stops it — the four seed sites were authored by the person who wrote the converters, on the
+// day he was most primed to look for them, one of them a fabricated receipt protected by its
+// own justifying comment.
 //
-// It is still a field, for a reason that is not inertia. The variant split this replaced was on
-// RAISE MECHANISM — in-eval poll versus completion-side backstop — which is not a distinction
-// any consumer should act on, and unifying it is what closed the absorption in the first place.
-// Passed-versus-interrupted IS a real distinction because it determines the remedy. Splitting
-// the variant again would re-fragment an event vocabulary that was just deliberately closed, so
-// the axis lives on the arm and the wildcard hazard is paid for by review.
+// THE PRIOR DECISION IS NOT OVERRULED, because it was about a different axis. It argued against
+// splitting on RAISE MECHANISM — in-eval poll versus completion-side backstop — which no
+// consumer should act on, and unifying that is what closed an earlier absorption. The split
+// here is on PASSED-VERSUS-INTERRUPTED, which that same note calls a real distinction because
+// IT DETERMINES THE REMEDY: an interrupted row produced no verdict and its elapsed figure is a
+// LOWER BOUND; a completed one passed, was reclassified on cost, and its figure is EXACT.
+// Rendering one as the other is what produced a ledger describing a single row three
+// inconsistent ways (`BUDGET-REFUSED`, `outcome=timed_out`, and "cost exactly 57193ms").
 //
-// NEXT-RUNG TRIGGER, falsifiable rather than a site count: `elapsed: Measured | LowerBound`
-// makes the bad read UNCONSTRUCTIBLE rather than merely reviewable — you cannot obtain the
-// number without deciding which kind you hold. It is not justified by today's population
-// (seven consuming sites), because that is the wrong denominator: the value scales with the
-// RATE at which consuming sites appear and the cost of one miss. So the trigger is a condition,
-// not a threshold — THE NEXT CONSUMING SITE ADDED THAT DROPS THE AXIS is the evidence that
-// arm-level is insufficient and the climb is earned. Today's rate evidence, for whoever reads
-// this next: four sites dropped it in one PR, authored by the person who wrote the converters,
-// on the day he was most primed to look for it, one of them a fabricated receipt protected by
-// its own justifying comment.
+// The field names carry the reading, so the bound cannot be spelled as a cost: the interrupted
+// arm has `elapsed_at_least_ms`, the completed arm `elapsed_ms`.
+//
+// `BudgetCompletion` IS DELIBERATELY NOT DELETED. It is the axis as data, and it is consumed
+// where a value has to travel — `BudgetRefusal`, the wire verdict's `completion`, and the
+// `budget_event` projection below. Deleting it here would force a second spelling of the same
+// two states beside it; a dissolution that spawns a duplicate has dissolved nothing (§2/§3).
+// What the split removes is the WRITABLE ERASURE, not the type.
+
+/// Both budget arms projected into one value, for a consumer that legitimately treats them
+/// alike and still has to render or transport the axis.
+///
+/// This is a PROJECTION, not a way back to the old shape: obtaining it is an explicit call, and
+/// the two arms remain separate cases in every `match` over `ClaimOutcome`, so a labelling
+/// consumer still cannot give one name to both by writing a wildcard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BudgetEvent {
+    pub elapsed_ms: u64,
+    pub budget_ms: u64,
+    pub kind: BudgetKind,
+    pub completion: BudgetCompletion,
+}
 
 impl BudgetCompletion {
     /// How the elapsed number may be READ. Rendered beside every budget figure so a reader
@@ -7588,6 +8884,57 @@ impl BudgetCompletion {
         match self {
             BudgetCompletion::Interrupted => "at least",
             BudgetCompletion::CompletedOverBudget => "exactly",
+        }
+    }
+}
+
+impl ClaimOutcome {
+    /// The budget arms projected; `None` for every other outcome.
+    pub fn budget_event(&self) -> Option<BudgetEvent> {
+        match self {
+            ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms,
+                budget_ms,
+                kind,
+            } => Some(BudgetEvent {
+                elapsed_ms: *elapsed_at_least_ms,
+                budget_ms: *budget_ms,
+                kind: *kind,
+                completion: BudgetCompletion::Interrupted,
+            }),
+            ClaimOutcome::CompletedOverBudget {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => Some(BudgetEvent {
+                elapsed_ms: *elapsed_ms,
+                budget_ms: *budget_ms,
+                kind: *kind,
+                completion: BudgetCompletion::CompletedOverBudget,
+            }),
+            _ => None,
+        }
+    }
+
+    /// The budget arm for a given `completion`, so a producer holding the axis as data does not
+    /// have to re-derive which variant carries it.
+    pub fn budget_outcome(
+        elapsed_ms: u64,
+        budget_ms: u64,
+        kind: BudgetKind,
+        completion: BudgetCompletion,
+    ) -> ClaimOutcome {
+        match completion {
+            BudgetCompletion::Interrupted => ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms: elapsed_ms,
+                budget_ms,
+                kind,
+            },
+            BudgetCompletion::CompletedOverBudget => ClaimOutcome::CompletedOverBudget {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            },
         }
     }
 }
@@ -7622,11 +8969,19 @@ pub enum ClaimOutcome {
     /// reclassified a budget refusal as a witness failure. Keeping the pair typed lets
     /// the mode be read off the value, and lets the receipt project a real
     /// `std.observation` `TimedOut { budget, elapsed }` instead of an opaque string.
-    TimedOut {
+    /// THE CLAIM WAS CUT OFF AT ITS BUDGET. It produced no verdict, and
+    /// `elapsed_at_least_ms` is a LOWER BOUND on its cost, never the cost.
+    BudgetInterrupted {
+        elapsed_at_least_ms: u64,
+        budget_ms: u64,
+        kind: BudgetKind,
+    },
+    /// THE CLAIM REACHED ITS VERDICT and was then reclassified for exceeding its budget.
+    /// `elapsed_ms` is an exact measurement, and the remedy is cost, not interruption.
+    CompletedOverBudget {
         elapsed_ms: u64,
         budget_ms: u64,
         kind: BudgetKind,
-        completion: BudgetCompletion,
     },
     /// A host-tool program could not be resolved to an existing executable path.
     /// Typed at the witness boundary so downstream classifiers do not substring-match
@@ -7809,11 +9164,7 @@ pub fn claim_terminality(
     policy: WitnessSafetyPolicy,
 ) -> ClaimTerminality {
     match outcome {
-        ClaimOutcome::TimedOut {
-            kind,
-            completion: BudgetCompletion::Interrupted,
-            ..
-        } => ClaimTerminality::SafetyInterrupted {
+        ClaimOutcome::BudgetInterrupted { kind, .. } => ClaimTerminality::SafetyInterrupted {
             raised_by: SafetyInterruptTrigger::from(*kind),
             elapsed_cpu_at_least_ms: (receipt.cpu_nanos / 1_000_000) as u64,
             elapsed_wall_at_least_ms: (receipt.wall_nanos / 1_000_000) as u64,
@@ -11851,7 +13202,8 @@ pub struct ResolveStageNanos {
     pub edge_index_closure_expand: u128,
     /// Calls to that expansion — the multiplicity the per-call cost is paid at.
     pub edge_index_closure_expand_calls: u128,
-    /// `tree_bare_census_for_root` inside the bare half — the per-tree bare census.
+    /// `tree_bare_census_for_root` inside the bare half — the per-tree bare census,
+    /// NET of the shared whole-corpus `pool_parse` it may be the first to force.
     pub edge_index_tree_census: u128,
     /// Calls to that census.
     pub edge_index_tree_census_calls: u128,
@@ -11859,8 +13211,33 @@ pub struct ResolveStageNanos {
     /// interpretable: total/calls is an average over mostly-free hits and describes no
     /// real call.
     pub edge_index_tree_census_misses: u128,
-    /// Nanos spent in cold census builds only.
+    /// Nanos spent in cold census builds only, NET of `pool_parse` (see that row): the
+    /// census's own BFS over the root's compile closure plus
+    /// `build_symbol_index_census_nodes`, and nothing else.
     pub edge_index_tree_census_miss_nanos: u128,
+    /// `pool_parse` — the WHOLE-CORPUS tokenize+parse behind every pool-derived term
+    /// (the per-root bare census, the qualified fill, the pool bare census). It is
+    /// memoized on the index and forced LAZILY by whichever consumer reaches it first,
+    /// so it has no single owner: charging it to that consumer reports one term's cost
+    /// under another term's name. Measured 2026-08-24 on `dag` + `src/v2`: 14.25s of
+    /// the 21.3s that `edge_index_tree_census_miss_nanos` used to report, because the
+    /// miss timer started before the pool force.
+    ///
+    /// EVERY window that can contain the parse is recorded NET of it, via
+    /// `nanos_net_of_pool_parse` or the same subtraction inline. The forcing paths are
+    /// two, and they land in DIFFERENT top-level rows — which is why this row is an
+    /// exclusive peer rather than a child of any of them:
+    ///   - `load` -> the bare-reference closure -> the edge index -> the per-root census
+    ///     (and, as the loop's cross-tree fallback, `pool_bare_census`);
+    ///   - reconcile -> `assembly_pool_fill` (via `pool_qualified_fill`) and
+    ///     `assembly_root_symbol_index` (via the per-root census again).
+    /// `assembly_pool_fill` runs first in the reconcile path, so on that path it is the
+    /// real payer — not a hypothetical one (review 55349).
+    pub pool_parse: u128,
+    /// Cold builds of the pool parse — 1 per index that forces it, 0 if nothing does.
+    pub pool_parse_builds: u128,
+    /// Modules parsed by those cold builds.
+    pub pool_parse_modules: u128,
     /// `bare_identifier_candidates` — the per-file identifier scan.
     pub edge_index_bare_candidates: u128,
     pub edge_index_bare_name_universe: u128,
@@ -11920,6 +13297,9 @@ impl ResolveStageNanos {
         self.edge_index_tree_census_calls += other.edge_index_tree_census_calls;
         self.edge_index_tree_census_misses += other.edge_index_tree_census_misses;
         self.edge_index_tree_census_miss_nanos += other.edge_index_tree_census_miss_nanos;
+        self.pool_parse += other.pool_parse;
+        self.pool_parse_builds += other.pool_parse_builds;
+        self.pool_parse_modules += other.pool_parse_modules;
         self.edge_index_bare_candidates += other.edge_index_bare_candidates;
         self.edge_index_bare_name_universe += other.edge_index_bare_name_universe;
         self.edge_index_bare_resolve_loop += other.edge_index_bare_resolve_loop;
@@ -12035,6 +13415,9 @@ thread_local! {
             edge_index_tree_census_calls: 0,
             edge_index_tree_census_misses: 0,
             edge_index_tree_census_miss_nanos: 0,
+            pool_parse: 0,
+            pool_parse_builds: 0,
+            pool_parse_modules: 0,
             edge_index_bare_candidates: 0,
             edge_index_bare_name_universe: 0,
             edge_index_bare_resolve_loop: 0,
@@ -12077,6 +13460,29 @@ fn resolve_stage_slot_add(update: impl FnOnce(&mut ResolveStageNanos)) {
 
 fn resolve_stage_slot_snapshot() -> ResolveStageNanos {
     RESOLVE_STAGE_SLOT.with(|s| s.get())
+}
+
+/// Run `f` and return its value beside its wall NET of any cold `pool_parse` build
+/// forced inside it.
+///
+/// The whole-corpus pool parse is a SHARED, lazily-forced term: the per-root bare
+/// census, the qualified fill and the pool bare census all need it, none of them owns
+/// it, and whichever arrives first pays for all of them. A timer started around that
+/// first arrival therefore reports the corpus parse under the arriving consumer's name
+/// — the mis-attribution measured 2026-08-24, where two `tree_bare_census_for_root`
+/// misses reported 23.02s of which 14.25s was this parse. Subtracting here (and
+/// reporting the parse once, on `pool_parse`) is what keeps the enclosing rows about
+/// the work they are named for. `saturating_sub` because the two clocks are read at
+/// slightly different instants, never because a negative remainder is meaningful.
+fn nanos_net_of_pool_parse<T>(f: impl FnOnce() -> T) -> (T, u128) {
+    let before = resolve_stage_slot_snapshot().pool_parse;
+    let started = std::time::Instant::now();
+    let out = f();
+    let elapsed = started.elapsed().as_nanos();
+    let pool = resolve_stage_slot_snapshot()
+        .pool_parse
+        .saturating_sub(before);
+    (out, elapsed.saturating_sub(pool))
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_exclusive_cost_partition_probe`):
@@ -12267,6 +13673,8 @@ pub struct ExclusiveCostPartition {
     pub edge_index_closure_expand_calls: u128,
     pub edge_index_tree_census_misses: u128,
     pub edge_index_tree_census_calls: u128,
+    pub pool_parse_builds: u128,
+    pub pool_parse_modules: u128,
     pub load_fixpoint_rounds: u128,
     /// Per-entry span attribution (entry, spans, span nanos, that entry's stage rows),
     /// descending by span nanos. Lets a witness entry's split be read apart from the
@@ -12384,6 +13792,28 @@ pub fn exclusive_cost_partition_from(
         CostPartitionRow {
             name: "assembly_pool_fill",
             nanos: st.assembly_pool_fill,
+        },
+        // The shared whole-corpus parse is an EXCLUSIVE PEER, not a child of any row.
+        //
+        // It was an inclusive row `contained_in: "load"` when this landed, and review
+        // 55349 was right that the claim is false: `build_symbol_index_for_reconcile`
+        // can force the parse through `pool_qualified_fill` while timing
+        // `assembly_pool_fill`, which is a top-level exclusive peer of `load`, not a
+        // descendant of it. There is no single true parent, because WHICH row forces the
+        // parse depends on the path — which is the whole defect restated one level up,
+        // and naming any one of them would have been the same lie in a smaller font.
+        //
+        // Once every window that can contain it is recorded net of it (`load`,
+        // `assembly_pool_fill`, `assembly_root_symbol_index`, and the inclusive rows
+        // beneath `load`), the parse is carved out of all of them and is a disjoint
+        // window inside the parent span — which is exactly what an exclusive row is.
+        // This also keeps `sum_exclusive` invariant across the repair: before it, the
+        // parse was inside whichever row forced it; after it, the parse is its own row
+        // and is counted exactly once, rather than silently migrating into
+        // `remainder_nanos` as the inclusive form would have done.
+        CostPartitionRow {
+            name: "pool_parse",
+            nanos: st.pool_parse,
         },
         CostPartitionRow {
             name: "assembly_symbol_index_merge",
@@ -12584,6 +14014,8 @@ pub fn exclusive_cost_partition_from(
         edge_index_closure_expand_calls: st.edge_index_closure_expand_calls,
         edge_index_tree_census_calls: st.edge_index_tree_census_calls,
         edge_index_tree_census_misses: st.edge_index_tree_census_misses,
+        pool_parse_builds: st.pool_parse_builds,
+        pool_parse_modules: st.pool_parse_modules,
         load_fixpoint_rounds: st.load_fixpoint_rounds,
         span_rows_by_entry,
     }
@@ -12670,6 +14102,14 @@ pub fn render_exclusive_cost_partition_json(
     out.push_str(&json_num(p.edge_index_tree_census_calls));
     out.push_str(",\"tree_census_misses\":");
     out.push_str(&json_num(p.edge_index_tree_census_misses));
+    out.push_str("}");
+
+    // The shared whole-corpus parse, reported beside its own volume so the row can be
+    // priced per module rather than per forcing consumer.
+    out.push_str(",\"pool_parse\":{\"builds\":");
+    out.push_str(&json_num(p.pool_parse_builds));
+    out.push_str(",\"modules\":");
+    out.push_str(&json_num(p.pool_parse_modules));
     out.push_str("}");
 
     out.push_str(",\"load_reference_scan_volume\":{\"bytes\":");
@@ -12852,9 +14292,10 @@ fn resolve_entry_with_parse_cache_inner(
 > {
     resolve_stage_slot_reset();
     set_phase(FloorPhase::Resolve, entry_file);
-    let load_started = std::time::Instant::now();
-    let sources = load_sources_for_entry_with_pool(index, entry_file)?;
-    resolve_stage_slot_add(|s| s.load += load_started.elapsed().as_nanos());
+    let (sources, load_nanos) =
+        nanos_net_of_pool_parse(|| load_sources_for_entry_with_pool(index, entry_file));
+    let sources = sources?;
+    resolve_stage_slot_add(|s| s.load += load_nanos);
     resolved_graph_from_sources_with_index(
         index,
         sources,
@@ -14015,6 +15456,7 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
     // build reproducible — determinism gate).
     let mut pool_paths: Vec<String> = index.source_files.keys().cloned().collect();
     pool_paths.sort();
+    let pool_started = std::time::Instant::now();
     let mut combined_si: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
     let mut nodes_by_file: Vec<(String, Rc<Node>)> = Vec::with_capacity(pool_paths.len());
     for module_path in pool_paths {
@@ -14033,6 +15475,15 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
         combined_si: Rc::new(combined_si),
     });
     *index.pool_parse.borrow_mut() = Some(parsed.clone());
+    // The one place this term is measured, so it is counted once wherever it is forced
+    // from. Every enclosing timer records itself net of this row — see
+    // `nanos_net_of_pool_parse`.
+    let modules = parsed.nodes_by_file.len() as u128;
+    resolve_stage_slot_add(|st| {
+        st.pool_parse += pool_started.elapsed().as_nanos();
+        st.pool_parse_builds += 1;
+        st.pool_parse_modules += modules;
+    });
     Ok(parsed)
 }
 
@@ -14098,6 +15549,7 @@ fn tree_bare_census_for_root(
     // instead of the right one (make the cold build cheaper, or build it once per process
     // rather than once per index).
     let miss_started = std::time::Instant::now();
+    let pool_before = resolve_stage_slot_snapshot().pool_parse;
     resolve_stage_slot_add(|st| st.edge_index_tree_census_misses += 1);
     // Identity of the cold misses, not just their count. The count alone cannot
     // distinguish "the same subject recomputed per index" from "a different subject
@@ -14147,8 +15599,16 @@ fn tree_bare_census_for_root(
         .tree_bare_census
         .borrow_mut()
         .insert(root.to_string(), census.clone());
+    // Net of the whole-corpus pool parse this build may have been the first to force:
+    // that parse is shared with the qualified fill and the pool bare census and is
+    // reported once on `pool_parse`. Before this subtraction the row read 23.02s for
+    // two misses, 14.25s of which was the parse (measured 2026-08-24).
+    let pool_here = resolve_stage_slot_snapshot()
+        .pool_parse
+        .saturating_sub(pool_before);
     resolve_stage_slot_add(|st| {
-        st.edge_index_tree_census_miss_nanos += miss_started.elapsed().as_nanos();
+        st.edge_index_tree_census_miss_nanos +=
+            miss_started.elapsed().as_nanos().saturating_sub(pool_here);
     });
     Ok(census)
 }
@@ -14187,9 +15647,9 @@ fn build_symbol_index_for_reconcile(
     resolve_stage_slot_add(|s| {
         s.assembly_symbol_index += symbol_index_started.elapsed().as_nanos()
     });
-    let pool_fill_started = std::time::Instant::now();
-    let pool_fill = pool_qualified_fill(index)?;
-    resolve_stage_slot_add(|s| s.assembly_pool_fill += pool_fill_started.elapsed().as_nanos());
+    let (pool_fill, pool_fill_nanos) = nanos_net_of_pool_parse(|| pool_qualified_fill(index));
+    let pool_fill = pool_fill?;
+    resolve_stage_slot_add(|s| s.assembly_pool_fill += pool_fill_nanos);
     let merge_started = std::time::Instant::now();
     let merged = v1_compiler_infer::symbol_index_with_qualified_fill(symbol_index, pool_fill);
     resolve_stage_slot_add(|s| s.assembly_symbol_index_merge += merge_started.elapsed().as_nanos());
@@ -14386,18 +15846,20 @@ fn reconcile_with_typed_cache(
                                         Some(root) => match tree_symbol_index_memo.get(&root) {
                                             Some(hit) => hit.clone(),
                                             None => {
-                                                let root_symbol_index_started =
-                                                    std::time::Instant::now();
-                                                let composed =
-                                                    v1_compiler_infer::symbol_index_with_bare_fill(
-                                                        symbol_index.clone(),
-                                                        tree_bare_census_for_root(index, &root)?,
-                                                    );
+                                                let (composed, composed_nanos) =
+                                                    nanos_net_of_pool_parse(|| {
+                                                        tree_bare_census_for_root(index, &root).map(
+                                                            |tree| {
+                                                                v1_compiler_infer::symbol_index_with_bare_fill(
+                                                                    symbol_index.clone(),
+                                                                    tree,
+                                                                )
+                                                            },
+                                                        )
+                                                    });
+                                                let composed = composed?;
                                                 resolve_stage_slot_add(|s| {
-                                                    s.assembly_root_symbol_index +=
-                                                        root_symbol_index_started
-                                                            .elapsed()
-                                                            .as_nanos()
+                                                    s.assembly_root_symbol_index += composed_nanos
                                                 });
                                                 // The composed index's global_bare = closure ∪ tree,
                                                 // so its variant base is computed from the composed
@@ -14838,6 +16300,10 @@ pub enum CiWitnessVerdict {
     NotBool,
     RuntimeError,
     BudgetRefused,
+    /// THE CLAIM PASSED AND WAS THEN RECLASSIFIED ON COST. Distinct from `BudgetRefused`
+    /// because it reached a verdict: the remedy is to pay the cost down, not to find out what
+    /// the claim would have answered.
+    PassedOverBudget,
     HostToolUnresolved,
     KnownRed,
     /// THE CLAIM NEVER REACHED ITS SUBJECT. Mirrors `WitnessRouteGap`. Distinct from every
@@ -14857,6 +16323,7 @@ impl CiWitnessVerdict {
             CiWitnessVerdict::NotBool => "NOT-BOOL",
             CiWitnessVerdict::RuntimeError => "ERROR",
             CiWitnessVerdict::BudgetRefused => "BUDGET-REFUSED",
+            CiWitnessVerdict::PassedOverBudget => "PASSED-OVER-BUDGET",
             CiWitnessVerdict::HostToolUnresolved => "TOOL-UNRESOLVED",
             CiWitnessVerdict::KnownRed => "KNOWN-RED",
             CiWitnessVerdict::RouteGap => "NO-ROUTE",
@@ -14877,10 +16344,19 @@ impl CiWitnessVerdict {
     /// unresolved host tool is an infra gap whose remedy is provisioning, not witness cost.
     /// Enrollment cannot hold a claim that was never decided.
     ///
-    /// The counting side already refuses exactly that absorption — `expected_red_arm` gives
-    /// `BudgetRefused` and `HostToolUnresolved` their own arms rather than folding them into
-    /// `Held`. So the bug was not a missing rule; it was a SECOND, coarser copy of a join this
-    /// file already performs correctly (DESIGN §3). This now derives from that one authority:
+    /// The counting side refuses that absorption — `expected_red_arm` gives `BudgetRefused`,
+    /// `HostToolUnresolved`, `RuntimeErrored` and `ObservationUnreadable` their own arms rather
+    /// than folding them into `Held`. So the bug was not a missing rule; it was a SECOND,
+    /// coarser copy of a join this file already performs correctly (DESIGN §3). This now
+    /// derives from that one authority:
+    ///
+    /// THIS SENTENCE WAS FALSE FOR THE TWO ARMS ADDED LAST, and is corrected here rather than
+    /// quietly widened. The original repair split out budget interruption and unresolved host
+    /// tools, then described itself as having refused the absorption GENERALLY, while
+    /// `expected_red_arm` still read `Fail | NotBool | RuntimeError => Held`. Two of four
+    /// non-verdict outcomes stayed folded, and the comment claiming otherwise is the reason
+    /// nobody looked again — an unexecuted claim standing where an executed one appeared to be.
+    /// It was found by a cross-derivation check refusing a real run, not by review.
     /// only `Held` — enrolled AND semantically failed — renders as KNOWN-RED, and every other
     /// arm falls through to the outcome's own token, so the console says what the ledger says.
     ///
@@ -14895,7 +16371,11 @@ impl CiWitnessVerdict {
             ClaimOutcome::Fail => CiWitnessVerdict::Failed,
             ClaimOutcome::NotBool { .. } => CiWitnessVerdict::NotBool,
             ClaimOutcome::RuntimeError { .. } => CiWitnessVerdict::RuntimeError,
-            ClaimOutcome::TimedOut { .. } => CiWitnessVerdict::BudgetRefused,
+            // SITE 1 OF THE FIVE THAT DROPPED THE AXIS. `BudgetRefused` is true only of the
+            // interrupted arm; a completed-over-budget row REACHED ITS VERDICT and was refused
+            // nothing, so reporting it as a refusal erased the verdict it had already produced.
+            ClaimOutcome::BudgetInterrupted { .. } => CiWitnessVerdict::BudgetRefused,
+            ClaimOutcome::CompletedOverBudget { .. } => CiWitnessVerdict::PassedOverBudget,
             ClaimOutcome::HostToolUnresolved { .. } => CiWitnessVerdict::HostToolUnresolved,
             // NOT `Failed`, and NOT `KnownRed` even when enrolled: the roster this identity is
             // enrolled on is the ROUTE-GAP roster, not the expected-red one, and the row above
@@ -14944,7 +16424,27 @@ fn render_witness_claim_result_text(
     ))
 }
 
-/// The `src/v1` `.dag` parse sweep, as a callable phase rather than a separate binary.
+/// THE ROOTS THE PARSE SWEEP WALKS — one authority for the standalone bin and for the
+/// composed `--required-ci` phase, so the cheapest local check and the required run cannot
+/// disagree about what they cover.
+///
+/// WHY IT IS NOT `src/v1` ALONE ANY MORE. The sweep was authored for the seed and swept
+/// `src/v1` only, while the two roots that actually carry authored `.dag` — `dag` and
+/// `src/v2`, 3831 files against the seed's 56 — were reached by nothing cheaper than the
+/// required floor. Parse-grain defects there (the §4c annotation-grain refusals above all)
+/// were therefore invisible locally and surfaced as a floor REFUSAL DURING STRICT
+/// PREPARATION, where no witness executes at all, so one misplaced `//` reported as the whole
+/// corpus saying nothing. Three lanes hit that in one night.
+///
+/// WHAT THIS IS NOT. Widening the sweep is not widening the FLOOR's source roots, which
+/// `gunbc.ci_layer_roots` `v1_dead_witness_tree_triage_receipt_remainder` rules out and whose
+/// stated blocker is NAME RESOLUTION: `src/v1` and `src/v2` collide on twelve last segments,
+/// so a shared pool re-binds bare cross-module references. This walk resolves nothing — it
+/// tokenizes and parses each file in isolation, with a fresh empty table per file — so no
+/// module of one root is ever visible to another and that objection cannot reach it.
+pub const DAG_PARSE_SWEEP_ROOTS: [&str; 3] = ["src/v1", "dag", "src/v2"];
+
+/// The `.dag` parse sweep, as a callable phase rather than a separate binary.
 ///
 /// WHY IT MOVED HERE. It was a `main()` in `bin/v1_src_dag_parse.rs`, reached only by its own
 /// GitHub Actions step. That made the ORDER of the CI checks a fact about a YAML file: a step
@@ -14954,69 +16454,82 @@ fn render_witness_claim_result_text(
 /// remains as a thin caller, because running the parse sweep alone is a real local action.
 ///
 /// RECURSIVE, and the non-recursive predecessor is why the walk looks like this: `read_dir`
-/// on `src/v1` sees the top-level modules and nothing below them, so a walk that finds no
+/// on a root sees the top-level modules and nothing below them, so a walk that finds no
 /// files in a directory it never opened is indistinguishable from a clean one.
 ///
 /// Returns the count of parse-clean files, or every error found — never a partial success.
-pub fn run_v1_src_dag_parse(workspace: &Path) -> Result<usize, Vec<String>> {
+pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Vec<String>> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
-    let v1_dir = workspace.join("src/v1");
+    // AN EMPTY ROSTER REFUSES, for the same reason an empty walk does below: a sweep with
+    // nothing to sweep reports clean while covering nothing.
+    if roots.is_empty() {
+        return Err(vec!["parse sweep called with no roots".to_string()]);
+    }
     let mut dag_paths: Vec<std::path::PathBuf> = Vec::new();
-    let mut stack: Vec<std::path::PathBuf> = vec![v1_dir.clone()];
-    while let Some(dir) = stack.pop() {
-        let read_dir = match std::fs::read_dir(&dir) {
-            Ok(d) => d,
-            Err(e) => return Err(vec![format!("read_dir {}: {e}", dir.display())]),
-        };
-        // ONE DELIBERATE DIFFERENCE FROM THE BIN THIS CAME FROM: it used `read_dir.flatten()`,
-        // which silently DISCARDS an entry that cannot be read, so an unreadable directory
-        // entry made the walk quietly smaller and a walk that never saw a file is
-        // indistinguishable from a file that parsed. The error is propagated instead.
-        for entry in read_dir {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(e) => return Err(vec![format!("read_dir entry in {}: {e}", dir.display())]),
+    // PER-ROOT, so the empty-walk refusal below is per root: one root going missing must not
+    // be absorbed by another root's files (the empty-observation narrow, DESIGN §5).
+    for root in roots {
+        let root_dir = workspace.join(root);
+        let before = dag_paths.len();
+        let mut stack: Vec<std::path::PathBuf> = vec![root_dir.clone()];
+        while let Some(dir) = stack.pop() {
+            let read_dir = match std::fs::read_dir(&dir) {
+                Ok(d) => d,
+                Err(e) => return Err(vec![format!("read_dir {}: {e}", dir.display())]),
             };
-            let path = entry.path();
-            if path.is_dir() {
-                // `target/` under a nested Cargo.toml is build output, never authored source.
-                if path.file_name().map(|n| n == "target").unwrap_or(false) {
-                    continue;
+            // ONE DELIBERATE DIFFERENCE FROM THE BIN THIS CAME FROM: it used `read_dir.flatten()`,
+            // which silently DISCARDS an entry that cannot be read, so an unreadable directory
+            // entry made the walk quietly smaller and a walk that never saw a file is
+            // indistinguishable from a file that parsed. The error is propagated instead.
+            for entry in read_dir {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(e) => {
+                        return Err(vec![format!("read_dir entry in {}: {e}", dir.display())])
+                    }
+                };
+                let path = entry.path();
+                if path.is_dir() {
+                    // `target/` under a nested Cargo.toml is build output, never authored source.
+                    if path.file_name().map(|n| n == "target").unwrap_or(false) {
+                        continue;
+                    }
+                    // `tests/fixtures/` holds deliberately partial or malformed inputs authored FOR
+                    // the parser's own tests -- a fixture that fails to parse is the fixture doing
+                    // its job, not a defect. The existing corpus discovery in `compiler_tests`
+                    // excludes them on the same grounds.
+                    //
+                    // THIS EXCLUSION WAS DROPPED WHEN THE WALK MOVED HERE FROM THE BIN, and the
+                    // consolidation's first local run reported `fact_cardinality_split_brace.dag:
+                    // expected keyword 'module', found keyword 'data'` as a parse FAILURE. That
+                    // file is a headerless fragment under `tests/fixtures/` and it is on main,
+                    // where the parse step is green -- so the "finding" was the extraction having
+                    // silently widened its own subject, not a defect in the tree.
+                    if path.file_name().map(|n| n == "fixtures").unwrap_or(false)
+                        && dir.file_name().map(|n| n == "tests").unwrap_or(false)
+                    {
+                        continue;
+                    }
+                    stack.push(path);
+                } else if path.extension().map(|ext| ext == "dag").unwrap_or(false) {
+                    dag_paths.push(path);
                 }
-                // `tests/fixtures/` holds deliberately partial or malformed inputs authored FOR
-                // the parser's own tests -- a fixture that fails to parse is the fixture doing
-                // its job, not a defect. The existing corpus discovery in `compiler_tests`
-                // excludes them on the same grounds.
-                //
-                // THIS EXCLUSION WAS DROPPED WHEN THE WALK MOVED HERE FROM THE BIN, and the
-                // consolidation's first local run reported `fact_cardinality_split_brace.dag:
-                // expected keyword 'module', found keyword 'data'` as a parse FAILURE. That
-                // file is a headerless fragment under `tests/fixtures/` and it is on main,
-                // where the parse step is green -- so the "finding" was the extraction having
-                // silently widened its own subject, not a defect in the tree.
-                if path.file_name().map(|n| n == "fixtures").unwrap_or(false)
-                    && dir.file_name().map(|n| n == "tests").unwrap_or(false)
-                {
-                    continue;
-                }
-                stack.push(path);
-            } else if path.extension().map(|ext| ext == "dag").unwrap_or(false) {
-                dag_paths.push(path);
             }
+        }
+
+        // AN EMPTY WALK REFUSES, PER ROOT. Zero files found is not zero errors — it is the
+        // walk failing to reach its subject, and reporting it as clean is the
+        // empty-observation narrow.
+        if dag_paths.len() == before {
+            return Err(vec![format!(
+                "no .dag files found under {} — check the workspace root",
+                root_dir.display()
+            )]);
         }
     }
     dag_paths.sort();
-
-    // AN EMPTY WALK REFUSES. Zero files found is not zero errors — it is the walk failing to
-    // reach its subject, and reporting it as clean is the empty-observation narrow.
-    if dag_paths.is_empty() {
-        return Err(vec![format!(
-            "no .dag files found under {} — check the workspace root",
-            v1_dir.display()
-        )]);
-    }
 
     let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let count = Arc::new(AtomicUsize::new(0));
@@ -15039,21 +16552,41 @@ pub fn run_v1_src_dag_parse(workspace: &Path) -> Result<usize, Vec<String>> {
                         return;
                     }
                 };
-                let result = crate::v1_compiler_parse::parse(
-                    crate::v1_compiler_tokenize::tokenize(
+                // ONE FILE THROUGH THE FRONTEND'S OWN CENSUS-FILL PARSE, not `parse` alone.
+                //
+                // WHY NOT `tokenize` + `parse`, which is what this walk used to call. Source
+                // annotation GRAIN (DESIGN §4c) is not decided by the parser: `tokenize`
+                // routes `//` blocks into the annotation channel as unbound captures, and
+                // whether a capture attaches to a module item is decided later, by
+                // `admit_source_annotations`. So `parse` returned `error: None` for a file
+                // carrying an in-body or trailing annotation — MEASURED, by planting one in
+                // `dag/std/algebra.dag` and one in `src/v2/std/node.dag` and watching the old
+                // walk report both trees parse-clean. The floor's strict preparation refused
+                // the same files, during PREPARATION, where no witness runs at all.
+                //
+                // `parse_census_fill_sources` is the frontend's own per-source form: it
+                // tokenizes, parses in an occurrence scope, and admits annotations, returning
+                // the parse diagnostics and the annotation refusals in one population. Called
+                // with a single source, so files stay independent and nothing resolves across
+                // them.
+                let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
+                    vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        path: path.to_string_lossy().to_string(),
                         content,
-                        path.to_string_lossy().to_string(),
-                    ),
-                    std::rc::Rc::new(im::HashMap::new()),
-                );
-                if let Some(ref err) = result.error {
-                    errors.lock().expect("parse error lock").push(format!(
-                        "parse error in {}: {}",
-                        path.file_name().unwrap_or_default().to_string_lossy(),
-                        crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone()),
-                    ));
-                } else {
+                    })]
+                    .into(),
+                ));
+                if fill.diagnostics.is_empty() {
                     count.fetch_add(1, Ordering::Relaxed);
+                } else {
+                    let mut lock = errors.lock().expect("parse error lock");
+                    for d in fill.diagnostics.iter() {
+                        lock.push(format!(
+                            "{}: {}",
+                            path.display(),
+                            crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()),
+                        ));
+                    }
                 }
             });
         }
@@ -15071,11 +16604,98 @@ pub fn run_v1_src_dag_parse(workspace: &Path) -> Result<usize, Vec<String>> {
         .into_inner())
 }
 
+/// WHY THE OUTPUT POLICY CANNOT BE INSTALLED, AS A TYPED CAUSE.
+///
+/// Every arm here used to be a bare `return` or a `let … else { return }`: the policy was
+/// silently not installed and the run proceeded at the pre-funnel default, which is
+/// `Full` on every channel — the exact shape the funnel exists to replace. A run that
+/// never installed the policy is therefore indistinguishable from a run whose policy
+/// CHOSE `Full`, so the deficit's frequency was zero by construction and nothing ever
+/// ranked it for fixing (DESIGN §5, the absorbing fallback and its fabricated-plausible-
+/// output twin). The three causes are kept apart because their remedies are different:
+/// the authority is not in this run's source roots (fix the invocation), the authority is
+/// there but its entry point does not evaluate (fix the module), and it evaluates to
+/// something that is not the record of channel decisions (fix the seed/authority
+/// disagreement). Collapsing them into one message would be the not-applicable-versus-
+/// malformed conflation in the diagnostic that reports it.
+#[derive(Debug)]
+enum OutputPolicyInstallRefusal {
+    /// `dag/gunbc/output_policy.dag` did not resolve in the source roots this run was given.
+    AuthorityUnresolved {
+        entry: String,
+        source_roots: Vec<String>,
+        cause: String,
+    },
+    /// The module resolved, but `resolve_channel_policy` did not evaluate.
+    ChannelPolicyEvaluationFailed { cause: String },
+    /// It evaluated, to something other than the `ChannelPolicy` record.
+    ChannelPolicyNotARecord { observed_shape: &'static str },
+}
+
+/// The observed shape of a `Value`, for a refusal that must say what it got without
+/// printing an arbitrarily large value into the log.
+fn output_policy_value_shape(value: &v1_interpreter::Value) -> &'static str {
+    use v1_interpreter::Value;
+    match value {
+        Value::Null => "Null",
+        Value::Bool(_) => "Bool",
+        Value::Int(_) => "Int",
+        Value::Float(_) => "Float",
+        Value::Str(_) => "Str",
+        Value::List(_) => "List",
+        Value::Map(_) => "Map",
+        Value::Set(_) => "Set",
+        Value::Record { .. } => "Record",
+        Value::Variant { .. } => "Variant",
+        Value::Closure { .. } => "Closure",
+        Value::Fn { .. } => "Fn",
+        Value::Unit => "Unit",
+    }
+}
+
+/// Stop the line, located at the module and symbol that could not answer.
+///
+/// This is the same remedy the undecodable-channel arm below already takes — one refusal
+/// shape for one class, rather than a second control flow for a cause discovered earlier
+/// in the same install.
+fn refuse_output_policy_install(refusal: OutputPolicyInstallRefusal) -> ! {
+    let located = match refusal {
+        OutputPolicyInstallRefusal::AuthorityUnresolved {
+            entry,
+            source_roots,
+            cause,
+        } => format!(
+            "gunbc.output_policy ({entry}) did not resolve in this run's source roots \
+             [{roots}]: {cause}. Refusing rather than running with the policy uninstalled, \
+             which prints every channel at Full and is indistinguishable from a policy that \
+             chose Full. Remedy: invoke with a --source-root containing {entry}.",
+            roots = source_roots.join(", "),
+        ),
+        OutputPolicyInstallRefusal::ChannelPolicyEvaluationFailed { cause } => format!(
+            "gunbc.output_policy `resolve_channel_policy` did not evaluate: {cause}. \
+             Refusing rather than running with the policy uninstalled."
+        ),
+        OutputPolicyInstallRefusal::ChannelPolicyNotARecord { observed_shape } => format!(
+            "gunbc.output_policy `resolve_channel_policy` answered a {observed_shape}, not the \
+             ChannelPolicy record this seed decodes. The .dag authority and its seed \
+             realization disagree; refusing rather than running with the policy uninstalled."
+        ),
+    };
+    eprintln!("::error::output policy install refused: {located}");
+    std::process::exit(1);
+}
+
 pub fn install_output_policy(source_roots: &[String]) {
     let entry = "dag/gunbc/output_policy.dag";
     let (graph, indices) = match resolve_entry_graph_shared(source_roots, entry) {
         Ok(g) => g,
-        Err(_) => return,
+        Err(cause) => {
+            refuse_output_policy_install(OutputPolicyInstallRefusal::AuthorityUnresolved {
+                entry: entry.to_string(),
+                source_roots: source_roots.to_vec(),
+                cause,
+            })
+        }
     };
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     install_output_policy_in(&ctx, source_roots);
@@ -15109,10 +16729,16 @@ pub fn install_output_policy_in(ctx: &v1_interpreter::InterpContext, source_root
         false,
     ) {
         Ok(v) => v,
-        Err(_) => return,
+        Err(cause) => refuse_output_policy_install(
+            OutputPolicyInstallRefusal::ChannelPolicyEvaluationFailed {
+                cause: cause.to_string(),
+            },
+        ),
     };
     let Value::Record { fields, .. } = &policy else {
-        return;
+        refuse_output_policy_install(OutputPolicyInstallRefusal::ChannelPolicyNotARecord {
+            observed_shape: output_policy_value_shape(&policy),
+        });
     };
     let decision = |name: &str| -> OutputDecision {
         let observed = match ctx.field(fields, name) {
@@ -15926,16 +17552,22 @@ pub fn whole_tree_ancestry_retention_probe(
 /// Companion to a Bool witness: `emit_on_demand_family_crate_pr_native_agreement_holds`
 /// → `emit_on_demand_family_crate_pr_native_agreement_failure_receipt`.
 ///
-/// Both witness-naming conventions in the corpus are recognized: `_holds` (claim witnesses)
-/// and `_passes` (the cheap-floor gate witnesses in `tools.floor_effect_gate_witness`). The
-/// gate witnesses were unreachable from this channel while only `_holds` was stripped, which
-/// is why ten consecutive `extdeps_scope_placement_gate_passes` reds reported nothing but
-/// `returned Bool(false)`. A missing companion stays "not declared" either way, so widening
-/// the derivation cannot invent a required hook for a witness that has none.
+/// Both corpus naming conventions are normalized away — `_holds` (claim witnesses) and
+/// `_passes` (the cheap-floor gate witnesses in `tools.floor_effect_gate_witness`) — and so
+/// is neither: a name carrying no suffix projects to its own stem. That is the 2026-08-24
+/// change. Recognizing only `_holds` once left the gate witnesses unreachable from this
+/// channel, which is why ten consecutive `extdeps_scope_placement_gate_passes` reds reported
+/// nothing but `returned Bool(false)`; recognizing exactly two suffixes left 84.8% of the
+/// discovered roster in the same silence, for the same reason one layer out. Widening the
+/// derivation to all names cannot invent a required hook for a witness that has none: a
+/// companion that does not exist yields an empty receipt and appends nothing.
 /// Delegates suffix derivation to `gunbc.test_module_hygiene.failure_receipt_companion`
 /// (single authority — orphan reachability and claim_executor share the same rule).
-/// `NotDeclared` means the witness name carries no `_holds`/`_passes` companion convention;
-/// `AuthorityRefused` is a located lookup failure and must not be rendered as not-declared.
+/// The projection is TOTAL — every witness name maps to a companion spelling, and the suffix
+/// gets no vote on whether something is a witness (that question belongs to floor discovery).
+/// `AuthorityRefused` is a located lookup failure and must not be rendered as a missing
+/// companion; a companion that simply does not exist surfaces as an empty receipt, appended
+/// as nothing.
 pub use test_module_hygiene_bridge::FailureReceiptCompanionLookup;
 
 pub fn failure_receipt_companion(function: &str) -> FailureReceiptCompanionLookup {
@@ -15964,7 +17596,6 @@ pub fn append_failure_receipt_companion_loudness(
             detail.push_str(" | failure_receipt_companion_refused: ");
             detail.push_str(&cause);
         }
-        FailureReceiptCompanionLookup::NotDeclared => {}
     }
 }
 
@@ -15986,7 +17617,6 @@ pub fn append_witness_verdict_diagnostic_loudness(
             detail.push_str(" | witness_verdict_diagnostic_refused: ");
             detail.push_str(&cause);
         }
-        FailureReceiptCompanionLookup::NotDeclared => {}
     }
 }
 
@@ -16257,19 +17887,17 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
                 ClaimOutcome::HostEffectRefused { operation, ground }
             }
             v1_interpreter::InterpError::EvalBudgetExceeded { cpu_ms, budget_ms } => {
-                ClaimOutcome::TimedOut {
-                    elapsed_ms: cpu_ms,
+                ClaimOutcome::BudgetInterrupted {
+                    elapsed_at_least_ms: cpu_ms,
                     budget_ms,
                     kind: BudgetKind::Cpu,
-                    completion: BudgetCompletion::Interrupted,
                 }
             }
             v1_interpreter::InterpError::WitnessWallBudgetExceeded { wall_ms, budget_ms } => {
-                ClaimOutcome::TimedOut {
-                    elapsed_ms: wall_ms,
+                ClaimOutcome::BudgetInterrupted {
+                    elapsed_at_least_ms: wall_ms,
                     budget_ms,
                     kind: BudgetKind::Wall,
-                    completion: BudgetCompletion::Interrupted,
                 }
             }
             other => ClaimOutcome::RuntimeError {
@@ -16423,6 +18051,12 @@ enum ExpectedRedArm {
     /// Enrolled and INTERRUPTED at a budget. NOT agreement: an interruption is a lower bound on
     /// cost, never a verdict, so the enrolled claim was never decided.
     BudgetRefused,
+    /// Enrolled and THREW. Not agreement, for the reason the arm above is not: the enrolled
+    /// claim was never decided, so there is no expected failure for the enrollment to hold.
+    RuntimeErrored,
+    /// Enrolled and ANSWERED WITH SOMETHING THAT IS NOT A VERDICT. Same reason again — a
+    /// non-Bool observation is unreadable as agreement or disagreement.
+    ObservationUnreadable,
     /// Enrolled, PASSED, and then reclassified because its exact cost exceeded the budget.
     ///
     /// This arm exists because the row is true on two axes at once and the other three arms
@@ -16580,6 +18214,9 @@ pub enum ClaimDisposition {
     KnownRedHeld,
     KnownRedNowPassing,
     BudgetRefusedBeforeVerdict,
+    /// REACHED ITS VERDICT, then exceeded its budget. Deliberately NOT a `…BeforeVerdict` arm:
+    /// the whole defect this split repairs was a name asserting the verdict was never produced.
+    PassedOverBudget,
     HostToolUnresolvedBeforeVerdict,
     RouteGapBeforeVerdict,
     RuntimeErroredBeforeVerdict,
@@ -16592,13 +18229,30 @@ pub fn claim_disposition(row: &ClaimTerminalRow) -> ClaimDisposition {
         (ClaimOutcome::Pass, true) => ClaimDisposition::KnownRedNowPassing,
         (ClaimOutcome::Fail, false) => ClaimDisposition::Failed,
         (ClaimOutcome::Fail, true) => ClaimDisposition::KnownRedHeld,
-        (ClaimOutcome::NotBool { .. }, true) => ClaimDisposition::KnownRedHeld,
-        (ClaimOutcome::RuntimeError { .. }, true) => ClaimDisposition::KnownRedHeld,
-        (ClaimOutcome::NotBool { .. }, false) => {
-            ClaimDisposition::ObservationUnreadableBeforeVerdict
-        }
-        (ClaimOutcome::RuntimeError { .. }, false) => ClaimDisposition::RuntimeErroredBeforeVerdict,
-        (ClaimOutcome::TimedOut { .. }, _) => ClaimDisposition::BudgetRefusedBeforeVerdict,
+        // EXPECTATION IS NOT CONSULTED FOR EITHER OF THESE, and it used to be. Both arms
+        // returned `KnownRedHeld` when the row was enrolled, while the correct disposition sat
+        // one line below for the unenrolled case. That was one state collapsed onto another
+        // already spelled correctly beside it — no missing vocabulary, just a wrong selection.
+        //
+        // `Held` asserts the claim RAN AND FAILED as predicted. A claim that threw, or answered
+        // with something that is not a verdict, produced no verdict to agree with. This file
+        // already settled the principle when the same defect was repaired for budget
+        // interruption and unresolved host tools: ENROLLMENT CANNOT HOLD A CLAIM THAT WAS NEVER
+        // DECIDED. A runtime error is not a semantic verdict either, and the principle does not
+        // distinguish being cut off at a budget from throwing.
+        (ClaimOutcome::NotBool { .. }, _) => ClaimDisposition::ObservationUnreadableBeforeVerdict,
+        (ClaimOutcome::RuntimeError { .. }, _) => ClaimDisposition::RuntimeErroredBeforeVerdict,
+        // SITE 2, AND THE WORST OF THE FIVE: the disposition's NAME asserts BEFORE VERDICT, so a
+        // completed-over-budget row was recorded as having produced no verdict when it demonstrably
+        // had one. The other four produce a wrong label; this one produced a wrong FACT.
+        (ClaimOutcome::BudgetInterrupted { .. }, _) => ClaimDisposition::BudgetRefusedBeforeVerdict,
+        (ClaimOutcome::CompletedOverBudget { .. }, false) => ClaimDisposition::PassedOverBudget,
+        // ENROLLED AND PASSING IS STILL NOW-PASSING. The cost half is not lost by this choice:
+        // it travels on the cost channel (`completed_over_cost_requirement`), which is where the
+        // floor already reports such a row alongside `stale_quarantine`. This surface has one
+        // channel per row, so the arm answers the question it is asked — did the enrollment's
+        // predicted failure occur — and the answer is no.
+        (ClaimOutcome::CompletedOverBudget { .. }, true) => ClaimDisposition::KnownRedNowPassing,
         (ClaimOutcome::HostToolUnresolved { .. }, _) => {
             ClaimDisposition::HostToolUnresolvedBeforeVerdict
         }
@@ -16606,20 +18260,94 @@ pub fn claim_disposition(row: &ClaimTerminalRow) -> ClaimDisposition {
     }
 }
 
+/// THE WIRE VOCABULARY, and the second half of the comparator.
+///
+/// `v2.workflow.floor_terminal_ledger_wire` derives a disposition from the TAG below plus the
+/// expectation; `claim_disposition` above derives one from the `ClaimOutcome` directly. Two
+/// independent paths over the same row — `(outcome -> disposition)` here and
+/// `(outcome -> tag -> disposition)` there — so publishing both and requiring agreement checks
+/// exactly the mapping that can silently drift. A tag this seed spells wrongly, or a disposition
+/// label the module does not know, refuses the whole ledger naming the identity.
+///
+/// These strings are NOT free-form: each is a token the module declares and refuses if
+/// unrecognised. That is why they are `&'static str` rather than computed — there is nothing here
+/// to compute, only a vocabulary to name.
+pub fn claim_terminal_tag(outcome: &ClaimOutcome) -> &'static str {
+    match outcome {
+        ClaimOutcome::Pass => "returned-true",
+        ClaimOutcome::Fail => "returned-false",
+        ClaimOutcome::NotBool { .. } => "returned-unreadable",
+        ClaimOutcome::RuntimeError { .. } => "runtime-errored",
+        // SITE 3.
+        ClaimOutcome::BudgetInterrupted { .. } => "budget-refused",
+        ClaimOutcome::CompletedOverBudget { .. } => "passed-over-budget",
+        ClaimOutcome::HostToolUnresolved { .. } => "host-tool-unresolved",
+        ClaimOutcome::HostEffectRefused { .. } => "route-gap",
+    }
+}
+
+/// The detail field, carrying what the arm actually knows and nothing invented.
+///
+/// A verdict-bearing arm has NO detail — the tag already says everything the wire preserves about
+/// it — and writing a placeholder there would be a value a reader could mistake for an
+/// observation. `TimedOut` contributes the clock that raised it, matching the module's
+/// `SafetyInterrupted.raised_by`; its millisecond pair is deliberately not carried, because the
+/// wire's declared fidelity boundary excludes cost telemetry, which has its own receipts.
+pub fn claim_terminal_detail(outcome: &ClaimOutcome) -> String {
+    match outcome {
+        ClaimOutcome::Pass | ClaimOutcome::Fail => String::new(),
+        ClaimOutcome::NotBool { got } => got.clone(),
+        ClaimOutcome::RuntimeError { message } => message.clone(),
+        ClaimOutcome::BudgetInterrupted { kind, .. }
+        | ClaimOutcome::CompletedOverBudget { kind, .. } => kind.label().to_string(),
+        ClaimOutcome::HostToolUnresolved { name, .. } => name.clone(),
+        ClaimOutcome::HostEffectRefused { operation, .. } => operation.clone(),
+    }
+}
+
+pub fn claim_disposition_wire(disposition: ClaimDisposition) -> &'static str {
+    match disposition {
+        ClaimDisposition::Passed => "passed",
+        ClaimDisposition::Failed => "failed",
+        ClaimDisposition::KnownRedHeld => "known-red-held",
+        ClaimDisposition::KnownRedNowPassing => "known-red-now-passing",
+        ClaimDisposition::BudgetRefusedBeforeVerdict => "budget-refused-before-verdict",
+        ClaimDisposition::PassedOverBudget => "passed-over-budget",
+        ClaimDisposition::HostToolUnresolvedBeforeVerdict => "host-tool-unresolved-before-verdict",
+        ClaimDisposition::RouteGapBeforeVerdict => "route-gap-before-verdict",
+        ClaimDisposition::RuntimeErroredBeforeVerdict => "runtime-errored-before-verdict",
+        ClaimDisposition::ObservationUnreadableBeforeVerdict => {
+            "observation-unreadable-before-verdict"
+        }
+    }
+}
+
+pub fn seed_ledger_row(
+    row: &ClaimTerminalRow,
+) -> crate::cli_run::terminal_ledger_publish::SeedLedgerRow {
+    crate::cli_run::terminal_ledger_publish::SeedLedgerRow {
+        qualified: row.qualified.clone(),
+        expectation_wire: if row.expected_red {
+            "expect-red"
+        } else {
+            "expect-hold"
+        },
+        terminal_tag: claim_terminal_tag(&row.outcome),
+        terminal_detail: claim_terminal_detail(&row.outcome),
+        seed_disposition_wire: claim_disposition_wire(claim_disposition(row)),
+    }
+}
+
 fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
     match outcome {
         ClaimOutcome::Pass => ExpectedRedArm::NowPassing,
-        ClaimOutcome::TimedOut {
-            completion: BudgetCompletion::Interrupted,
-            ..
-        } => ExpectedRedArm::BudgetRefused,
-        ClaimOutcome::TimedOut {
-            completion: BudgetCompletion::CompletedOverBudget,
-            ..
-        } => ExpectedRedArm::PassedOverBudget,
-        ClaimOutcome::Fail | ClaimOutcome::NotBool { .. } | ClaimOutcome::RuntimeError { .. } => {
-            ExpectedRedArm::Held
-        }
+        ClaimOutcome::BudgetInterrupted { .. } => ExpectedRedArm::BudgetRefused,
+        ClaimOutcome::CompletedOverBudget { .. } => ExpectedRedArm::PassedOverBudget,
+        ClaimOutcome::Fail => ExpectedRedArm::Held,
+        // THESE TWO WERE FOLDED INTO `Held` AND ARE NOT AGREEMENT. Only `Fail` is: the
+        // enrollment predicts a failing verdict, and only a failing verdict can hold it.
+        ClaimOutcome::RuntimeError { .. } => ExpectedRedArm::RuntimeErrored,
+        ClaimOutcome::NotBool { .. } => ExpectedRedArm::ObservationUnreadable,
         ClaimOutcome::HostToolUnresolved { .. } => ExpectedRedArm::HostToolUnresolved,
         ClaimOutcome::HostEffectRefused { .. } => ExpectedRedArm::HostEffectRefused,
     }
@@ -16632,11 +18360,10 @@ fn budget_completion_outcome(
 ) -> ClaimOutcome {
     match (budget, outcome) {
         (Some(budget_ms), ClaimOutcome::Pass) if cpu_nanos > u128::from(budget_ms) * 1_000_000 => {
-            ClaimOutcome::TimedOut {
+            ClaimOutcome::CompletedOverBudget {
                 elapsed_ms: (cpu_nanos / 1_000_000) as u64,
                 budget_ms,
                 kind: BudgetKind::Cpu,
-                completion: BudgetCompletion::CompletedOverBudget,
             }
         }
         (_, o) => o,
@@ -16653,11 +18380,10 @@ fn wall_budget_completion_outcome(
 ) -> ClaimOutcome {
     match (budget, outcome) {
         (Some(budget_ms), ClaimOutcome::Pass) if wall_nanos > u128::from(budget_ms) * 1_000_000 => {
-            ClaimOutcome::TimedOut {
+            ClaimOutcome::CompletedOverBudget {
                 elapsed_ms: (wall_nanos / 1_000_000) as u64,
                 budget_ms,
                 kind: BudgetKind::Wall,
-                completion: BudgetCompletion::CompletedOverBudget,
             }
         }
         (_, o) => o,
@@ -16678,26 +18404,21 @@ mod budget_completion_tests {
         // the coupling that let a reworded message silently change the floor's failure
         // classification downstream.
         match budget_completion_outcome(Some(5), ClaimOutcome::Pass, 6_000_000) {
-            ClaimOutcome::TimedOut {
+            ClaimOutcome::CompletedOverBudget {
                 elapsed_ms,
                 budget_ms,
                 kind,
-                completion,
             } => {
                 assert_eq!(budget_ms, 5);
                 assert_eq!(elapsed_ms, 6);
                 assert_eq!(kind, BudgetKind::Cpu, "CPU budget must not report as wall");
-                // Binding `completion` rather than `..` is the point: this fn is one of the two
-                // producers of CompletedOverBudget, so if it ever emitted Interrupted the
-                // elapsed above would silently become a lower bound and 6 would stop being a
-                // measurement. A `..` here would have accepted that.
-                assert_eq!(
-                    completion,
-                    BudgetCompletion::CompletedOverBudget,
-                    "the completion-side backstop observes an exact elapsed, never a bound"
-                );
+                // MATCHING THE VARIANT rather than a field is now what carries this: this fn
+                // is one of the two producers of the completed arm, and if it ever emitted
+                // `BudgetInterrupted` the elapsed above would be a lower bound and 6 would stop
+                // being a measurement. The old shape asserted that as a field equality; the
+                // arm head asserts it structurally, and the `other =>` below is the RED.
             }
-            other => panic!("expected TimedOut, got {other:?}"),
+            other => panic!("expected CompletedOverBudget, got {other:?}"),
         }
     }
 
@@ -16753,7 +18474,7 @@ mod budget_completion_tests {
         // naming quibble.
         assert!(matches!(
             budget_completion_outcome(Some(budget_ms), ClaimOutcome::Pass, receipt.wall_nanos),
-            ClaimOutcome::TimedOut { .. }
+            ClaimOutcome::CompletedOverBudget { .. }
         ));
     }
 
@@ -16776,23 +18497,80 @@ mod budget_completion_tests {
     #[test]
     fn pass_over_wall_budget_converts_to_typed_refusal() {
         match wall_budget_completion_outcome(Some(600), ClaimOutcome::Pass, 601_000_000_000) {
-            ClaimOutcome::TimedOut {
+            ClaimOutcome::CompletedOverBudget {
                 elapsed_ms,
                 budget_ms,
                 kind,
-                completion,
             } => {
                 assert_eq!(budget_ms, 600);
                 assert_eq!(elapsed_ms, 601_000);
                 assert_eq!(kind, BudgetKind::Wall, "wall budget must not report as CPU");
-                assert_eq!(
-                    completion,
-                    BudgetCompletion::CompletedOverBudget,
-                    "the completion-side backstop observes an exact elapsed, never a bound"
-                );
             }
-            other => panic!("expected TimedOut, got {other:?}"),
+            other => panic!("expected CompletedOverBudget, got {other:?}"),
         }
+    }
+
+    /// THE THREE PROJECTIONS THAT DROPPED THE AXIS, ASSERTED IN ONE PLACE.
+    ///
+    /// RED against the pre-split code: with one `TimedOut` variant carrying `completion`, every
+    /// one of these projections was written as `TimedOut { .. }` and answered the interrupted
+    /// row's label for BOTH rows, so each pair below was equal rather than distinct. The pairing
+    /// is the whole assertion — a test of the completed row alone would pass against a mapping
+    /// that had simply been re-pointed, and a test of the interrupted row alone would pass
+    /// against the erasure it exists to catch.
+    ///
+    /// It stays enrolled after the wall lands: it is the permanent control that the two arms
+    /// keep projecting apart, not scaffolding for the change (DESIGN §4b meta-obligation 4).
+    #[test]
+    fn the_two_budget_arms_project_apart_in_every_consumer() {
+        let interrupted = ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms: 57_193,
+            budget_ms: 5_000,
+            kind: BudgetKind::Cpu,
+        };
+        let completed = ClaimOutcome::CompletedOverBudget {
+            elapsed_ms: 57_193,
+            budget_ms: 5_000,
+            kind: BudgetKind::Cpu,
+        };
+
+        // 1. THE VERDICT. `BudgetRefused` over a row that reached its verdict is the label that
+        //    put BUDGET-REFUSED on the floor's per-row line for a completed claim.
+        assert_eq!(
+            CiWitnessVerdict::from_outcome(&interrupted, false),
+            CiWitnessVerdict::BudgetRefused
+        );
+        assert_eq!(
+            CiWitnessVerdict::from_outcome(&completed, false),
+            CiWitnessVerdict::PassedOverBudget
+        );
+
+        // 2. THE DISPOSITION, and the one that asserted a FACT rather than a label: a name
+        //    ending in `BeforeVerdict` for a claim whose verdict the same ledger reported.
+        let row = |outcome: ClaimOutcome| ClaimTerminalRow {
+            qualified: "m.f".to_string(),
+            outcome,
+            expected_red: false,
+        };
+        assert_eq!(
+            claim_disposition(&row(interrupted.clone())),
+            ClaimDisposition::BudgetRefusedBeforeVerdict
+        );
+        assert_eq!(
+            claim_disposition(&row(completed.clone())),
+            ClaimDisposition::PassedOverBudget
+        );
+
+        // 3. THE WIRE TAG AND 4. THE EXECUTION LABEL — the two strings the ledger's over-cost
+        //    and per-row lines are rendered from. `outcome=timed_out` was this one.
+        assert_ne!(
+            claim_terminal_tag(&interrupted),
+            claim_terminal_tag(&completed)
+        );
+        assert_ne!(
+            witness_execution_outcome_label(&interrupted),
+            witness_execution_outcome_label(&completed)
+        );
     }
 
     /// The two clocks must stay distinguishable. A CPU kill and a wall kill have different
@@ -16810,14 +18588,14 @@ mod budget_completion_tests {
         );
         assert!(matches!(
             cpu,
-            ClaimOutcome::TimedOut {
+            ClaimOutcome::CompletedOverBudget {
                 kind: BudgetKind::Cpu,
                 ..
             }
         ));
         assert!(matches!(
             wall,
-            ClaimOutcome::TimedOut {
+            ClaimOutcome::CompletedOverBudget {
                 kind: BudgetKind::Wall,
                 ..
             }
@@ -19016,14 +20794,22 @@ pub fn project_witness_cost_receipt(
                 // `std.observation` `TimedOut` carries { basis, budget, elapsed } and has no
                 // completion field yet, so there is nowhere on the carrier to put it — and
                 // fabricating a value to reach a more specific arm is exactly what the floor
-                // component receipt note already forbids for the first pair. This is the last
-                // `completion: _` in the seed and it dissolves when that std arm gains
-                // `completion` beside `basis`; every other consumer now reads the axis.
-                ClaimOutcome::TimedOut {
+                // component receipt note already forbids for the first pair. It dissolves when
+                // that std arm gains `completion` beside `basis`, at which point this or-pattern
+                // splits into two arms; every other consumer now reads the axis.
+                //
+                // THE DROP IS NOW WRITTEN, NOT WILDCARDED: both arms are named in the head, so
+                // this projection cannot silently acquire a third budget arm the way a
+                // `TimedOut { .. }` would have.
+                ClaimOutcome::BudgetInterrupted {
+                    elapsed_at_least_ms: elapsed_ms,
+                    budget_ms,
+                    kind,
+                }
+                | ClaimOutcome::CompletedOverBudget {
                     elapsed_ms,
                     budget_ms,
                     kind,
-                    completion: _,
                 } => {
                     // The clock the deadline was enforced on travels WITH the pair, so a
                     // reader of the event can tell a thread-CPU fail-stop from a wall
@@ -19888,22 +21674,36 @@ fn frozen_path_deferral_qualified_identities_from_source(
 }
 
 /// The contradictory-intersection wall's pure decision: which frozen (entry, qualified-name)
-/// rows also name an identity enrolled in `floor_expected_red_roster`. Pure and side-effect-free
+/// rows also name an identity enrolled in an executing witness roster. Pure and side-effect-free
 /// so it is testable without a corpus checkout or a git repository — the file-reading half
 /// (`frozen_path_deferral_qualified_identities_from_source`) and the git-head half
 /// (`current_git_head_or_unresolved`) are kept out of it deliberately.
-fn expected_red_freeze_intersection(
+fn executing_roster_freeze_intersection(
     frozen_qualified: &[(String, String)],
-    expected_red_roster: &HashSet<String>,
+    executing_roster: &HashSet<String>,
 ) -> Vec<(String, String)> {
     let mut colliding: Vec<(String, String)> = frozen_qualified
         .iter()
-        .filter(|(_, qualified)| expected_red_roster.contains(qualified))
+        .filter(|(_, qualified)| executing_roster.contains(qualified))
         .cloned()
         .collect();
     colliding.sort();
     colliding.dedup();
     colliding
+}
+
+fn expected_red_freeze_intersection(
+    frozen_qualified: &[(String, String)],
+    expected_red_roster: &HashSet<String>,
+) -> Vec<(String, String)> {
+    executing_roster_freeze_intersection(frozen_qualified, expected_red_roster)
+}
+
+fn route_gap_freeze_intersection(
+    frozen_qualified: &[(String, String)],
+    route_gap_roster: &HashSet<String>,
+) -> Vec<(String, String)> {
+    executing_roster_freeze_intersection(frozen_qualified, route_gap_roster)
 }
 
 fn current_git_head_or_unresolved() -> String {
@@ -19938,6 +21738,33 @@ fn format_expected_red_freeze_intersection_refusal(
          witness_deferral_freeze.dag's shrink log, or if the identity is not genuinely \
          executing, fix floor_expected_red_roster/required_floor's admission instead of leaving \
          the contradiction standing. Colliding identities:{detail}",
+        colliding.len(),
+        colliding.len()
+    )
+}
+
+fn format_route_gap_freeze_intersection_refusal(
+    colliding: &[(String, String)],
+    head: &str,
+) -> String {
+    let mut detail = String::new();
+    for (entry, qualified) in colliding {
+        detail.push_str(&format!("\n  - {qualified} (frozen via entry \"{entry}\")"));
+    }
+    format!(
+        "REQUIRED-FLOOR REFUSAL cause=RouteGapFreezeIntersection count={} head={head} — {} \
+         identity(ies) are simultaneously enrolled in \
+         v2.workflow.floor_route_gap.floor_route_gap_roster (a typed witness that this required \
+         floor attempts to execute but cannot route to its subject) AND path-deferred in \
+         dag/gunbc/witness_deferral_freeze.dag frozen_path_deferrals \
+         (LegacyFrozenPathDeferral, admitted as having no executing consumer). Both claims cannot \
+         hold of one identity: the typed route-gap receipt exists only because this required \
+         floor consumed the row, so the freeze classification is stale evidence, not a live \
+         exemption. This count is bound to the head above — measure again at merge time, never \
+         cite it bare. Disposition: retire the frozen_path_deferrals row with a receipt in \
+         witness_deferral_freeze.dag's shrink log, or if the floor does not genuinely consume \
+         the identity, remove it from floor_route_gap_roster instead of leaving the contradiction \
+         standing. Colliding identities:{detail}",
         colliding.len(),
         colliding.len()
     )
@@ -24802,17 +26629,31 @@ fn run_discovery_rows(
             // Rendered so the elapsed value is never mistaken for a completed duration:
             // the row was killed AT the budget, so this is a ceiling, not a cost. The
             // clock (cpu vs wall) is named because the two have different remedies.
-            ClaimOutcome::TimedOut {
-                elapsed_ms,
+            // BOTH ARMS RENDER, and the reading comes from the arm rather than from a field
+            // this format could have wildcarded: `at least` for an interruption's ceiling,
+            // `exactly` for a completed cost.
+            ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms,
                 budget_ms,
                 kind,
-                completion,
             } => summary.failures.push(format!(
-                "{} ({}) over its {} budget: cost is {} {}ms against a {}ms budget",
+                "{} ({}) over its {} budget: cost is at least {}ms against a {}ms budget",
                 row.function,
                 row.entry,
                 kind.label(),
-                completion.elapsed_reading(),
+                elapsed_at_least_ms,
+                budget_ms
+            )),
+            ClaimOutcome::CompletedOverBudget {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => summary.failures.push(format!(
+                "{} ({}) reached its verdict and then exceeded its {} budget: cost is exactly \
+                 {}ms against a {}ms budget",
+                row.function,
+                row.entry,
+                kind.label(),
                 elapsed_ms,
                 budget_ms
             )),
@@ -26778,6 +28619,52 @@ mod node_frontier_plumbing_controls {
         roster.insert("test.claim.some_third_thing.holds".to_string());
 
         let colliding = super::expected_red_freeze_intersection(&frozen, &roster);
+        assert!(colliding.is_empty(), "{colliding:?}");
+    }
+
+    // The third pair in the pairwise-disjoint roster contract. A typed route gap proves the
+    // required floor consumed the identity far enough to produce a route receipt; it therefore
+    // cannot simultaneously be frozen as a witness with no executing consumer.
+    #[test]
+    fn route_gap_freeze_intersection_catches_only_the_planted_collision() {
+        let frozen = vec![
+            (
+                "test/claim/route_gap_test.dag".to_string(),
+                "test.claim.route_gap.host_refused_holds".to_string(),
+            ),
+            (
+                "test/claim/other_test.dag".to_string(),
+                "test.claim.other.unrelated_holds".to_string(),
+            ),
+        ];
+        let route_gap_roster = std::collections::HashSet::from([
+            "test.claim.route_gap.host_refused_holds".to_string(),
+            "test.claim.third.unrelated_holds".to_string(),
+        ]);
+
+        let colliding = super::route_gap_freeze_intersection(&frozen, &route_gap_roster);
+        assert_eq!(colliding, vec![frozen[0].clone()]);
+
+        let refusal = super::format_route_gap_freeze_intersection_refusal(&colliding, "deadbeef");
+        assert!(refusal.contains("cause=RouteGapFreezeIntersection"));
+        assert!(refusal.contains("count=1"));
+        assert!(refusal.contains("head=deadbeef"));
+        assert!(refusal.contains("test.claim.route_gap.host_refused_holds"));
+        assert!(!refusal.contains("test.claim.other.unrelated_holds"));
+    }
+
+    #[test]
+    fn route_gap_freeze_intersection_is_empty_when_rosters_are_disjoint() {
+        let frozen = vec![(
+            "test/claim/other_test.dag".to_string(),
+            "test.claim.other.unrelated_holds".to_string(),
+        )];
+        let route_gap_roster =
+            std::collections::HashSet::from(
+                ["test.claim.route_gap.host_refused_holds".to_string()],
+            );
+
+        let colliding = super::route_gap_freeze_intersection(&frozen, &route_gap_roster);
         assert!(colliding.is_empty(), "{colliding:?}");
     }
 
@@ -38817,6 +40704,86 @@ mod exclusive_cost_partition_law {
         assert_eq!(p.share_of_parent("load"), Some(0.6));
     }
 
+    /// The shared pool parse is subtracted from the row that happened to force it.
+    ///
+    /// RED WITHOUT THE SUBTRACTION: drop the `saturating_sub` in
+    /// `nanos_net_of_pool_parse` and this returns the full elapsed — which is exactly
+    /// the state measured on 2026-08-24, where `edge_index_tree_census_miss_nanos`
+    /// reported 23.02s for two cold censuses because 14.25s of whole-corpus
+    /// `pool_parse` had started inside its timer.
+    #[test]
+    fn a_pool_parse_forced_inside_a_row_is_not_charged_to_that_row() {
+        let slot_before = resolve_stage_slot_snapshot().pool_parse;
+        // A body that spends real, nonzero wall AND "forces" a 10s pool build. The 10s
+        // dwarfs any wall this body can plausibly spend, so the net saturates to zero —
+        // and WITHOUT the subtraction the net is the body's own wall, which the busy
+        // loop guarantees is greater than zero. That gap is what makes this test
+        // discriminating; asserting merely `net < 10s` would pass either way, which is
+        // how the first version of this test failed to catch its own mutation.
+        let ((), net) = nanos_net_of_pool_parse(|| {
+            let spin = std::time::Instant::now();
+            while spin.elapsed().as_millis() < 5 {
+                std::hint::spin_loop();
+            }
+            resolve_stage_slot_add(|st| st.pool_parse += 10_000_000_000);
+        });
+        assert_eq!(net, 0, "row kept the pool parse it forced: {net}ns");
+        assert_eq!(
+            resolve_stage_slot_snapshot().pool_parse - slot_before,
+            10_000_000_000,
+            "the parse must still be counted — once, on its own row"
+        );
+    }
+
+    /// The pool parse is an EXCLUSIVE PEER, with no parent row at all.
+    ///
+    /// It shipped as an inclusive row `contained_in: "load"`, and review 55349 showed
+    /// that claim false: the reconcile path forces the parse through
+    /// `pool_qualified_fill` while timing `assembly_pool_fill`, which is a top-level
+    /// peer of `load` and not a descendant of it. No single parent is true, because
+    /// which row forces the parse depends on the path — so the row has none.
+    ///
+    /// RED WITHOUT THE FIX: as an inclusive row this asserts `contained_in`, and every
+    /// candidate value is wrong on some path. As an exclusive row the discriminating
+    /// property is the one below — the parse enters `sum_exclusive` exactly once,
+    /// rather than migrating into `remainder_nanos`.
+    #[test]
+    fn pool_parse_is_an_exclusive_peer_with_no_parent_row() {
+        let st = ResolveStageNanos {
+            pool_parse: 14_250_000_000,
+            pool_parse_builds: 1,
+            pool_parse_modules: 3_875,
+            // A `load` already recorded NET of the parse, as the live code records it.
+            load: 6_960_000_000,
+            ..ResolveStageNanos::default()
+        };
+        let p = exclusive_cost_partition_from(&st, "test_basis", 21_210_000_000, 1, 0, Vec::new());
+        // No inclusive row claims it — a parent would be false on one path or the other.
+        assert!(
+            !p.inclusive.iter().any(|r| r.name == "pool_parse"),
+            "pool_parse must not claim a parent it does not have"
+        );
+        let row = p
+            .exclusive
+            .iter()
+            .find(|r| r.name == "pool_parse")
+            .expect("pool_parse exclusive row");
+        assert_eq!(row.nanos, 14_250_000_000);
+        // Counted exactly once, beside the net `load` rather than inside it, and the
+        // partition still reconciles.
+        assert_eq!(p.sum_exclusive_nanos(), 21_210_000_000);
+        assert_eq!(p.remainder_nanos, 0);
+        assert!(matches!(
+            p.verdict,
+            CostAccountingVerdict::Reconciled { .. }
+        ));
+        let json = render_exclusive_cost_partition_json(&p, &[]);
+        assert!(
+            json.contains("\"pool_parse\":{\"builds\":1,\"modules\":3875}"),
+            "{json}"
+        );
+    }
+
     #[test]
     fn refuses_over_attribution_instead_of_clamping_to_zero() {
         // The condition observed in the field: rows summed over a larger universe than
@@ -40395,6 +42362,18 @@ pub enum RequiredFloorDisposition {
     /// matches a `long_home_prefixes()` entry. Carries the exact prefix that matched, which the
     /// former bare `long_declined` counter discarded.
     DeclinedLongModule { matched_prefix: String },
+    /// Declined because the module's AUTHORED name matches a `fixture_home_prefixes()` entry:
+    /// a `test fn` that is a plan-driven FIXTURE MEMBER rather than a witness.
+    ///
+    /// Not a cost decline and not a capability decline. These sites are the SPECIMENS that
+    /// `claim_executor --plan-entry .../walk_plan_stage/plan.dag --plan-function <recipe>`
+    /// drives; the recipe is the witness and it already executes them. Two of them are red by
+    /// construction (a body of literal `false`, and a self-call whose depth refusal IS the
+    /// observed subject) and can never green, and one of the rest writes the very marker path
+    /// another recipe asserts must stay absent — so the fold running them is not merely useless
+    /// but corrupting. See `v2.workflow.required_floor` `fixture_home_prefixes` for the full
+    /// argument and the dissolution condition.
+    DeclinedFixtureMember { matched_prefix: String },
     /// Declined because the module declares `LiveTreeDisposition = ReadsLiveTree`.
     ///
     /// STAGED FOR DELETION, and the reason is measured rather than intended — see
@@ -40451,7 +42430,10 @@ fn witness_execution_outcome_label(outcome: &ClaimOutcome) -> &'static str {
         ClaimOutcome::Fail => "fail",
         ClaimOutcome::NotBool { .. } => "not_bool",
         ClaimOutcome::RuntimeError { .. } => "runtime_error",
-        ClaimOutcome::TimedOut { .. } => "timed_out",
+        // SITE 4. "timed_out" over both arms is what put `outcome=timed_out` on the over-cost
+        // line of a row the same ledger reported as having completed.
+        ClaimOutcome::BudgetInterrupted { .. } => "budget_interrupted",
+        ClaimOutcome::CompletedOverBudget { .. } => "completed_over_budget",
         ClaimOutcome::HostToolUnresolved { .. } => "host_tool_unresolved",
         ClaimOutcome::HostEffectRefused { .. } => "host_effect_refused",
     }
@@ -40557,6 +42539,10 @@ pub struct RequiredFloorOutcome {
     /// A cost quarantine on a different axis from execution, and it is REPORTED rather than
     /// silently subtracted: these identities have no executing consumer anywhere in the tree.
     pub declined_long_module: usize,
+    /// Discovered sites declined because the module's AUTHORED name matches a fixture-home
+    /// prefix. Unlike the two neighbours, these identities DO have an executing consumer —
+    /// the plan recipes that drive them — so this count is not a coverage gap.
+    pub declined_fixture_member: usize,
     /// Discovered sites declined because the module declares `ReadsLiveTree`.
     ///
     /// REPORTED IN THE HEADLINE, which is the change this carries: the population was
@@ -40623,6 +42609,15 @@ pub struct RequiredFloorOutcome {
     /// remedy is reducing what it costs, not investigating why it never returned. Still
     /// blocking, per the same ruling.
     pub completed_over_cost_requirement: Vec<String>,
+    /// ENROLLED AS EXPECTED-RED AND THREW, or answered with a non-verdict. Its own collections
+    /// for the same reason `route_gap` is not folded into `host_tool_unresolved`: the remedy
+    /// differs. A throw is a defect in the witness or its subject; an unreadable observation is
+    /// a witness that no longer returns a Bool. Neither is the enrolled failure, and holding
+    /// either lets an enrollment cover a witness that has not actually run since the day it was
+    /// enrolled.
+    pub known_red_runtime_errored: Vec<String>,
+    /// See `known_red_runtime_errored`.
+    pub known_red_observation_unreadable: Vec<String>,
     /// Host tool could not be resolved — infra undecided, not budget-refused.
     pub host_tool_unresolved: Vec<String>,
     /// THE ROUTE HAD NO ARM — a sixth blocking cause, and the one this floor previously
@@ -41145,6 +43140,37 @@ fn spawn_floor_heartbeat() {
     });
 }
 
+/// DECODE ONE AUTHORED-MODULE-NAME PREFIX ROSTER from the `.dag` authority.
+///
+/// NO EMPTY-ROSTER REFUSAL, and the first version of this decode had one. It was backwards: an
+/// empty exception roster is the DESIRED terminal state, so refusing on it would make "at least
+/// one exclusion must exist forever" a structural requirement of the floor. Once a home is
+/// discharged, admitting its witnesses to the ordinary population is the intended result, not an
+/// error. A decode that FAILS still refuses — a failed read and a legitimately empty roster are
+/// different states, and only the first is a defect.
+fn floor_decode_module_prefix_roster(
+    hermetic: &v1_interpreter::InterpContext,
+    qualified_name: &str,
+) -> Result<Vec<String>, String> {
+    let value = v1_interpreter::run_in_context(hermetic, qualified_name, false)
+        .map_err(|e| format!("{qualified_name}: {e}"))?;
+    let items = floor_decode_list(hermetic, Some(&value))
+        .map_err(|why| format!("{qualified_name} decode: {why}"))?;
+    let mut out = Vec::new();
+    for item in items {
+        match item {
+            v1_interpreter::Value::Str(s) => out.push(s.to_string()),
+            other => {
+                return Err(format!(
+                    "{qualified_name}: expected String rows, got {}",
+                    floor_value_shape(Some(other))
+                ))
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// THE ENVELOPE THE PROCESS ACTUALLY HAS, read from the kernel, at every visible level.
 ///
 /// Every envelope figure this lane has reasoned with — 13.00 GiB high, 14.00 GiB max — came
@@ -41528,38 +43554,22 @@ pub fn run_required_floor(
     let claim_wall_safety_limit_ms =
         floor_required_int(&hermetic, "required_floor_claim_wall_safety_limit_ms")?;
     let claim_cost_line_ms = floor_required_int(&hermetic, "required_floor_claim_cost_line_ms")?;
-    let long_home_prefixes: Vec<String> = {
-        let value = v1_interpreter::run_in_context(
-            &hermetic,
-            "v2.workflow.required_floor.long_home_prefixes",
-            false,
-        )
-        .map_err(|e| format!("long_home_prefixes: {e}"))?;
-        let items = floor_decode_list(&hermetic, Some(&value))
-            .map_err(|why| format!("long_home_prefixes decode: {why}"))?;
-        let mut out = Vec::new();
-        for item in items {
-            match item {
-                v1_interpreter::Value::Str(s) => out.push(s.to_string()),
-                other => {
-                    return Err(format!(
-                        "long_home_prefixes: expected String rows, got {}",
-                        floor_value_shape(Some(other))
-                    ))
-                }
-            }
-        }
-        // NO EMPTY-ROSTER REFUSAL, and the first version of this decode had one. It was
-        // backwards: an empty exception roster is the DESIRED terminal state, so refusing on it
-        // would make "at least one exclusion must exist forever" a structural requirement of the
-        // floor. Once the long home is discharged, admitting those witnesses to the ordinary
-        // population is the intended result, not an error. A decode that fails still refuses
-        // above — a failed read and a legitimately empty roster are different states.
-        out
-    };
+    let long_home_prefixes = floor_decode_module_prefix_roster(
+        &hermetic,
+        "v2.workflow.required_floor.long_home_prefixes",
+    )?;
+    // ONE DECODE, TWO ROSTERS. The fixture-home prefixes are read through the same helper as
+    // the long-home prefixes because they are the same kind of fact — an authored module-name
+    // prefix the floor declines on — and a second hand-rolled decode beside it would be a
+    // second authority for how such a roster is read.
+    let fixture_home_prefixes = floor_decode_module_prefix_roster(
+        &hermetic,
+        "v2.workflow.required_floor.fixture_home_prefixes",
+    )?;
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
     let mut planned_identities: HashSet<String> = HashSet::new();
     let mut long_declined = 0usize;
+    let mut fixture_declined = 0usize;
     let mut live_declined = 0usize;
     let mut sites_offered = 0usize;
     let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
@@ -41571,6 +43581,9 @@ pub fn run_required_floor(
         let long_home = matched_prefix.is_some();
         // Diagnostic only -- computed once per file and never consulted by the admission
         // branching below. See `LongHomeStorageAgreement`'s doc comment.
+        let fixture_prefix = fixture_home_prefixes
+            .iter()
+            .find(|prefix| file.module_path.starts_with(prefix.as_str()));
         let path_is_long = is_long_home_path(&file.path);
         let storage_agreement = long_home_storage_agreement(path_is_long, long_home);
         for function in &file.functions {
@@ -41588,6 +43601,20 @@ pub fn run_required_floor(
                         matched_prefix: matched_prefix
                             .expect("long_home is true only when matched_prefix is Some")
                             .clone(),
+                    },
+                });
+                continue;
+            }
+            // FIXTURE HOME BEFORE LIVE TREE, and the order is load-bearing rather than
+            // arbitrary: a fixture member that also reads the live tree must report the reason
+            // it will never be a floor claim, not the reason it could not run today. The first
+            // is permanent and owned; the second is a staged prediction.
+            if let Some(prefix) = fixture_prefix {
+                fixture_declined += 1;
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity,
+                    disposition: RequiredFloorDisposition::DeclinedFixtureMember {
+                        matched_prefix: prefix.clone(),
                     },
                 });
                 continue;
@@ -41647,10 +43674,11 @@ pub fn run_required_floor(
     // it is the construction's own statement of what it guarantees, and it fails loudly the
     // first time an edit adds a third arm that quietly swallows rows, which is precisely how
     // the live-tree decline arrived and stayed invisible.
-    if sites_offered != claims.len() + long_declined + live_declined {
+    if sites_offered != claims.len() + long_declined + fixture_declined + live_declined {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={sites_offered} \
-             routed={} declined_long={long_declined} declined_live={live_declined} — every \
+             routed={} declined_long={long_declined} declined_fixture={fixture_declined} \
+             declined_live={live_declined} — every \
              discovered site must be either routed to a claim or declined with a stated \
              disposition; a gap here is a roster that narrowed without saying so",
             claims.len()
@@ -41658,12 +43686,13 @@ pub fn run_required_floor(
     }
     eprintln!(
         "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={} \
-         claims={} declined_long={} declined_live={}",
+         claims={} declined_long={} declined_fixture={} declined_live={}",
         projection_started.elapsed().as_millis(),
         sites_offered,
         files.len(),
         claims.len(),
         long_declined,
+        fixture_declined,
         live_declined
     );
 
@@ -41827,14 +43856,13 @@ pub fn run_required_floor(
         }
     }
 
-    // CONTRADICTORY-INTERSECTION WALL: `floor_expected_red_roster` (this roster — removable
-    // only by an OBSERVED PASS, per its own header) and `witness_deferral_freeze`'s
+    // CONTRADICTORY-INTERSECTION WALL: both executing-roster classifications and
+    // `witness_deferral_freeze`'s
     // `frozen_path_deferrals` (`LegacyFrozenPathDeferral` — admitted as NEVER EXECUTED) make
-    // opposite claims about the same identity. Both cannot be true of one row: an identity that
-    // executes here (as every enrolled row must, on pain of `ExpectedRedIdentityDidNotExecute`
-    // below) is proof the freeze's classification for it is stale, and an identity that is
-    // genuinely never executed cannot legitimately be "known red, awaiting an observed pass" —
-    // there is no pass to observe. Construction, not validation (DESIGN.md §5): the two rosters
+    // opposite claims about the same identity. Neither can coexist with the freeze: expected-red
+    // requires a verdict, while a typed route-gap requires an attempted execution that produced
+    // a pre-verdict route receipt. Either proves the freeze's no-executing-consumer classification
+    // stale. Construction, not validation (DESIGN.md §5): all three rosters
     // are cross-referenced from their own source authorities on every required-floor run, so the
     // contradiction cannot re-accumulate silently the way it did before this wall existed.
     {
@@ -41852,6 +43880,13 @@ pub fn run_required_floor(
         if !colliding.is_empty() {
             let head = current_git_head_or_unresolved();
             return Err(format_expected_red_freeze_intersection_refusal(
+                &colliding, &head,
+            ));
+        }
+        let colliding = route_gap_freeze_intersection(&frozen_qualified, &route_gap_roster);
+        if !colliding.is_empty() {
+            let head = current_git_head_or_unresolved();
+            return Err(format_route_gap_freeze_intersection_refusal(
                 &colliding, &head,
             ));
         }
@@ -41940,6 +43975,7 @@ pub fn run_required_floor(
         modules_excluded: prepared.modules_excluded,
         sites_offered,
         declined_long_module: long_declined,
+        declined_fixture_member: fixture_declined,
         declined_live_tree: live_declined,
         claims_planned,
         claims_executed: 0,
@@ -41955,6 +43991,8 @@ pub fn run_required_floor(
         stale_quarantine: Vec::new(),
         interrupted_before_verdict: Vec::new(),
         completed_over_cost_requirement: Vec::new(),
+        known_red_runtime_errored: Vec::new(),
+        known_red_observation_unreadable: Vec::new(),
         host_tool_unresolved: Vec::new(),
         route_gap: Vec::new(),
         stale_route_gap: Vec::new(),
@@ -42027,6 +44065,15 @@ pub fn run_required_floor(
     let mut known_red_passed_over_budget: usize = 0;
     let mut known_red_host_tool_unresolved: usize = 0;
     let mut known_red_host_effect_refused: usize = 0;
+    let mut known_red_runtime_errored_count: usize = 0;
+    // THE CAUSE CENSUS, GROUPED IN-PROCESS. A count of 172 throws is not 172 defects until
+    // something says whether they share a root, and rendering one concentrated cause as
+    // distributed debt is worse than the absorbing counter it replaces: it reads as honest
+    // accounting while being wrong about the SHAPE of the problem, and a later reader prices
+    // N repairs against what may be one fix. Grouping here costs a HashMap and answers it on
+    // the same run that produces the count.
+    let mut known_red_runtime_error_causes: HashMap<String, usize> = HashMap::new();
+    let mut known_red_observation_unreadable_count: usize = 0;
     // WHICH ENROLLED ROUTE-GAP IDENTITIES ACTUALLY GAPPED, for the reverse join below. Without
     // it the roster is a one-way lookup that only ever asks "is this gap enrolled" and never
     // "is this enrollment still real", which is exactly how a skip list rots.
@@ -42268,14 +44315,18 @@ pub fn run_required_floor(
                 ExpectedRedArm::BudgetRefused => {
                     known_red_budget_refused += 1;
                     let detail = match &result {
-                        ClaimOutcome::TimedOut {
-                            elapsed_ms,
+                        // The arm reached here is the interrupted one BY CONSTRUCTION —
+                        // `ExpectedRedArm::BudgetRefused` has exactly one producer — so the
+                        // reading is `at least` and cannot be anything else. Matching the
+                        // completed arm here would be unreachable, which is why it is not
+                        // written: an unreachable arm rendering "exactly" would be a decoration
+                        // whose red no input can produce.
+                        ClaimOutcome::BudgetInterrupted {
+                            elapsed_at_least_ms,
                             budget_ms,
                             kind,
-                            completion,
                         } => format!(
-                            "{kind:?}, cost {} {elapsed_ms}ms against {budget_ms}ms",
-                            completion.elapsed_reading()
+                            "{kind:?}, cost at least {elapsed_at_least_ms}ms against {budget_ms}ms"
                         ),
                         other => format!("{other:?}"),
                     };
@@ -42307,11 +44358,10 @@ pub fn run_required_floor(
                 ExpectedRedArm::PassedOverBudget => {
                     known_red_passed_over_budget += 1;
                     let cost = match &result {
-                        ClaimOutcome::TimedOut {
+                        ClaimOutcome::CompletedOverBudget {
                             elapsed_ms,
                             budget_ms,
                             kind,
-                            ..
                         } => format!("{kind:?}, cost exactly {elapsed_ms}ms against {budget_ms}ms"),
                         other => format!("{other:?}"),
                     };
@@ -42382,6 +44432,57 @@ pub fn run_required_floor(
                     }
                     continue;
                 }
+                // A THROW IS NOT THE ENROLLED FAILURE. Same shape as the three arms above and
+                // for the same reason: enrollment asserts an expected VERDICT, and a claim that
+                // threw produced none. Held here would keep a witness enrolled forever on the
+                // strength of an error, which is the exact rot this lane exists to surface.
+                ExpectedRedArm::RuntimeErrored => {
+                    known_red_runtime_errored_count += 1;
+                    let detail = match &result {
+                        ClaimOutcome::RuntimeError { message } => {
+                            // NORMALIZED TO A SIGNATURE, not kept verbatim: identities, paths and
+                            // offsets differ per row and would make every throw its own "cause",
+                            // which is the answer the census exists to avoid assuming.
+                            let signature: String = message
+                                .split_whitespace()
+                                .take(12)
+                                .collect::<Vec<_>>()
+                                .join(" ");
+                            *known_red_runtime_error_causes
+                                .entry(signature.chars().take(140).collect())
+                                .or_insert(0) += 1;
+                            format!("runtime error: {message}")
+                        }
+                        other => {
+                            let rendered = format!("{other:?}");
+                            *known_red_runtime_error_causes
+                                .entry(rendered.chars().take(140).collect())
+                                .or_insert(0) += 1;
+                            rendered
+                        }
+                    };
+                    outcome.known_red_runtime_errored.push(format!(
+                        "{} is enrolled as expected-red but RUNTIME-ERRORED, not failed: {}. \
+                         Enrollment asserts an expected verdict; a claim that threw \
+                         produced none. Repair the witness or its subject, then \
+                         re-read the enrollment — do not read this as the enrolled \
+                         failure.",
+                        claim.qualified, detail
+                    ));
+                    continue;
+                }
+                ExpectedRedArm::ObservationUnreadable => {
+                    known_red_observation_unreadable_count += 1;
+                    outcome.known_red_observation_unreadable.push(format!(
+                        "{} is enrolled as expected-red but returned something that is NOT A \
+                         VERDICT ({:?}), so it is neither the enrolled failure nor a \
+                         repayment. Enrollment asserts an expected verdict; an \
+                         unreadable observation is none. Make the witness return a \
+                         Bool, then re-read the enrollment.",
+                        claim.qualified, result
+                    ));
+                    continue;
+                }
                 ExpectedRedArm::Held => {
                     known_red_held += 1;
                     continue;
@@ -42435,56 +44536,55 @@ pub fn run_required_floor(
                     ));
                 }
             }
-            ClaimOutcome::TimedOut {
+            // AND AN UNENROLLED BUDGET REFUSAL IS NOT A DEFECT EITHER. The enrolled arm above
+            // already rules that a budget refusal produces no verdict and therefore is not a
+            // failure; that fact is a property of the interruption, not of the roster, so it
+            // holds identically for a row nobody enrolled. Reporting it in `failures` said the
+            // opposite — `failures` is the channel whose remedy is "fix the defect", and it is
+            // what the alert signature reads to distinguish a regression from a cost debt. A
+            // row that was preempted before answering has no defect to fix and may well be
+            // passing, so routing it here made an unmeasured cost indistinguishable from a
+            // broken witness, in the direction that manufactures alarm.
+            //
+            // The consequence this closes is concrete: a row that PASSES and exceeds its budget
+            // had no honest state anywhere. Enrolled, it asserted an expected failure that does
+            // not occur and reported twice. Unenrolled, it landed here and read as a defect.
+            // Cost is not a verdict, so the verdict channels cannot carry it — and now they do
+            // not. The line still stops, because the cost is still owed; it stops saying the
+            // true thing about why.
+            // TWO READINGS, AND THEY ARE NOT THE SAME CLAIM. `Interrupted` means the deadline
+            // fired before the witness answered: no verdict exists, the figure is a LOWER BOUND
+            // and the row's real cost is unmeasured. `CompletedOverBudget` means the witness ran
+            // to completion and then was found over budget: the verdict IS known and the figure
+            // is EXACT. Printing one sentence for both would repeat the conflation this arm
+            // exists to remove — asserting "correctness unknown" over a row that demonstrably
+            // answered is as wrong as calling a cost a defect.
+            ClaimOutcome::BudgetInterrupted {
+                elapsed_at_least_ms,
+                budget_ms,
+                kind,
+            } => outcome.interrupted_before_verdict.push(format!(
+                "{} was BUDGET-REFUSED and went UNDECIDED: {kind:?}, cost at least \
+                 {elapsed_at_least_ms}ms against {budget_ms}ms. Not enrolled as expected-red, so \
+                 nothing claims it is broken — but the deadline preempted the verdict, so \
+                 whether it passes is UNKNOWN and its real cost is UNMEASURED: the figure \
+                 is the interrupt point, not this row's cost. Reduce the cost, or move it \
+                 to a lane declaring its own ceiling, so the witness reaches a verdict.",
+                claim.qualified
+            )),
+            ClaimOutcome::CompletedOverBudget {
                 elapsed_ms,
                 budget_ms,
                 kind,
-                completion,
-                // AND AN UNENROLLED BUDGET REFUSAL IS NOT A DEFECT EITHER. The enrolled arm above
-                // already rules that a budget refusal produces no verdict and therefore is not a
-                // failure; that fact is a property of the interruption, not of the roster, so it
-                // holds identically for a row nobody enrolled. Reporting it in `failures` said the
-                // opposite — `failures` is the channel whose remedy is "fix the defect", and it is
-                // what the alert signature reads to distinguish a regression from a cost debt. A
-                // row that was preempted before answering has no defect to fix and may well be
-                // passing, so routing it here made an unmeasured cost indistinguishable from a
-                // broken witness, in the direction that manufactures alarm.
-                //
-                // The consequence this closes is concrete: a row that PASSES and exceeds its budget
-                // had no honest state anywhere. Enrolled, it asserted an expected failure that does
-                // not occur and reported twice. Unenrolled, it landed here and read as a defect.
-                // Cost is not a verdict, so the verdict channels cannot carry it — and now they do
-                // not. The line still stops, because the cost is still owed; it stops saying the
-                // true thing about why.
-                // TWO READINGS, AND THEY ARE NOT THE SAME CLAIM. `Interrupted` means the deadline
-                // fired before the witness answered: no verdict exists, the figure is a LOWER BOUND
-                // and the row's real cost is unmeasured. `CompletedOverBudget` means the witness ran
-                // to completion and then was found over budget: the verdict IS known and the figure
-                // is EXACT. Printing one sentence for both would repeat the conflation this arm
-                // exists to remove — asserting "correctness unknown" over a row that demonstrably
-                // answered is as wrong as calling a cost a defect.
-            } => match completion {
-                BudgetCompletion::Interrupted => outcome.interrupted_before_verdict.push(format!(
-                    "{} was BUDGET-REFUSED and went UNDECIDED: {kind:?}, cost at least \
-                     {elapsed_ms}ms against {budget_ms}ms. Not enrolled as expected-red, so \
-                     nothing claims it is broken — but the deadline preempted the verdict, so \
-                     whether it passes is UNKNOWN and its real cost is UNMEASURED: the figure \
-                     is the interrupt point, not this row's cost. Reduce the cost, or move it \
-                     to a lane declaring its own ceiling, so the witness reaches a verdict.",
-                    claim.qualified
-                )),
-                BudgetCompletion::CompletedOverBudget => {
-                    outcome.completed_over_cost_requirement.push(format!(
-                        "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
-                     exactly {elapsed_ms}ms against {budget_ms}ms. The witness ran to \
-                     completion, so this is a measurement rather than a bound and the cost is \
-                     known and actionable. This is a cost debt only — it is not a defect and \
-                     it does not belong on the expected-red roster, which asserts an expected \
-                     FAILURE this row does not exhibit.",
-                        claim.qualified
-                    ))
-                }
-            },
+            } => outcome.completed_over_cost_requirement.push(format!(
+                "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
+                 exactly {elapsed_ms}ms against {budget_ms}ms. The witness ran to \
+                 completion, so this is a measurement rather than a bound and the cost is \
+                 known and actionable. This is a cost debt only — it is not a defect and \
+                 it does not belong on the expected-red roster, which asserts an expected \
+                 FAILURE this row does not exhibit.",
+                claim.qualified
+            )),
         }
     }
     outcome.receipt_identities = receipted.len();
@@ -42556,13 +44656,34 @@ pub fn run_required_floor(
          identity(ies) now PASS and must be removed from the roster; {} enrolled \
          identity(ies) were BUDGET-REFUSED and so went undecided; {} PASSED but exceeded \
          budget (stale roster row AND a real cost debt); {} HOST-TOOL-UNRESOLVED (infra, \
-         not budget)",
+         not budget); {} RUNTIME-ERRORED (threw, so never decided); {} returned a \
+         NON-VERDICT (unreadable, so never decided)",
         known_red_held,
         known_red_now_passing,
         known_red_budget_refused,
         known_red_passed_over_budget,
-        known_red_host_tool_unresolved
+        known_red_host_tool_unresolved,
+        known_red_runtime_errored_count,
+        known_red_observation_unreadable_count
     );
+    // THE CAUSE CENSUS, PRINTED WHETHER OR NOT ANYTHING REFUSES. Largest class first, so the
+    // first line answers the only question the raw count raises: is this one root or many?
+    // Printed here rather than in the partition refusal because that refusal returns before the
+    // per-identity report runs — on precisely the run where the evidence matters, it would be
+    // computed and dropped.
+    if !known_red_runtime_error_causes.is_empty() {
+        let mut causes: Vec<(&String, &usize)> = known_red_runtime_error_causes.iter().collect();
+        causes.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+        eprintln!(
+            "[floor-known-red-causes] {} distinct signature(s) across {} non-verdict enrolled \
+             identity(ies)",
+            causes.len(),
+            known_red_runtime_errored_count + known_red_observation_unreadable_count
+        );
+        for (signature, count) in causes.iter().take(20) {
+            eprintln!("[floor-known-red-causes] {count} × {signature}");
+        }
+    }
     eprintln!(
         "[floor-claim-memory] worst single claim grew rss by {:.2}GB at={}",
         claim_rss_kb_max as f64 / 1048576.0,
@@ -42669,7 +44790,10 @@ pub fn run_required_floor(
     // AND THE PARTITION MUST BE EXACT. With the reverse join above, every enrolled identity was
     // observed exactly once, so it landed in precisely one of the two arms. Checking the sum is
     // therefore checking that the two arms are the whole roster and do not overlap — cheap, and
-    // it fails loudly if a later edit adds a third arm that quietly swallows rows.
+    // it fails loudly if a later edit adds a third arm that quietly swallows rows — which is
+    // exactly what it did to the edit that added `runtime_errored` and `observation_unreadable`,
+    // catching an incomplete change one site short. The sum is the reason those two arms could
+    // not be added quietly, and it is why this invariant is worth more than the six names in it.
     // The three-outcome roster join relaxes this to still_red | now_passes | not_evaluated and
     // is the authority for pruning — not the failure-log subset.
     if !roster_join_only
@@ -42679,21 +44803,41 @@ pub fn run_required_floor(
             + known_red_passed_over_budget
             + known_red_host_tool_unresolved
             + known_red_host_effect_refused
+            + known_red_runtime_errored_count
+            + known_red_observation_unreadable_count
             != expected_red_roster.len()
     {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedPartitionInexact held={} now_passing={} \
              budget_refused={} passed_over_budget={} host_tool_unresolved={} \
-             host_effect_refused={} roster={} — every enrolled identity must be exactly one of \
-             held, now-passing, budget-refused, passed-over-budget, host-tool-unresolved, or \
-             host-effect-refused",
+             host_effect_refused={} runtime_errored={} observation_unreadable={} roster={} — \
+             every enrolled identity must be exactly one of held, now-passing, budget-refused, \
+             passed-over-budget, host-tool-unresolved, host-effect-refused, runtime-errored, or \
+             observation-unreadable. First non-verdict rows: {}",
             known_red_held,
             known_red_now_passing,
             known_red_budget_refused,
             known_red_passed_over_budget,
             known_red_host_tool_unresolved,
             known_red_host_effect_refused,
-            expected_red_roster.len()
+            known_red_runtime_errored_count,
+            known_red_observation_unreadable_count,
+            expected_red_roster.len(),
+            // A BOUNDED SAMPLE, BECAUSE THIS REFUSAL RETURNS BEFORE THE PER-IDENTITY REPORT
+            // RUNS. The rows naming WHICH identities live in `outcome.known_red_runtime_errored`
+            // and are printed by `report_required_floor_outcome` — which the caller reaches only
+            // on the Ok path. So on precisely the run where the partition is wrong, the evidence
+            // that says why was computed and then dropped, and the reader is left with counts
+            // and no identities. Ten rows, not all of them: enough to see whether the population
+            // shares one cause, without turning a refusal into a log dump.
+            outcome
+                .known_red_runtime_errored
+                .iter()
+                .chain(outcome.known_red_observation_unreadable.iter())
+                .take(10)
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(" | ")
         ));
     }
     // THE THREE IDENTITY COUNTS MUST AGREE, and they are compared here rather than reported
@@ -42745,6 +44889,53 @@ pub fn run_required_floor(
         .iter()
         .filter(|row| claim_disposition(row) == ClaimDisposition::Passed)
         .count();
+    // PUBLISH THE EVIDENCE, OR REFUSE. Unconditional: there is no env var gating it and no arm
+    // that returns having written nothing. Evidence that is written only when convenient is the
+    // instrumentation-optional shape — a green run whose ledger is silently absent is the exact
+    // state this artifact exists to prevent — so a publication failure is a floor refusal, and a
+    // refusal by the grammar still leaves every row under the diagnosis name.
+    //
+    // THE BINDING CARRIES WHAT THE FLOOR ACTUALLY HOLDS AND NOTHING INVENTED: the prepared
+    // subject digest, and the commit — which is `GITHUB_SHA` on CI and the literal "local"
+    // otherwise. "local" is not a commit id and is not rendered as one; it is mapped to the
+    // module's declared unpublished token, so a local run's ledger is shaped as NOT
+    // candidate-bound rather than carrying a commit-shaped lie. The roster identity is derived
+    // inside the module from the identities being published, so no value here can disagree with
+    // the population it names.
+    {
+        let snapshot_wire = if commit == "local" || commit.is_empty() {
+            "unpublished"
+        } else {
+            commit
+        };
+        let seed_rows: Vec<terminal_ledger_publish::SeedLedgerRow> =
+            terminal_rows.iter().map(seed_ledger_row).collect();
+        match terminal_ledger_publish::publish_terminal_ledger(
+            source_roots,
+            snapshot_wire,
+            &prepared.subject_digest,
+            terminal_ledger_publish::TERMINAL_LEDGER_PATH,
+            terminal_ledger_publish::TERMINAL_LEDGER_DIAGNOSIS_PATH,
+            &seed_rows,
+        )? {
+            terminal_ledger_publish::LedgerPublication::Published { path, bytes } => {
+                eprintln!("required-floor: terminal ledger published path={path} bytes={bytes}");
+            }
+            terminal_ledger_publish::LedgerPublication::RefusedWithDiagnosis {
+                reason,
+                offending,
+                path,
+            } => {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=TerminalLedgerUnrenderable \
+                     reason={reason} offending={offending} diagnosis={path} — the ledger's \
+                     grammar refused to render this run's evidence. Every row the fold produced \
+                     is preserved at the diagnosis path, in a format the ledger reader refuses, \
+                     so it cannot be cited as a ledger."
+                ));
+            }
+        }
+    }
     if let Some(join) = roster_join_report {
         let join = crate::v1_compiler_expected_red_roster_join::finalize_not_observed(join);
         emit_expected_red_roster_join_summary(&join);
@@ -42864,13 +45055,15 @@ fn required_floor_disposition_label(disposition: &RequiredFloorDisposition) -> &
     match disposition {
         RequiredFloorDisposition::Planned => "planned",
         RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
+        RequiredFloorDisposition::DeclinedFixtureMember { .. } => "declined_fixture_member",
         RequiredFloorDisposition::DeclinedLiveTree => "declined_live_tree",
     }
 }
 
 fn required_floor_disposition_matched_prefix(disposition: &RequiredFloorDisposition) -> &str {
     match disposition {
-        RequiredFloorDisposition::DeclinedLongModule { matched_prefix } => matched_prefix,
+        RequiredFloorDisposition::DeclinedLongModule { matched_prefix }
+        | RequiredFloorDisposition::DeclinedFixtureMember { matched_prefix } => matched_prefix,
         RequiredFloorDisposition::Planned | RequiredFloorDisposition::DeclinedLiveTree => "",
     }
 }
@@ -42947,20 +45140,23 @@ fn write_required_floor_disposition_tsv(
         .map_err(|e| format!("write_required_floor_disposition_tsv: create {path}: {e}"))?;
     let mut planned = 0usize;
     let mut declined_long = 0usize;
+    let mut declined_fixture = 0usize;
     let mut declined_live = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
             RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
+            RequiredFloorDisposition::DeclinedFixtureMember { .. } => declined_fixture += 1,
             RequiredFloorDisposition::DeclinedLiveTree => declined_live += 1,
         }
     }
     writeln!(
         file,
-        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_live_tree={}",
+        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}\tdeclined_live_tree={}",
         rows.len(),
         planned,
         declined_long,
+        declined_fixture,
         declined_live
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
@@ -43165,6 +45361,12 @@ mod required_floor_disposition_and_storage_agreement_law {
                 },
             },
             RequiredFloorDispositionRow {
+                identity: "v2.test.fixture.walk_plan_stage.x.d".to_string(),
+                disposition: RequiredFloorDisposition::DeclinedFixtureMember {
+                    matched_prefix: "v2.test.fixture.walk_plan_stage.".to_string(),
+                },
+            },
+            RequiredFloorDispositionRow {
                 identity: "m.three.c".to_string(),
                 disposition: RequiredFloorDisposition::DeclinedLiveTree,
             },
@@ -43175,11 +45377,12 @@ mod required_floor_disposition_and_storage_agreement_law {
         let _ = std::fs::remove_dir_all(&dir);
 
         let lines: Vec<&str> = content.lines().collect();
-        assert_eq!(lines.len(), 5, "summary + header + 3 rows: {lines:?}");
+        assert_eq!(lines.len(), 6, "summary + header + 4 rows: {lines:?}");
         assert!(lines[0].starts_with("# summary"));
-        assert!(lines[0].contains("total=3"));
+        assert!(lines[0].contains("total=4"));
         assert!(lines[0].contains("planned=1"));
         assert!(lines[0].contains("declined_long_module=1"));
+        assert!(lines[0].contains("declined_fixture_member=1"));
         assert!(lines[0].contains("declined_live_tree=1"));
         assert_eq!(lines[1], "identity\tdisposition\tmatched_prefix");
         assert_eq!(lines[2], "m.one.a\tplanned\t");
@@ -43187,7 +45390,13 @@ mod required_floor_disposition_and_storage_agreement_law {
             lines[3],
             "test.claim.long.two.b\tdeclined_long_module\ttest.claim.long."
         );
-        assert_eq!(lines[4], "m.three.c\tdeclined_live_tree\t");
+        // THE FIXTURE ARM CARRIES ITS MATCHED PREFIX, exactly as the long arm does. A decline
+        // that cannot say WHICH prefix admitted it is a count, not a receipt.
+        assert_eq!(
+            lines[4],
+            "v2.test.fixture.walk_plan_stage.x.d\tdeclined_fixture_member\tv2.test.fixture.walk_plan_stage."
+        );
+        assert_eq!(lines[5], "m.three.c\tdeclined_live_tree\t");
     }
 
     #[test]
@@ -43260,23 +45469,29 @@ fn witness_eval_verdict_from_claim_outcome(
                 ground: hermetic_effect_ground_verdict(ground),
             }
         }
-        ClaimOutcome::TimedOut {
+        // THE WIRE VERDICT STILL CARRIES THE AXIS AS DATA, which is why `BudgetCompletion`
+        // survives the split: a value has to travel here, and re-deriving it from the arm at
+        // the far end would be a second spelling of the same two states.
+        ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms,
+            budget_ms,
+            kind,
+        } => crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::BudgetExceeded {
+            elapsed_ms: *elapsed_at_least_ms as i64,
+            budget_ms: *budget_ms as i64,
+            kind: kind.label().to_string(),
+            completion:
+                crate::v1_compiler_expected_red_roster_join::BudgetVerdictCompletion::Interrupted,
+        },
+        ClaimOutcome::CompletedOverBudget {
             elapsed_ms,
             budget_ms,
             kind,
-            completion,
         } => crate::v1_compiler_expected_red_roster_join::WitnessEvalVerdict::BudgetExceeded {
             elapsed_ms: *elapsed_ms as i64,
             budget_ms: *budget_ms as i64,
             kind: kind.label().to_string(),
-            completion: match completion {
-                BudgetCompletion::Interrupted => {
-                    crate::v1_compiler_expected_red_roster_join::BudgetVerdictCompletion::Interrupted
-                }
-                BudgetCompletion::CompletedOverBudget => {
-                    crate::v1_compiler_expected_red_roster_join::BudgetVerdictCompletion::CompletedOverBudget
-                }
-            },
+            completion: crate::v1_compiler_expected_red_roster_join::BudgetVerdictCompletion::CompletedOverBudget,
         },
     }
 }

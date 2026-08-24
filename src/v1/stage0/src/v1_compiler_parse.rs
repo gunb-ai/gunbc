@@ -518,7 +518,6 @@ pub struct ServiceConfig {
     pub auth_input: Option<Rc<Node>>,
     pub auth_source: Option<Rc<Node>>,
     pub rate_limit: Option<Rc<Node>>,
-    pub retry: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -3974,6 +3973,7 @@ pub fn parse_type_after_kw(
                             name_span.clone(),
                             start_span.clone(),
                             type_params.clone(),
+                            is_sole_constructor.clone(),
                         )
                     }
                     EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -4131,6 +4131,7 @@ pub fn parse_type_body_from_prefix(
                             name_span.clone(),
                             start_span.clone(),
                             type_params.clone(),
+                            is_sole_constructor.clone(),
                         )
                     }
                     EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -4169,6 +4170,83 @@ pub fn parse_type_body_from_prefix(
     }
 }
 
+pub fn alias_rhs_is_anonymous_record(te: Rc<Node>) -> bool {
+    (((te.connective.clone() == Connective::Conj) && (te.ident_span.clone() == None))
+        && (te.type_annotation.clone() == None))
+}
+
+pub fn type_item_from_alias_rhs(
+    name: String,
+    name_span: Rc<SourceSpan>,
+    start_span: Rc<SourceSpan>,
+    type_params: Rc<Vec<Rc<Node>>>,
+    te: Rc<Node>,
+    is_sole_constructor: bool,
+) -> Rc<Node> {
+    if alias_rhs_is_anonymous_record(te.clone()) {
+        {
+            let sole_ctor_prop = if is_sole_constructor.clone() {
+                Rc::new(vec![make_field_init_node(
+                    "sole_constructor".to_string(),
+                    make_expr_node(
+                        Rc::new(ExprData::ExprLiteral {
+                            value: Rc::new(LiteralValue::LitBool { value: true }),
+                        }),
+                        Rc::new(vec![]),
+                        None,
+                        start_span.clone(),
+                    ),
+                    start_span.clone(),
+                    no_span(),
+                )])
+            } else {
+                Rc::new(vec![])
+            };
+            Rc::new(Node {
+                name: name.clone(),
+                span: start_span.clone(),
+                ident_span: Some(name_span.clone()),
+                children: te.children.clone(),
+                connective: Connective::Conj,
+                params: type_params.clone(),
+                inferred: None,
+                return_cardinality: Cardinality::Required,
+                uses: Rc::new(vec![]),
+                body: None,
+                transport: None,
+                properties: sole_ctor_prop.clone(),
+                type_annotation: None,
+                is_self_recursive: false,
+                has_non_tail_self_call: false,
+                match_pattern: None,
+                expr_data: Rc::new(ExprData::NoExprData),
+                ident: None,
+            })
+        }
+    } else {
+        Rc::new(Node {
+            name: name.clone(),
+            span: start_span.clone(),
+            ident_span: Some(name_span.clone()),
+            children: Rc::new(vec![]),
+            connective: Connective::NoConnective,
+            params: type_params.clone(),
+            inferred: Some(Rc::new(InferredNode::Resolved { node: te.clone() })),
+            return_cardinality: Cardinality::Required,
+            uses: Rc::new(vec![]),
+            body: None,
+            transport: None,
+            properties: Rc::new(vec![]),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(ExprData::NoExprData),
+            ident: None,
+        })
+    }
+}
+
 pub fn parse_type_body_after_eq(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
@@ -4176,6 +4254,7 @@ pub fn parse_type_body_after_eq(
     name_span: Rc<SourceSpan>,
     start_span: Rc<SourceSpan>,
     type_params: Rc<Vec<Rc<Node>>>,
+    is_sole_constructor: bool,
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
@@ -4390,28 +4469,14 @@ pub fn parse_type_body_after_eq(
                                         err: wr.err.clone(),
                                     });
                                 }
-                                let item = Rc::new(Node {
-                                    name: name.clone(),
-                                    span: start_span.clone(),
-                                    ident_span: Some(name_span.clone()),
-                                    children: Rc::new(vec![]),
-                                    connective: Connective::NoConnective,
-                                    params: type_params.clone(),
-                                    inferred: Some(Rc::new(InferredNode::Resolved {
-                                        node: wr.type_expr.clone(),
-                                    })),
-                                    return_cardinality: Cardinality::Required,
-                                    uses: Rc::new(vec![]),
-                                    body: None,
-                                    transport: None,
-                                    properties: Rc::new(vec![]),
-                                    type_annotation: None,
-                                    is_self_recursive: false,
-                                    has_non_tail_self_call: false,
-                                    match_pattern: None,
-                                    expr_data: Rc::new(ExprData::NoExprData),
-                                    ident: None,
-                                });
+                                let item = type_item_from_alias_rhs(
+                                    name.clone(),
+                                    name_span.clone(),
+                                    start_span.clone(),
+                                    type_params.clone(),
+                                    wr.type_expr.clone(),
+                                    is_sole_constructor.clone(),
+                                );
                                 Rc::new(ItemResult {
                                     item: item.clone(),
                                     tokens: skip_newlines(wr.tokens.clone()),
@@ -4446,28 +4511,14 @@ pub fn parse_type_body_after_eq(
                                 err: wr.err.clone(),
                             });
                         }
-                        let item = Rc::new(Node {
-                            name: name.clone(),
-                            span: start_span.clone(),
-                            ident_span: Some(name_span.clone()),
-                            children: Rc::new(vec![]),
-                            connective: Connective::NoConnective,
-                            params: type_params.clone(),
-                            inferred: Some(Rc::new(InferredNode::Resolved {
-                                node: wr.type_expr.clone(),
-                            })),
-                            return_cardinality: Cardinality::Required,
-                            uses: Rc::new(vec![]),
-                            body: None,
-                            transport: None,
-                            properties: Rc::new(vec![]),
-                            type_annotation: None,
-                            is_self_recursive: false,
-                            has_non_tail_self_call: false,
-                            match_pattern: None,
-                            expr_data: Rc::new(ExprData::NoExprData),
-                            ident: None,
-                        });
+                        let item = type_item_from_alias_rhs(
+                            name.clone(),
+                            name_span.clone(),
+                            start_span.clone(),
+                            type_params.clone(),
+                            wr.type_expr.clone(),
+                            is_sole_constructor.clone(),
+                        );
                         Rc::new(ItemResult {
                             item: item.clone(),
                             tokens: skip_newlines(wr.tokens.clone()),
@@ -7149,7 +7200,6 @@ pub fn parse_service_after_kw(
                 cfg.auth_input.clone(),
                 cfg.auth_source.clone(),
                 cfg.rate_limit.clone(),
-                cfg.retry.clone(),
             ),
             None => Rc::new(vec![]),
         };
@@ -7371,16 +7421,7 @@ pub fn parse_service_config_block(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ConfigResult> {
-    parse_config_fields(
-        tokens.clone(),
-        ctx.clone(),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
+    parse_config_fields(tokens.clone(), ctx.clone(), None, None, None, None, None)
 }
 
 pub fn parse_config_fields(
@@ -7391,7 +7432,6 @@ pub fn parse_config_fields(
     mut auth_input: Option<Rc<Node>>,
     mut auth_source: Option<Rc<Node>>,
     mut rate_limit: Option<Rc<Node>>,
-    mut retry: Option<Rc<Node>>,
 ) -> Rc<ConfigResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -7416,7 +7456,6 @@ pub fn parse_config_fields(
                 auth_input: auth_input.clone(),
                 auth_source: auth_source.clone(),
                 rate_limit: rate_limit.clone(),
-                retry: retry.clone(),
             });
             break Rc::new(ConfigResult {
                 config: cfg.clone(),
@@ -7440,7 +7479,6 @@ pub fn parse_config_fields(
                 auth_input: None,
                 auth_source: None,
                 rate_limit: None,
-                retry: None,
             });
             let r = expect_ident(tokens.clone());
             if has_err(r.err.clone()) {
@@ -7503,13 +7541,13 @@ pub fn parse_config_fields(
                     rate_limit = __tco_0;
                     continue;
                 }
-                "retry" => {
-                    let __tco_0 = Some(r3.expr.clone());
-                    retry = __tco_0;
-                    continue;
-                }
                 _ => {
-                    continue;
+                    break Rc::new(ConfigResult {
+    config: dummy_cfg.clone(),
+    tokens: tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error(v1_rt::concat(v1_rt::concat("service config has no field `".to_string(), fname.clone()), "`; the declared fields are `endpoint`, `auth`, `auth_input`, `auth_source` and `rate_limit`".to_string()), r.span.clone())),
+});
                 }
             }
         }
@@ -7868,9 +7906,12 @@ pub fn parse_rest_fields(
                                                 continue;
                                             }
                                         } else {
-                                            {
-                                                continue;
-                                            }
+                                            break Rc::new(TransportResult {
+    transport: dummy.clone(),
+    tokens: tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error(v1_rt::concat(v1_rt::concat("transport rest has no field `".to_string(), fname.clone()), "`; the declared fields are `base_url`, `method`, `path`, `query`, `body`, `response_format`, `headers`, `auth_basic` and `tls`".to_string()), r.span.clone())),
+});
                                         }
                                     }
                                 }
@@ -8002,25 +8043,21 @@ pub fn parse_shell_fields(
                         continue;
                     }
                 } else {
-                    let r3 = parse_expr(r2.tokens.clone(), ctx.clone());
-                    if has_err(r3.err.clone()) {
-                        return Rc::new(TransportResult {
-                            transport: dummy.clone(),
-                            tokens: r3.tokens.clone(),
-                            ctx: r3.ctx.clone(),
-                            err: r3.err.clone(),
-                        });
-                    }
-                    let e = eat(r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
-                    tokens = match (*e.clone()).clone() {
-                        EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-                        EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
-                    };
-                    {
-                        let __tco_0 = r3.ctx.clone();
-                        ctx = __tco_0;
-                        continue;
-                    }
+                    break Rc::new(TransportResult {
+                        transport: dummy.clone(),
+                        tokens: r2.tokens.clone(),
+                        ctx: ctx.clone(),
+                        err: Some(parse_error(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "transport shell has no field `".to_string(),
+                                    fname.clone(),
+                                ),
+                                "`; the declared fields are `argv` and `stdin`".to_string(),
+                            ),
+                            r.span.clone(),
+                        )),
+                    });
                 }
             }
         }
@@ -8047,25 +8084,24 @@ pub fn parse_file_fields(
         if (tok_is_rbrace(token_stream_first(tokens.clone()))
             || tok_is_eof(token_stream_first(tokens.clone())))
         {
-            let bp = match base_path.clone() {
-                Some(e) => e.clone(),
-                None => make_expr_node(
-                    Rc::new(ExprData::ExprLiteral {
-                        value: Rc::new(LiteralValue::LitStr {
-                            value: "".to_string(),
-                        }),
-                    }),
-                    Rc::new(vec![]),
-                    None,
-                    no_span(),
-                ),
-            };
-            break Rc::new(TransportResult {
-                transport: file_transport_node(bp.clone(), verb.clone(), span.clone()),
-                tokens: tokens.clone(),
-                ctx: ctx.clone(),
-                err: None,
-            });
+            match base_path.clone() {
+                Some(bp) => {
+                    break Rc::new(TransportResult {
+                        transport: file_transport_node(bp.clone(), verb.clone(), span.clone()),
+                        tokens: tokens.clone(),
+                        ctx: ctx.clone(),
+                        err: None,
+                    });
+                }
+                None => {
+                    break Rc::new(TransportResult {
+    transport: dummy.clone(),
+    tokens: tokens.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error("transport file declares no `path:` field; a file transport must name the path it reads or writes".to_string(), span.clone())),
+});
+                }
+            }
         } else {
             let r = expect_ident(tokens.clone());
             if has_err(r.err.clone()) {
@@ -8118,11 +8154,21 @@ pub fn parse_file_fields(
                         continue;
                     }
                 } else {
-                    {
-                        let __tco_0 = r3.ctx.clone();
-                        ctx = __tco_0;
-                        continue;
-                    }
+                    break Rc::new(TransportResult {
+                        transport: dummy.clone(),
+                        tokens: tokens.clone(),
+                        ctx: r3.ctx.clone(),
+                        err: Some(parse_error(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "transport file has no field `".to_string(),
+                                    fname.clone(),
+                                ),
+                                "`; the declared fields are `path` and `verb`".to_string(),
+                            ),
+                            r.span.clone(),
+                        )),
+                    });
                 }
             }
         }
@@ -12844,12 +12890,50 @@ pub fn parse_expr_bp_no_brace(
     min_bp: i64,
 ) -> Rc<ExprResult> {
     {
+        let tok = token_stream_first(tokens.clone());
+        let next = token_stream_first(token_stream_advance(tokens.clone(), 1));
         let r = parse_prefix(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return r;
         }
-        let lhs = r.expr.clone();
-        parse_expr_loop_no_brace(r.tokens.clone(), r.ctx.clone(), lhs.clone(), min_bp.clone())
+        let parsed = parse_expr_loop_no_brace(
+            r.tokens.clone(),
+            r.ctx.clone(),
+            r.expr.clone(),
+            min_bp.clone(),
+        );
+        let leading_ident_brace = (match tok.clone() {
+            Some(t) => is_ident_shape(t.shape.clone()),
+            None => false,
+        } && tok_is_lbrace(next.clone()));
+        let stopped_at_infix = match infix_bp(parsed.tokens.clone()) {
+            Some(_) => true,
+            None => false,
+        };
+        if (((leading_ident_brace.clone() && !has_err(parsed.err.clone()))
+            && !tok_is_lbrace(token_stream_first(parsed.tokens.clone())))
+            && !stopped_at_infix.clone())
+        {
+            {
+                let span = token_span(tok.clone());
+                let lhs = make_named_expr_node(
+                    tok.clone().unwrap().text.clone(),
+                    Rc::new(ExprData::ExprVar { binding_kind: None }),
+                    Rc::new(vec![]),
+                    None,
+                    span.clone(),
+                    span.clone(),
+                );
+                parse_expr_loop_no_brace(
+                    token_stream_advance(tokens.clone(), 1),
+                    ctx.clone(),
+                    lhs.clone(),
+                    min_bp.clone(),
+                )
+            }
+        } else {
+            parsed
+        }
     }
 }
 
@@ -13286,6 +13370,67 @@ pub fn parse_match_arm_stmts(
     }
 }
 
+pub fn qualified_arm_start_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WHERE AN UNBRACED ARM BODY ENDS IS DECIDED HERE, AND THE ANSWER WAS KEYED ON THE FIRST SEGMENT OF THE NEXT PATTERN. parse_match_arm_stmts consumes statements until looks_like_arm_start says the next tokens open a new arm. That predicate recognised only a bare `_` and an UPPERCASE-start leaf, so a NAMESPACE-QUALIFIED pattern -- whose first token is the lowercase module head, v1 in v1.std.core.ExprStringInterp -- answered false, the body kept consuming, it swallowed the next arm pattern as one more statement, and the parse died on the following FatArrow. The reported span is the ARROW, several lines below the arm that actually ended, which is why four separate reproductions of the surrounding shapes all parsed and the trigger had to be bisected rather than guessed. MINIMAL REPRODUCTION, and every clause is load-bearing: an unbraced arm body containing a `let`, followed by an arm whose pattern is DOTTED. Remove the let and the body is a single expression that never enters the statement loop; make the next pattern `_` or an uppercase leaf and the predicate already answers true. MEASURED: on the namespace-cut branch, where qualifying every pattern turns this from rare into ordinary, exactly one corpus file of 3875 reaches it -- src/v1/05_emit.dag -- and it is invalid under the parser that branch itself carries, surviving only because its built binary predates its own committed mirror. So this is not a cut-branch accommodation: it is a grammar gap that the cut merely made reachable, and it fails LOUDLY at preparation, which is the cheap failure discipline. The scan requires the TERMINAL segment to be uppercase and the arrow to follow the path (or its brace group), so a lowercase dotted expression ending a body is unaffected -- and an expression statement genuinely followed by a FatArrow was never a legal parse.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn arm_start_after_qualified_path(mut tokens: Rc<TokenStream>, mut offset: i64) -> bool {
+    loop {
+        if !peek_is_expected_at(
+            tokens.clone(),
+            offset.clone(),
+            Rc::new(ExpectedToken::ExpectDot),
+        ) {
+            break false;
+        } else {
+            match token_stream_first(token_stream_advance(tokens.clone(), (offset.clone() + 1))) {
+                Some(seg) => {
+                    if !is_ident_shape(seg.shape.clone()) {
+                        break false;
+                    } else {
+                        if is_uppercase_start(seg.text.clone()) {
+                            if peek_is_fat_arrow_at(tokens.clone(), (offset.clone() + 2)) {
+                                break true;
+                            } else {
+                                if peek_is_expected_at(
+                                    tokens.clone(),
+                                    (offset.clone() + 2),
+                                    Rc::new(ExpectedToken::ExpectLBrace),
+                                ) {
+                                    break scan_for_fat_arrow_after_braces(
+                                        token_stream_advance(tokens.clone(), (offset.clone() + 3)),
+                                        1,
+                                    );
+                                } else {
+                                    {
+                                        let __tco_0 = (offset + 2);
+                                        offset = __tco_0;
+                                        continue;
+                                    }
+                                }
+                            }
+                        } else {
+                            {
+                                let __tco_0 = (offset + 2);
+                                offset = __tco_0;
+                                continue;
+                            }
+                        }
+                    }
+                }
+                None => {
+                    break false;
+                }
+            }
+        }
+    }
+}
+
 pub fn looks_like_arm_start(tokens: Rc<TokenStream>) -> bool {
     {
         let tok = token_stream_first(tokens.clone());
@@ -13299,7 +13444,9 @@ pub fn looks_like_arm_start(tokens: Rc<TokenStream>) -> bool {
                 if (n.clone() == "_".to_string()) {
                     peek_is_fat_arrow_at(tokens.clone(), 1)
                 } else {
-                    if is_uppercase_start(n.clone()) {
+                    if !is_uppercase_start(n.clone()) {
+                        arm_start_after_qualified_path(tokens.clone(), 1)
+                    } else {
                         if peek_is_fat_arrow_at(tokens.clone(), 1) {
                             true
                         } else {
@@ -13316,8 +13463,6 @@ pub fn looks_like_arm_start(tokens: Rc<TokenStream>) -> bool {
                                 false
                             }
                         }
-                    } else {
-                        false
                     }
                 }
             }

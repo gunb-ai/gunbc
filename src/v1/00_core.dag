@@ -141,6 +141,13 @@ type StringPart
 
 type OperationModifier = Idempotent | Readonly | Hermetic
 
+// The closed transport roster. Before this, the roster was implicit and re-derived in four
+// places at once -- emit_unified_transport_dispatch's if-chain, the Rust emit_transport_call's
+// copy of it, is_file_transport_after_dispatch_precedence's private copy of the ordering, and
+// is_local_transport's definition-by-exclusion -- so four carriers agreed about which arm claims
+// a multi-key transport by coincidence rather than by construction (DESIGN section 3).
+type TransportKind = RestTransport | ShellTransport | FileTransport | LocalTransport
+
 type CompileResult {
   files: List<TextFile>
   diagnostics: List<ErrorNode>
@@ -187,6 +194,7 @@ type CompilerDiagnostic
       permitted_callers: List<String>,
       span: SourceSpan
     }
+  | AdmitCallersEntryNotDeclRef { constructor_decl_name: String, span: SourceSpan }
   | UnlistedImportUse { name: String, span: SourceSpan }
   | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
   | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
@@ -196,6 +204,12 @@ type CompilerDiagnostic
   | CallNamedArgOnFunctionValue { callee: String, argument: String, span: SourceSpan }
   | OccurrenceTransportViolation { refusal: OccurrenceTransportRefusal }
   | ContainerSpellingUnrecognized { name: String, container_leaf: String, span: SourceSpan }
+  | ServiceConfigReferenceJudgmentDeferred {
+      field: String,
+      referenced_name: String,
+      trigger: String,
+      span: SourceSpan
+    }
   | TransportEmissionNotModeled {
       transport_kind: String,
       service: String,
@@ -325,6 +339,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
       permitted_callers: _,
       span: s
     } => s
+    AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: s } => s
     UnlistedImportUse { name: _, span: s } => s
     AmbiguousReference { name: _, candidates: _, span: s } => s
     CallArgumentNameUnknown { callee: _, argument: _, declared: _, span: s } => s
@@ -338,6 +353,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
         Absent => no_span()
       }
     ContainerSpellingUnrecognized { name: _, container_leaf: _, span: s } => s
+    ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: s } => s
     TransportEmissionNotModeled { transport_kind: _, service: _, operation: _, declaring_module: _, target: _, missing_realization_fact: _, span: s } => s
   }
 }
@@ -396,6 +412,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
         join(permitted, separator: ", "),
         "]"
       )
+    AdmitCallersEntryNotDeclRef { constructor_decl_name: cn, span: _ } =>
+      concat("admit_callers entry on '", cn, "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored")
     UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
     AmbiguousReference { name: n, candidates: cs, span: _ } => concat("ambiguous reference '", n, "': ", to_string(value: cs |> count), " candidates: ", join(cs, separator: ", "), " — qualify by containment path, alias, or rename")
     CallArgumentNameUnknown { callee: c, argument: a, declared: ds, span: _ } =>
@@ -412,6 +430,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       occurrence_transport_refusal_diagnostic_message(refusal: refusal)
     ContainerSpellingUnrecognized { name: n, container_leaf: leaf, span: _ } =>
       concat("unrecognized container spelling '", n, "': its last segment '", leaf, "' names a container, but no arity is declared for '", n, "' in std.types container_type_arity — declare the row or spell the container by a declared name")
+    ServiceConfigReferenceJudgmentDeferred { field: f, referenced_name: n, trigger: t, span: _ } =>
+      concat("service config field '", f, "' carries the reference '", n, "', and the reference judgment does not yet run on this field -- ", t, ". This is a counted deferral, not a pass: nothing has established that '", n, "' names anything")
     TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, span: _ } =>
       concat("'", kind, "' transport emission is not modeled: operation '", svc, ".", op, "' declared in '", m, "' cannot be emitted for target '", tgt, "' -- ", missing, ". Bind a realization handler for the '", kind, "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer")
   }
@@ -466,6 +486,7 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
     UnlistedImportUse { name: _, span: _ } => false
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
     ReceiverTypeUnestablished { method: _, span: _ } => false
+    ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => false
     _ => true
   }
 }
@@ -475,6 +496,7 @@ fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> B
     UnlistedImportUse { name: _, span: _ } => true
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => true
     ReceiverTypeUnestablished { method: _, span: _ } => true
+    ServiceConfigReferenceJudgmentDeferred { field: _, referenced_name: _, trigger: _, span: _ } => true
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       is_where_refinement_unenforced_advisory_reason(reason: r)
     _ => false
@@ -1035,6 +1057,10 @@ fn call_named_arg_string_optional(
   }
 }
 
+type AdmitCallersEntry
+  = AdmitCallersEntryCoords { coords: DeclRefCoords }
+  | AdmitCallersEntryUninterpretable { span: SourceSpan }
+
 fn decl_ref_coords_from_call_expr(
   expr: Node,
   source_indices: Map<String, NewlineIndex>
@@ -1062,31 +1088,68 @@ fn decl_ref_coords_from_call_expr(
   }
 }
 
-fn collect_decl_ref_coords_from_list(
+// TOTALITY IS THE REPAIR, not a check beside it. This was a flat_map whose Absent arm
+// returned [], so an entry that could not be interpreted was DROPPED: N authored entries
+// collected to fewer than N, and in the all-malformed case to zero — at which point
+// fn_admit_callers returned Present-and-empty and the admission wall refused every caller
+// while the diagnostic named the CALL SITE, the one place with nothing wrong. The parser's
+// admit_callers_property_nonempty guard does not catch this: it counts list CHILDREN before
+// interpretation, so it refuses a syntactically empty list and cannot see a list that
+// EMPTIES during collection.
+//
+// Mapping to a total per-entry outcome makes the shrink unrepresentable at this seam rather
+// than detected after it: the result length equals the authored length by construction, so
+// "the roster is smaller than the author wrote" has no spelling here. A post-collection
+// count check would not have been equivalent — three entries with one malformed still
+// collect to a nonempty list and pass any threshold, while silently dropping a caller the
+// author explicitly admitted.
+fn admit_callers_entries_from_list(
   exprs: List<Node>,
   source_indices: Map<String, NewlineIndex>
-) -> List<DeclRefCoords> {
-  flat_map(
+) -> List<AdmitCallersEntry> {
+  map(
     exprs,
     e =>
       match decl_ref_coords_from_call_expr(expr: e, source_indices: source_indices) {
-        Present { value: coords } => [coords]
-        Absent => []
+        Present { value: coords } => AdmitCallersEntryCoords { coords: coords }
+        Absent => AdmitCallersEntryUninterpretable { span: e.span }
       }
   )
 }
 
-fn fn_admit_callers(n: Node, source_indices: Map<String, NewlineIndex>) -> List<DeclRefCoords>? {
+fn fn_admit_callers(n: Node, source_indices: Map<String, NewlineIndex>) -> List<AdmitCallersEntry>? {
   match n.properties |> filter(p => p.name == "admit_callers") |> first {
     Present { value: p } =>
       Present {
-        value: collect_decl_ref_coords_from_list(
+        value: admit_callers_entries_from_list(
           exprs: field_init_node_value(n: p).children,
           source_indices: source_indices
         )
       }
     Absent => Absent
   }
+}
+
+fn admit_callers_entry_uninterpretable_spans(entries: List<AdmitCallersEntry>) -> List<SourceSpan> {
+  flat_map(
+    entries,
+    e =>
+      match e {
+        AdmitCallersEntryCoords { coords: _ } => []
+        AdmitCallersEntryUninterpretable { span: s } => [s]
+      }
+  )
+}
+
+fn admit_callers_entry_coords(entries: List<AdmitCallersEntry>) -> List<DeclRefCoords> {
+  flat_map(
+    entries,
+    e =>
+      match e {
+        AdmitCallersEntryCoords { coords: c } => [c]
+        AdmitCallersEntryUninterpretable { span: _ } => []
+      }
+  )
 }
 
 fn if_condition(texpr: Node) -> Node { expr_child_at(texpr: texpr, index: 0, role: "if condition") }
@@ -1361,10 +1424,69 @@ fn transport_verb(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
 
 fn transport_has_argv(t: Node) -> Bool { t.children |> count > 0 }
 
+// Transport KIND is discriminated by which marker property is present, not by a stored tag, and
+// that has a consequence which is easy to undo by accident: `rest_transport_node` ALWAYS writes a
+// `base_url` property, filled from the empty-string literal `parse_rest_fields` substitutes when
+// `url:` is omitted -- and omitting it is the NORM, since the base normally comes from the service
+// `config`. So that fabricated "" is load-bearing structure holding the discrimination up, not a
+// lazy default: remove it and every rest transport in the corpus reclassifies as `local`. The same
+// holds for `config`'s `endpoint`, where `config { }` is legal. This is also why
+// `is_local_transport` is defined negatively -- local is genuinely the residual, and there is no
+// marker for it to carry. The file arm is NOT in this class: an omitted `path:` has no such role,
+// and `parse_file_fields` refuses it (gunbc#8949).
 fn is_rest_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_url(t: t, source_indices: source_indices) != none }
 fn is_shell_transport(t: Node) -> Bool { t.body != none }
 fn is_file_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { transport_base_path(t: t, source_indices: source_indices) != none }
-fn is_local_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool { !is_rest_transport(t: t, source_indices: source_indices) && !is_shell_transport(t: t) && !is_file_transport(t: t, source_indices: source_indices) }
+// A local transport is the one local_transport_node builds: no properties, no argv, no body.
+fn is_bare_transport(t: Node) -> Bool {
+  t.properties |> count == 0 && t.children |> count == 0 && t.body == none
+}
+
+// The precedence is declared ONCE here and every consumer reads it. Absent = the transport
+// matches no roster member.
+//
+// WHAT THIS CHANGES AND WHAT IT DOES NOT, because the two are easy to conflate. Local used to be
+// defined as "not rest, not shell, not file", which made it ABSORB every transport the other
+// three predicates declined -- so the dispatch's `unrecognized transport kind` arm could not be
+// reached by any input whatsoever, and a check whose red is unreachable is a decoration:
+// permanently green and cited as coverage (DESIGN, the reachability-read-as-occupancy class).
+// Local is now a POSITIVE test, so that arm is reachable and an unrecognized transport is refused
+// instead of silently emitting as a direct function call.
+//
+// IT DOES NOT MAKE THE ARM FIRE ON ANY SOURCE SPELLING TODAY, and this PR does not claim it does.
+// A REACHABLE WALL AND A WALL THAT FIRES ARE DIFFERENT PROPERTIES. Both parse_file_fields and
+// parse_rest_fields substitute an empty string literal when their key is omitted, rather than
+// producing a transport node carrying no recognized key, so every transport the PARSER builds
+// still lands in a roster member. The arm's occupancy is therefore zero and its reachability is
+// bounded by the parser, not by this predicate -- which is the honest statement of what moved:
+// the absorbing arm is gone, the fabricated default that keeps it unoccupied is the open next
+// step and belongs to the parser, not here.
+//
+// AND THE FABRICATED DEFAULT IS LOAD-BEARING IN THE OTHER DIRECTION TOO, which is sharper than
+// "unoccupied arm" and is recorded here so the next reader does not discover it mid-cut
+// (crisp-crane-201 via deep-ant-102, 2026-08-23). Kind is discriminated by MARKER-FIELD PRESENCE:
+// rest is "carries base_url", and the parser's substituted empty string literal IS that marker.
+// Making base_url refuse when absent therefore does not merely tighten a value -- it deletes the
+// rest tag, and every rest transport in the corpus reclassifies as LOCAL. So the parser repair is
+// not a parser repair alone: whoever makes the marker refusable owes an explicit kind tag in the
+// same change. It is deliberately NOT taken here -- this cut binds meaning, it does not move the
+// discrimination -- and it is the reason no arm of bind_operation_transport requires a base_url
+// value: a binding that demanded one would move the classifier while its oracle watched only the
+// emitted bytes, which report THAT output moved and never that the CLASSIFIER moved.
+fn classify_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> TransportKind? {
+  if is_rest_transport(t: t, source_indices: source_indices) { Present { value: RestTransport } }
+  else if is_shell_transport(t: t) { Present { value: ShellTransport } }
+  else if is_file_transport(t: t, source_indices: source_indices) { Present { value: FileTransport } }
+  else if is_bare_transport(t: t) { Present { value: LocalTransport } }
+  else { none }
+}
+
+fn is_local_transport(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match classify_transport(t: t, source_indices: source_indices) {
+    Present { value: LocalTransport } => true
+    _ => false
+  }
+}
 
 fn field_init_operation_modifier(field_init: Node, source_indices: Map<String, NewlineIndex>) -> OperationModifier? {
   let fi_name = field_init_node_name_at(n: field_init, source_indices: source_indices)
@@ -1535,30 +1657,80 @@ fn expr_has_non_tail_self_call(texpr: Node, fn_name: String, in_tail: Bool, sour
   }
 }
 
-fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?, retry: Node?) -> List<Node> {
+// THE SERVICE-CONFIG FIELD SET IS ONE AUTHORITY, and it is a coproduct rather than a list of
+// string literals because the property spellings had THREE copies before this: minted here,
+// matched in `04_infer` `service_config_field_judgment`, and (in authored spelling) matched in
+// `02_parse` `parse_config_fields`. Review 55463 on gunbc#9028 caught the cost exactly: the
+// judgment claimed a new field would fail to compile, and it would not — it was an `if/else if`
+// chain over string literals whose else-arm classified any unrecognised property as carrying no
+// reference, so a field added to the parser without a matching arm routed silently to
+// `diagnostics: []`. That recreates the fail-open the change exists to close, one level up.
+//
+// With the spellings derived from this coproduct and the judgment matching it totally, a new
+// variant forces an arm in `service_config_field_property_name` AND in the judgment. The residue
+// is declared rather than papered over: `service_config_known_fields` is a hand-authored roster,
+// so a variant added without a row there is unreachable from the judgment and lands in the
+// carries-no-reference arm. Its next-rung trigger is a variant-enumeration primitive; until one
+// exists, the roster is the one place that must be edited and every other site refuses.
+type ServiceConfigField
+  = SvcEndpoint
+  | SvcAuth
+  | SvcAuthInput
+  | SvcAuthSource
+  | SvcRateLimit
+
+fn service_config_field_property_name(field: ServiceConfigField) -> String {
+  match field {
+    SvcEndpoint => "svc_endpoint"
+    SvcAuth => "svc_auth"
+    SvcAuthInput => "svc_auth_input"
+    SvcAuthSource => "svc_auth_source"
+    SvcRateLimit => "svc_rate_limit"
+  }
+}
+
+fn service_config_known_fields() -> List<ServiceConfigField> {
+  [SvcEndpoint, SvcAuth, SvcAuthInput, SvcAuthSource, SvcRateLimit]
+}
+
+fn service_config_field_for_property_name(name: String) -> ServiceConfigField? {
+  service_config_known_fields()
+    |> filter(f => service_config_field_property_name(field: f) == name)
+    |> first
+}
+
+// `retry` WAS A FIELD HERE AND IS DELETED AT THE ROOT, not left parsed-and-unread.
+// Measured before removal: `service_config_retry` had zero callers in the whole tree, and
+// NEITHER realization retries anything -- `05_emit_rust.dag` has no occurrence of retry or
+// backoff, and the interpreter's only match for either word is an unrelated doc comment. So
+// the field was declared policy with no consumer (DESIGN section 5, specification without
+// execution). It was also in the wrong layer: `max_attempts: 3` is OUR policy authored
+// inside a cited upstream module, which is the literal-where-a-parameter-should-be-received
+// tell for the section 3 layer inversion. `rate_limit` is deliberately NOT deleted beside
+// it -- a published request ceiling is a fact ABOUT the dependency and belongs in extdeps;
+// a retry policy is a fact about how WE call it and belongs to the caller. When a retrying
+// realization exists, its policy arrives as a workflow-layer carrier parameterized per call
+// site, not as a literal frozen into a dependency's module.
+fn service_config_properties(endpoint: Node, auth: Node?, auth_input: Node?, auth_source: Node?, rate_limit: Node?) -> List<Node> {
   let zero_span = no_span()
-  let ep_prop = [make_field_init_node(name: "svc_endpoint", value: endpoint, span: zero_span, name_span: zero_span)]
+  let ep_prop = [make_field_init_node(name: service_config_field_property_name(field: SvcEndpoint), value: endpoint, span: zero_span, name_span: zero_span)]
   let auth_prop = match auth {
-    Present { value: a } => [make_field_init_node(name: "svc_auth", value: a, span: zero_span, name_span: zero_span)]
+    Present { value: a } => [make_field_init_node(name: service_config_field_property_name(field: SvcAuth), value: a, span: zero_span, name_span: zero_span)]
     Absent => []
   }
   let auth_input_prop = match auth_input {
-    Present { value: ai } => [make_field_init_node(name: "svc_auth_input", value: ai, span: zero_span, name_span: zero_span)]
+    Present { value: ai } => [make_field_init_node(name: service_config_field_property_name(field: SvcAuthInput), value: ai, span: zero_span, name_span: zero_span)]
     Absent => []
   }
   let auth_source_prop = match auth_source {
-    Present { value: src } => [make_field_init_node(name: "svc_auth_source", value: src, span: zero_span, name_span: zero_span)]
+    Present { value: src } => [make_field_init_node(name: service_config_field_property_name(field: SvcAuthSource), value: src, span: zero_span, name_span: zero_span)]
     Absent => []
   }
   let rate_prop = match rate_limit {
-    Present { value: r } => [make_field_init_node(name: "svc_rate_limit", value: r, span: zero_span, name_span: zero_span)]
+    Present { value: r } => [make_field_init_node(name: service_config_field_property_name(field: SvcRateLimit), value: r, span: zero_span, name_span: zero_span)]
     Absent => []
   }
-  let retry_prop = match retry {
-    Present { value: r } => [make_field_init_node(name: "svc_retry", value: r, span: zero_span, name_span: zero_span)]
-    Absent => []
-  }
-  concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop, retry_prop)
+  concat(ep_prop, auth_prop, auth_input_prop, auth_source_prop, rate_prop)
 }
 
 fn has_service_config(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -1575,10 +1747,6 @@ fn service_config_auth(n: Node, source_indices: Map<String, NewlineIndex>) -> No
 
 fn service_config_rate_limit(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   find_property(props: n.properties, prop_name: "svc_rate_limit", source_indices: source_indices)
-}
-
-fn service_config_retry(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
-  find_property(props: n.properties, prop_name: "svc_retry", source_indices: source_indices)
 }
 
 fn service_config_auth_input(n: Node, source_indices: Map<String, NewlineIndex>) -> Node? {

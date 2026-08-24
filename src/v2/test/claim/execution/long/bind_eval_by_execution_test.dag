@@ -293,7 +293,7 @@ fn bind_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn bind_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map {
+    facts: PartialFunction {
       lookup: bind_facts_lookup
     }
   }

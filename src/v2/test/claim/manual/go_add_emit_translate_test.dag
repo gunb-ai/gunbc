@@ -290,7 +290,7 @@ fn go_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data go_add_inferred_tree: InferredTree = InferredTree {
   root: go_add_emitted_root,
-  facts: Map {
+  facts: PartialFunction {
     lookup: go_add_facts_lookup
   }
 }

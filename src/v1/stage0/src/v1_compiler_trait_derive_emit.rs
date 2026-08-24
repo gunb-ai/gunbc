@@ -265,7 +265,9 @@ pub fn v1_keyed_map_verdict_from_algebra(
 ) -> Rc<KeyedMapVerdict> {
     match container_template_algebra(authored_name_at(source_indices.clone(), type_expr.clone())) {
         Some(algebra) => {
-            if (algebra.clone() == "PartialFunction".to_string()) {
+            if ((algebra.clone() == "FinitelySupportedFunction".to_string())
+                || (algebra.clone() == "PartialFunction".to_string()))
+            {
                 Rc::new(KeyedMapVerdict::KeyedMap)
             } else {
                 Rc::new(KeyedMapVerdict::NotKeyedMap)

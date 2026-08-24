@@ -3,9 +3,9 @@
 
 use self::TypeResolutionVerdict::*;
 use crate::std_algebra::AlgebraProfile::{
-    ApproximateFieldProfile, BooleanAlgebraCollectionProfile, BooleanAlgebraProfile,
-    FreeMonoidCollectionProfile, FreeMonoidScalarProfile, OrderedRingProfile,
-    PartialFunctionProfile,
+    ApproximateFieldProfile, BooleanAlgebraProfile, FinitePowerSetProfile,
+    FinitelySupportedFunctionProfile, FreeMonoidCollectionProfile, FreeMonoidScalarProfile,
+    OrderedRingProfile, PartialFunctionProfile,
 };
 use crate::std_algebra::AlgebraTypeTemplate::{
     AlgebraTypeVariable, ContainerOf, NamedTemplate, OptionalOf, ReceiverElement, ReceiverKey,

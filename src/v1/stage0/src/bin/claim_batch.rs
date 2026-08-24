@@ -350,31 +350,33 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
         // completion, passed, and was reclassified on cost. Same fabrication as the executor's
         // renderer carried; fixed in the same motion so the two transports cannot disagree
         // about one outcome.
-        ClaimOutcome::TimedOut {
+        ClaimOutcome::BudgetInterrupted {
+            elapsed_at_least_ms,
+            budget_ms,
+            kind,
+        } => {
+            println!(
+                "FAIL {} (killed at its {} budget: at least {}ms elapsed against a {}ms budget \
+                 (interrupted, so elapsed bounds the cost and does not measure it))",
+                function,
+                kind.label(),
+                elapsed_at_least_ms,
+                budget_ms
+            );
+            *any_failed = true;
+        }
+        ClaimOutcome::CompletedOverBudget {
             elapsed_ms,
             budget_ms,
             kind,
-            completion,
         } => {
             println!(
-                "FAIL {} ({})",
+                "FAIL {} (completed over its {} budget: exactly {}ms elapsed against a {}ms \
+                 budget (ran to completion and passed, then was reclassified on cost))",
                 function,
-                match completion {
-                    v1_compiler::cli_run::BudgetCompletion::Interrupted => format!(
-                        "killed at its {} budget: at least {}ms elapsed against a {}ms budget \
-                         (interrupted, so elapsed bounds the cost and does not measure it)",
-                        kind.label(),
-                        elapsed_ms,
-                        budget_ms
-                    ),
-                    v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget => format!(
-                        "completed over its {} budget: exactly {}ms elapsed against a {}ms \
-                         budget (ran to completion and passed, then was reclassified on cost)",
-                        kind.label(),
-                        elapsed_ms,
-                        budget_ms
-                    ),
-                }
+                kind.label(),
+                elapsed_ms,
+                budget_ms
             );
             *any_failed = true;
         }

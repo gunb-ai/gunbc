@@ -1,6 +1,6 @@
 module std.types
 
-import std.algebra { FreeMonoid, PartialFunction, PointwisePower, kernel_algebra_profile, algebra_type_param_names }
+import std.algebra { FinitePowerSet, FinitelySupportedFunction, FreeMonoid, kernel_algebra_profile, algebra_type_param_names }
 
 data kernel_type_set: Map<String, Bool> = {
   "String": true, "Int": true, "Bool": true, "Float": true,
@@ -59,27 +59,53 @@ fn is_ordered_element_collection(name: String) -> Bool {
 data container_template_algebra_rows: Map<String, String> = {
   "List": "FreeMonoid",
   "list": "FreeMonoid",
-  "Set": "PointwisePower",
-  "set": "PointwisePower",
-  "Map": "PartialFunction",
-  "map": "PartialFunction",
+  "Set": "FinitePowerSet",
+  "set": "FinitePowerSet",
+  "Map": "FinitelySupportedFunction",
+  "map": "FinitelySupportedFunction",
   "FreeMonoid": "FreeMonoid",
   "free_monoid": "FreeMonoid",
   "BooleanAlgebra": "BooleanAlgebra",
   "boolean_algebra": "BooleanAlgebra",
+  "FinitePowerSet": "FinitePowerSet",
+  "finite_power_set": "FinitePowerSet",
+  "FinitelySupportedFunction": "FinitelySupportedFunction",
+  "finitely_supported_function": "FinitelySupportedFunction",
   "PartialFunction": "PartialFunction",
   "partial_function": "PartialFunction",
   "PointwisePower": "PointwisePower",
   "pointwise_power": "PointwisePower"
 }
 
+// PARTIALFUNCTION IS HERE BECAUSE THIS MAP DECIDES WHAT RESOLVES AS A CONTAINER, not merely what
+// is an alias for something else. `is_declared_container_alias_spelling` reads it, and
+// `resolve_method_receiver_type` short-circuits on that predicate to return the receiver AS
+// AUTHORED, type arguments intact. A spelling absent from here takes the other branch, resolves to
+// the carrier's own record shape, and arrives at method lookup as a bare leaf -- so
+// `lookup`'s declared `OptionalOf { inner: ReceiverValue }` has no `ReceiverValue` to substitute
+// and the optional collapses. Measured: `tree.facts.lookup(node)` on a `PartialFunction` receiver
+// produced four `variant 'Present' not found in type 'InferredFacts'` refusals, the Optional's
+// cardinality dropped and the inner product arriving in its place -- which is one of the four
+// receiver-resolution shapes `unresolved_method_frontier` already names as residue.
+//
+// A self-mapping row is not a nickname. The value is the ALGEBRA and the key is a SPELLING that
+// resolves to it; `FreeMonoid` and `PointwisePower` are equally absent and would fail the same way
+// if written directly, which is why `List` and `Set` exist as keys at all. The carriers this lane
+// makes directly writable therefore need their own keys.
+//
+// Only `PartialFunction` is added, and the reason is `container_alias_canonical_spelling`: it
+// returns the FIRST sorted key mapping to an algebra, so a `"FinitelySupportedFunction"` key would
+// sort ahead of `"Map"` and silently become the canonical spelling for that algebra everywhere it
+// is emitted. No existing key maps to `PartialFunction`, so this addition competes with nothing.
 data container_template_alias_rows: Map<String, String> = {
   "List": "FreeMonoid",
   "list": "FreeMonoid",
-  "Set": "PointwisePower",
-  "set": "PointwisePower",
-  "Map": "PartialFunction",
-  "map": "PartialFunction"
+  "Set": "FinitePowerSet",
+  "set": "FinitePowerSet",
+  "Map": "FinitelySupportedFunction",
+  "map": "FinitelySupportedFunction",
+  "PartialFunction": "PartialFunction",
+  "partial_function": "PartialFunction"
 }
 
 fn container_template_algebra(name: String) -> String? {
@@ -90,8 +116,20 @@ fn container_template_alias_algebra(name: String) -> String? {
   map_get(container_template_alias_rows, name)
 }
 
+// THE COMPLETE ROSTER, and completing it is what lets its consumer stop patching it. This list
+// feeds `v1.compiler.coercion` `inhabitant_test_names`, which used to read
+// `concat(canonical_container_names(), ["PointwisePower"])` -- a hand-appended name compensating
+// for one this list omitted. That append is deleted with this change: a caller patching its
+// authority's answer is the authority being wrong, not the caller being thorough.
+//
+// TWO CORRECTIONS THE CARRIER SPLIT FORCED, both of which an unedited list would have got wrong in
+// opposite directions. `BooleanAlgebra` LEAVES: its container inhabitant row moved to
+// `FinitePowerSet`, so it names no container any more -- it is the lattice, and a lattice in a
+// container roster is the misfiling this change exists to end. `PartialFunction` STAYS: it keeps a
+// row and is now reachable as a declared spelling in its own right, so dropping it would have
+// silently retired its coercion coverage at the moment it acquired real callers.
 fn canonical_container_names() -> List<String> {
-  ["BooleanAlgebra", "FreeMonoid", "List", "Map", "PartialFunction", "Set", "Witness"]
+  ["FinitePowerSet", "FinitelySupportedFunction", "FreeMonoid", "List", "Map", "PartialFunction", "PointwisePower", "Set", "Witness"]
 }
 
 type Bool = True | False
@@ -104,8 +142,46 @@ type Bytes
 type Char = Int where unicode_scalar, brand("Char")
 
 type List<element> = FreeMonoid<element>
-type Set<element> = PointwisePower<element>
-type Map<key, value> = PartialFunction<key, value>
+// BOTH ALIASES NAME THE FINITE CARRIER, and this is the motion the predicate-half change
+// (`PointwisePower`, landed separately) was waiting for. A `Set` or a `Map` in a declaration
+// position has always LOWERED to a finite container -- `im::OrdSet` and `HashMap` in Rust, and the
+// same story in Go, Python and TypeScript -- so pointing the aliases at the finite carriers makes
+// the declaration say what the realization already did. The open carriers keep their own names:
+// `std.algebra` `PointwisePower` for a characteristic function, `PartialFunction` for a partial
+// one.
+//
+// Why the two rows move together rather than one at a time: they are one row set. Retargeting
+// `Map` while `Set` still resolved to the predicate would leave the fork intact on the Set side
+// and make the pair inconsistent for the interval, which is the dual-authority state the
+// replacement-migration doctrine exists to avoid. The transition is atomic in the AUTHORITY sense
+// -- one motion, no interval in which both answers are live -- whatever the diff size.
+//
+// RUNG: STILL MITIGATABLE. This change does NOT make the bad literal unwritable, and saying it did
+// would be the inflation DESIGN 4b calls worse than sitting low. `FinitePowerSet` carries `member`
+// and `FinitelySupportedFunction` carries `lookup`, because a finite set really does answer
+// membership and a finite map really does answer lookup -- so `Set { member: .. }` and
+// `Map { lookup: .. }` still typecheck. They must: 145 `Map { lookup: .. }` literals are live in
+// the corpus and are re-authored by the following change, not by this one.
+//
+// The correction is that the invalid state was never "a literal supplying `member` or `lookup`".
+// It is "a literal supplying ONLY those, on a carrier whose remaining fields promise an
+// enumeration it cannot perform" -- a construction-COMPLETENESS question, and record literals in
+// this substrate do not require every field. So the real NEXT-RUNG TRIGGER is field-completeness
+// enforcement on record construction, which would make the deficient literal unwritable at every
+// carrier at once rather than at these two. Until that exists the class stays mitigatable and only
+// review sees a new one; what this change buys is that each alias now names a carrier that can
+// answer for it, which is the single-authority half, not the wall.
+//
+// CARRIED FORWARD FROM THE PREDICATE-HALF CHANGE (#9055), whose note this row replaces: the
+// fusion was measured, not argued -- `extdeps.languages.rust.types` gave `PointwisePower` the
+// inhabitant `BTreeSet<{0}>`, so a declaration position lowered to `im::OrdSet` while a record
+// literal lowered to the algebra struct, and the two met as a rustc refusal wherever one compiled
+// closure held both (`docs/probes/t3_collection_realization_2026-08-22.md`). That change also
+// closed the predicate half: no `Set { member: .. }` literal survives in `src/v2`, so the Set side
+// of the fork is a spelling question only. Its stated NEXT-RUNG TRIGGER was the Map-side
+// decomposition landing, after which both rows retarget in one motion. That is this row.
+type Set<element> = FinitePowerSet<element>
+type Map<key, value> = FinitelySupportedFunction<key, value>
 
 fn list_length<T>(items: List<T>) -> Int {
   fold(items, init: 0, f: (acc, _) => acc + 1)

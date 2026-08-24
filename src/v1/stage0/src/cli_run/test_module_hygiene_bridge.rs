@@ -70,7 +70,6 @@ fn resolve_hygiene_ctx(source_roots: &[String]) -> Result<InterpContext, String>
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FailureReceiptCompanionLookup {
-    NotDeclared,
     Declared(String),
     AuthorityRefused { cause: String },
 }
@@ -102,39 +101,14 @@ pub(crate) fn failure_receipt_companion_from_authority(
             };
         }
     };
+    // The authority's projection is TOTAL: it returns String, so there is no Absent to
+    // decode and no not-declared arm to fall through. A witness whose companion does not
+    // exist is distinguished later, by the companion lookup itself returning empty -- not
+    // here, by its name.
     match &result {
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Present") => {
-            match ctx.field(fields, "value") {
-                Some(Value::Str(companion)) => {
-                    FailureReceiptCompanionLookup::Declared(companion.to_string())
-                }
-                other => FailureReceiptCompanionLookup::AuthorityRefused {
-                    cause: format!(
-                        "Present value must be String, got {}",
-                        other
-                            .map(|v| ctx.format_value(v))
-                            .unwrap_or_else(|| "<missing>".to_string())
-                    ),
-                },
-            }
-        }
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            ..
-        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Absent") => {
-            FailureReceiptCompanionLookup::NotDeclared
-        }
+        Value::Str(companion) => FailureReceiptCompanionLookup::Declared(companion.to_string()),
         other => FailureReceiptCompanionLookup::AuthorityRefused {
-            cause: format!(
-                "returned {}, expected Optional<String>",
-                ctx.format_value(other)
-            ),
+            cause: format!("returned {}, expected String", ctx.format_value(other)),
         },
     }
 }
@@ -166,39 +140,14 @@ pub(crate) fn witness_verdict_diagnostic_companion_from_authority(
             };
         }
     };
+    // The authority's projection is TOTAL: it returns String, so there is no Absent to
+    // decode and no not-declared arm to fall through. A witness whose companion does not
+    // exist is distinguished later, by the companion lookup itself returning empty -- not
+    // here, by its name.
     match &result {
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Present") => {
-            match ctx.field(fields, "value") {
-                Some(Value::Str(companion)) => {
-                    FailureReceiptCompanionLookup::Declared(companion.to_string())
-                }
-                other => FailureReceiptCompanionLookup::AuthorityRefused {
-                    cause: format!(
-                        "Present value must be String, got {}",
-                        other
-                            .map(|v| ctx.format_value(v))
-                            .unwrap_or_else(|| "<missing>".to_string())
-                    ),
-                },
-            }
-        }
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            ..
-        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Absent") => {
-            FailureReceiptCompanionLookup::NotDeclared
-        }
+        Value::Str(companion) => FailureReceiptCompanionLookup::Declared(companion.to_string()),
         other => FailureReceiptCompanionLookup::AuthorityRefused {
-            cause: format!(
-                "returned {}, expected Optional<String>",
-                ctx.format_value(other)
-            ),
+            cause: format!("returned {}, expected String", ctx.format_value(other)),
         },
     }
 }
@@ -384,9 +333,12 @@ fn plain_only() -> Bool {
             failure_receipt_companion_from_authority("w_thing_passes"),
             FailureReceiptCompanionLookup::Declared("w_thing_failure_receipt".to_string()),
         );
+        // The eligibility predicate is deleted: a name carrying neither suffix is no longer
+        // "not declared", it simply projects to its own stem. This row is the regression
+        // control for that, and it is RED against the pre-change authority.
         assert_eq!(
             failure_receipt_companion_from_authority("ordinary_fn"),
-            FailureReceiptCompanionLookup::NotDeclared,
+            FailureReceiptCompanionLookup::Declared("ordinary_fn_failure_receipt".to_string()),
         );
     }
 }
