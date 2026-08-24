@@ -1557,3 +1557,80 @@ Recorded here rather than paraphrased because the counterfactual is exact: the n
 the green was **not** believed, the file was opened, and the failure was found. The habit that did
 that is the one this document keeps arriving at — **do not read the status, read something only the
 subject could have produced.**
+
+---
+
+## Two ways to be confidently wrong from real source: the scoping error and the sampling error
+
+These arrived within an hour of each other, from two sessions reading the same file, and the pair is
+worth more than either — because they look identical in the transcript and have **different
+remedies**.
+
+Both sessions were tracing whether a profile lookup misses for a carrier spelled `FreeMonoid`.
+
+### The scoping error — a row is not the map that contains it
+
+    cited:   `"FreeMonoid": "FreeMonoid"` is in container_template_alias_rows
+    actual:  it is in container_template_algebra_rows — a DIFFERENT map, 14 rows to the other's 6
+
+Found by `grep 'FreeMonoid' types.dag`, which returns matching lines with **no indication of which
+declaration they belong to**. The line was real, the quote was exact, and the container was never
+checked.
+
+**This is the same error as verifying a code snippet without checking its enclosing function** — the
+same session had done exactly that earlier the same day, with a `git log`-visible offset attached
+that made it look *more* verified. **The remedy is: resolve the containing scope, not the match.**
+`grep` is a line instrument being asked a containment question.
+
+### The sampling error — a map's first row is not the map
+
+The other session made a **different** mistake with the same outcome. They bound the function to the
+**right** map — grepped `container_template_algebra`, saw `map_get(container_template_algebra_rows,
+name)`, correct — and then asserted that map's *contents* from the one line of it visible on screen:
+
+> "rows are keyed by SPELLING: `List` -> `FreeMonoid`"
+
+**True of the rows they had seen. False of the map**, which also carries `"FreeMonoid":
+"FreeMonoid"` and the other algebra-name identity keys. The name resolution was right; the **payload
+was filled in from a partial view**, and the partial view was consistent with the conclusion, so
+nothing felt wrong.
+
+**The remedy is different: print the whole thing.** One command settled it — both maps enumerated,
+sizes compared, subset relation checked. It was not run, because the visible rows already agreed
+with the expected answer.
+
+### Why separating them matters
+
+    scoping   the match was real; the CONTAINER was assumed        -> resolve the container
+    sampling  the container was right; the CONTENTS were assumed   -> enumerate the contents
+
+**Neither is carelessness and neither is caught by re-reading your own work**, because in both cases
+what you looked at was true. They are caught by a second party tracing the same path, which is what
+happened here in both directions inside an hour. **The confident-wrong-answer-from-real-source class
+has at least these two members, and a reviewer who knows only one of them will miss the other.**
+
+### The defect the argument uncovered, which outlived both mistakes
+
+Printing the maps produced a finding neither session was looking for:
+
+    alias   = 6 rows    List Map Set list map set
+    algebra = 14 rows   those six PLUS BooleanAlgebra FreeMonoid PartialFunction PointwisePower
+                        and their snake_case forms
+    alias is a strict subset of algebra          True
+    values agree on every shared key             True
+
+So the six-row map is **exactly the fourteen-row map minus its algebra-name keys**, with identical
+values everywhere they overlap. **Its entire semantic content is the subset relation** — it exists to
+answer *"is this a surface spelling rather than an algebra name,"* which is a question about what the
+**other** map contains.
+
+That is a single-authority defect in a form worth naming separately: **not two authorities
+disagreeing, but one authority whose whole content is a statement about another, spelled as an
+independent table.** Two independent readers, both looking directly at the source, both wrong within
+an hour, is the measured cost — and it is a better argument for a canonical authority than either
+mechanism the sessions were chasing.
+
+**Both mechanisms they were chasing turned out to be dead.** The inverse *is* reachable
+(`container_kind_canonical("FreeMonoid")` → `"List"`, so the profile **hits**), which killed one
+session's proposed defect and the other's hypothesis in the same message. **The durable output of the
+exchange was the thing found while checking, not the thing being checked.**
