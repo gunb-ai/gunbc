@@ -506,7 +506,7 @@ fn lazy_arm_facts_lookup(key: Node) -> Optional<InferredFacts> {
 fn lazy_arm_admitted_tree(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map { lookup: lazy_arm_facts_lookup }
+    facts: PartialFunction { lookup: lazy_arm_facts_lookup }
   }
 }
 

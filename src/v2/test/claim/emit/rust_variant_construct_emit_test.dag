@@ -48,7 +48,7 @@ fn rust_variant_construct_emit_facts_miss(key: Node) -> Optional<InferredFacts> 
 fn rust_variant_construct_emit_inferred_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map { lookup: rust_variant_construct_emit_facts_miss }
+    facts: PartialFunction { lookup: rust_variant_construct_emit_facts_miss }
   }
 }
 

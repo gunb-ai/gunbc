@@ -109,16 +109,35 @@ program_assembly          0  emit_fail — the one module that does not reach ca
 
 ## 4. Hypotheses, each with what would falsify it
 
-**These are hypotheses. None is confirmed. Do not plan against them as findings.**
+**These were hypotheses. H1 is now CONFIRMED by execution (see its row); H2 was refuted in
+§8; H3 remains a hypothesis. Do not plan against an unconfirmed row as a finding.**
 
-**H1 — there is a shared floor, and it is most of the volume.**
+**H1 — CONFIRMED 2026-08-24 by the falsifier this row named, and the sizing consequence is the
+opposite of the reassuring reading.** Fifteen frontier modules boarded in one cohort at
+`6a59c1a549` (`origin/main` `1ed02057a5` plus two probe files the compiler does not read), real
+error TEXTS joined rather than histograms compared:
+[`docs/probes/frontier_cohort_board_2026-08-24/`](../probes/frontier_cohort_board_2026-08-24/README.md).
+Across the eleven shim-free boards, **92.3% of distinct sites appear on two or more modules**, and
+ten additional entries added only **17 distinct sites** beyond what `03_ingest` already showed.
+`00_compile` boards 189 distinct sites and not one of them is outside `03_ingest`'s set. So the
+shared floor is real and it is most of the volume, exactly as this row proposed.
+
+What follows is NOT that the queue was right about magnitudes. Summing per-module figures
+overstates by **7.0x** on that view, and per-root fan-out — diagnostics per distinct site — varies
+by a factor of five between roots, so the inflation is not uniform and cannot be divided out. Two
+cross-code roots visible only from the join are established there
+(`PRIMITIVE_REPR_FORK` spanning E0308+E0369, `MAP_CARRIER_FORK` spanning E0308+E0560); 217 of 298
+sites remain UNCLASSIFIED and are left so rather than filled in from their error codes.
+
+**H1 as originally written — there is a shared floor, and it is most of the volume.**
 `05_emit` is 35 source lines; `06_translate` is 4,226. Both total **364**, with identical
 histograms code-for-code. `fold_lowering` (164 lines) is 291 with the same tail. Reading: the
 shared emitted closure fails the same way in every crate, ~290 deep, and each module adds a
 delta. If true, this is one core plus twenty deltas — the 9,444 is the same defects counted
 twenty times, and a core fix drops every module at once.
 *Falsified by:* extracting real error TEXTS for two modules and finding the intersection small.
-Histogram similarity is suggestive, not proof. **This is the next measurement to run.**
+Histogram similarity is suggestive, not proof. **This measurement has now been run over fifteen
+modules and did not falsify it** — the intersection is 92.3% of distinct sites.
 
 **H2 — E0308 + E0277 + E0599 are one root, not three.**
 That triple is the signature of a type-representation fork, which DESIGN already tracks: every

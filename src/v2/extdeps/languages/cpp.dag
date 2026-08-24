@@ -593,55 +593,59 @@ fn cpp_language_model_canonical_symbols(target_profile: Node) -> PointwisePower<
 }
 
 fn cpp_integer_spec_facts(facts: CppIntegerPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: cpp_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          v2.std.optional.Present { value: facts.width_fact }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          v2.std.optional.Present { value: facts.signedness_fact }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: facts.encoding_fact }
-      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
-          v2.std.optional.Present { value: facts.overflow_fact }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(
+            empty_map(),
+            discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+            cpp_atom(id: facts.surface_spelling)
+          ),
+          discriminant(v: ModelCoreFactAxisWidth {}),
+          facts.width_fact
+        ),
+        discriminant(v: ModelCoreFactAxisSignedness {}),
+        facts.signedness_fact
+      ),
+      discriminant(v: ModelCoreFactAxisEncoding {}),
+      facts.encoding_fact
+    ),
+    discriminant(v: ModelCoreFactAxisOverflowDisposition {}),
+    facts.overflow_fact
+  )
 }
 
 fn cpp_character_spec_facts(facts: CppCharacterPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: cpp_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
-          v2.std.optional.Present { value: facts.width_fact }
-      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
-          v2.std.optional.Present { value: facts.signedness_fact }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: facts.encoding_fact }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          empty_map(),
+          discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+          cpp_atom(id: facts.surface_spelling)
+        ),
+        discriminant(v: ModelCoreFactAxisWidth {}),
+        facts.width_fact
+      ),
+      discriminant(v: ModelCoreFactAxisSignedness {}),
+      facts.signedness_fact
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    facts.encoding_fact
+  )
 }
 
 fn cpp_bool_spec_facts(facts: CppBoolPrimitiveFacts) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: cpp_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: facts.encoding_fact }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      empty_map(),
+      discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      cpp_atom(id: facts.surface_spelling)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    facts.encoding_fact
+  )
 }
 
 fn cpp_primitive_bundle_from_integer_facts(facts: CppIntegerPrimitiveFacts) -> PrimitiveFactBundle {
