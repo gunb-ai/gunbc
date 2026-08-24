@@ -1,6 +1,13 @@
 module test.claim.fleet_converge_plan_witness
 
 import std.types { Bool, String, NonEmptyStr, Int }
+import gunbc.fleet_posix_accounts {
+  ci_runner_sudo_binary_path, fleet_posix_ci_runner_sudo_grants,
+  SudoInstall, SudoSystemctl, SudoRm,
+}
+import extdeps.github.actions_runner {
+  actions_runner_slot_extract_script, actions_runner_release_2_334_0,
+}
 import std.content_hash { serialize_content_hash }
 import gunbc.membership_reconcile { MemberRemoved }
 import gunbc.host_axis_caps { CapMember }
@@ -572,3 +579,62 @@ test fn slot_drift_breaks_the_member_set_fingerprint() -> Bool {
     Absent => false
   }
 }
+
+// A SUDO'D WORD IN THE EMITTED SCRIPT IS SINGLE-QUOTED, AND ASSERTING ON THE UNQUOTED SPELLING
+// WOULD HAVE BEEN A DECORATION. The bash serializer wraps every literal word through
+// extdeps.posix.shell_command_language posix_single_quote, so a probe for "sudo -n mkdir" is
+// permanently green -- it was green on main WHILE main emitted exactly that command, because what
+// main emitted was `'sudo' '-n' 'mkdir'`. That is the check whose RED is unauthorable, which
+// DESIGN section 4b rules worse than absent since it would be cited as coverage. These build their
+// patterns through the same quoting authority the emitter uses.
+fn sudo_n_word(spelling: String) -> String {
+  concat(
+    posix_single_quote(spelling: "sudo"),
+    concat(" ", concat(posix_single_quote(spelling: "-n"), concat(" ", posix_single_quote(spelling: spelling)))),
+  )
+}
+
+// THE PRIVILEGED WORDS AN EMITTED CONVERGE SCRIPT MAY NAME ARE THE ROSTER'S, AND THESE ARE THE
+// EXECUTING EVIDENCE OF IT. Every negative clause below was TRUE of main until the srv3 apply
+// measured it: the lease guard named mkdir and flock under sudo and the extract script named tar
+// and chown, none of which gunbc.fleet_posix_accounts grants this principal. So each `!contains`
+// is a discriminating RED that fires the moment an ungranted binary is reintroduced -- not a
+// restatement of the closed vocabulary, because these emitters build words from strings and the
+// vocabulary can only constrain the ones routed through its accessor.
+test fn lease_guard_sudoes_only_granted_binaries() -> Bool {
+  let script = fleet_converge_locked_apply_script(
+    prior_generation: 4,
+    planned_generation: 5,
+    apply_shell_path: fleet_converge_plan_apply_shell_path,
+  )
+  string_contains(s: script, pattern: sudo_n_word(spelling: ci_runner_sudo_binary_path(b: SudoInstall) as String))
+    && !string_contains(s: script, pattern: sudo_n_word(spelling: "mkdir"))
+    && !string_contains(s: script, pattern: sudo_n_word(spelling: "flock"))
+    && string_contains(s: script, pattern: posix_single_quote(spelling: "flock"))
+}
+
+// PRIVILEGE IS SPENT ONCE AND ON OWNERSHIP. The RED here is the pair of ungranted verbs; the
+// positive control is that the directory is created already owned by the job principal, which is
+// what makes the extract and the cleanup after it unprivileged rather than merely un-sudo-ed.
+test fn slot_extract_sudoes_only_granted_binaries() -> Bool {
+  let sc = actions_runner_slot_extract_script(
+    artifact: actions_runner_release_2_334_0,
+    slot_dir: "/opt/actions-runner/srv3-09" as NonEmptyStr,
+    job_user: "ghrunner" as NonEmptyStr,
+  )
+  !string_contains(s: sc, pattern: "sudo tar")
+    && !string_contains(s: sc, pattern: "sudo chown")
+    && string_contains(s: sc, pattern: "sudo install -d -m 755 -o ghrunner -g ghrunner")
+    && string_contains(s: sc, pattern: "\ntar xzf /tmp/actions-runner.tar.gz")
+}
+
+// THE ROSTER ITSELF STAYS DERIVED. Six members, each carrying the path its vocabulary member
+// names -- so a grant authored beside the vocabulary instead of from it goes red here.
+test fn ci_runner_grants_derive_from_the_closed_vocabulary() -> Bool {
+  let grants = fleet_posix_ci_runner_sudo_grants()
+  length(xs: grants) == 6
+    && any(xs: grants, predicate: fn(g) { g.command_path == ci_runner_sudo_binary_path(b: SudoInstall) })
+    && any(xs: grants, predicate: fn(g) { g.command_path == ci_runner_sudo_binary_path(b: SudoRm) })
+    && any(xs: grants, predicate: fn(g) { g.command_path == ci_runner_sudo_binary_path(b: SudoSystemctl) })
+}
+
