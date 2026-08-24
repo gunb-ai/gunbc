@@ -300,6 +300,85 @@ scoped census and the pool fallback are in **one** function — census at the he
 loop below — which is what makes the whole-corpus parse unconditional. Attributed to two different
 functions, that reasoning is unavailable.
 
+## 5d. Three narrowings that arrived after this document was written, and one population it now has
+
+Four lanes converged on this mechanism within a few hours of the probe landing. What they establish
+changes the document's scope in three directions, all of which make the finding **smaller and more
+actionable** than it was written as.
+
+### The fallback is CROSS-ROOT ONLY, which bounds the blast radius
+
+The scoped census is keyed per **source root**, not per import list:
+
+    fn tree_bare_census_for_root(index: &MultiEntryIndex, root: &str) -> ...   memoized per ROOT
+
+and the loader's own field note states `pool_bare_census` is *"consulted only on an own-tree miss, so
+cross-tree homonyms cannot steal a same-tree name."*
+
+**So the fallback can supply a wrong definer only when the right definer lives in a different source
+root.** Stripping import headers did not make every bare name pool-resolved; it made every
+**cross-root** bare name pool-resolved. Within `dag`, or within `src/v2`, the scoped census still
+answers and the fallback is never reached.
+
+This matters to how the document is read: written without it, the finding sounds corpus-wide.
+
+### The population is measured — 733, not unbounded
+
+    510   src/v1 -> dag     a seed module pulling substrate
+    223   dag -> src/v1     substrate borrowing the seed
+
+**The wrong-definer render is bounded above by 733.** An unbounded-sounding defect and a
+733-bounded one earn very different priority, and this document originally implied the first by
+saying nothing.
+
+**This bound applies to the file-closure path only** — see the next narrowing, which is the one this
+document got wrong first.
+
+### There is a SECOND fallback, in a different layer, and the bound does not reach it
+
+`v1.compiler.infer_lookup` `func_sig_from_global_bare` and `global_bare_callable_node` take a
+`TypeEnv` and a name — **no root parameter at all** — so they scope by what the environment holds
+rather than by a root. That is a distinct fallback in the signature/type layer, and the 733 figure
+says nothing about it.
+
+**The error worth recording is that this document's author handed the 733 bound to another lane as a
+bound on a symptom family**, without checking that the family's names go through the mechanism the
+bound was measured on. They do not. The instrument was measuring a neighbouring subject and the
+reader supplied the binding — the class this probe's sibling brief is entirely about, committed by
+its author, twice in one afternoon.
+
+### What that second fallback does NOT explain, decided by execution
+
+Algebra method-template names are **gated out** of the signature fallback. All six names in the
+observed no-definer family (`split first skip length trim join`) are among a 58-name algebra template
+roster, and `v1.compiler.infer` states the law explicitly: *the census fallback never serves an
+algebra method-template name — a whole-pool census entry for the unloaded `v2.std.algebra` must not
+preempt the known-method bridge*, with the incident that produced the gate recorded beside it (a
+census-served signature typed `filter(xs, f)` as a call into a never-loaded module, and the runtime
+died `NoSuchFunction`).
+
+**So the loudest symptom family attributed to this mechanism does not take either fallback.** Its
+cause is a third thing, and this document does not name it. That is stated as an open question rather
+than closed with a plausible answer, because a plausible answer is exactly what let the original
+misattribution stand for a day.
+
+### What the wrong definer actually is, which the original document did not have
+
+`dag/std/types.dag` does not merely alias — it **declares**:
+
+    type List<element> = FreeMonoid<element>
+
+with `Map -> PartialFunction` and `Set -> PointwisePower` the same shape. So a module whose bare
+`List` reaches `std.types` by fallback genuinely receives `FreeMonoid`, and every downstream failure
+is a carrier failure: variants that do not exist, non-exhaustive matches over the wrong coproduct,
+incompatible branches. **The pool does not merely fail to find a definer; it supplies a plausible
+wrong one**, and that is the render this document identified as the dangerous half without being able
+to name its source.
+
+A confirmed prior instance exists from before the namespace cut: the same alias family produced
+`PartialFunction` appearing in type position where the kernel `Map` was meant. **The two-render model
+is therefore not a fresh hypothesis — it has a precedent.**
+
 ## 6. Provenance
 
 Three lanes, none of which had the whole picture, and none of which had the loader in front of them:
