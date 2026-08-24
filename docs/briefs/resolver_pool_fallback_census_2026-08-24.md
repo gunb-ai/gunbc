@@ -22,8 +22,8 @@ This control rule is scoped to cross-binary comparisons: if each tree is
 measured by a different compiler, the compiler moved with the subject and the
 attribution is invalid. Paired arms measured by the same binary retain their
 delta even if that binary is itself imperfect; state the result as behavior in
-that compiler, not as a universal gunbc claim. A known-good seed additionally
-upgrades that paired result to the shipped compiler's behavior.
+that compiler, not as a universal gunbc claim. This receipt makes no claim
+about the shipped compiler beyond the exact seed revision named above.
 
 This receipt does not invalidate independent observations about pool fallback,
 the `std.types` `List = FreeMonoid` alias, or #9083's stripped-header finding;
