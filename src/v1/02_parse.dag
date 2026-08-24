@@ -1952,6 +1952,16 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
 // change what its probe reports. Refusing ONLY the leaf-alias arm -- the one with zero authored
 // instances in dag/ or src/v2/ -- would make one construct refuse in the harmless arm and stay
 // silent in the arm that matters, which is a worse rule than the one declared here.
+//
+// NEXT-RUNG TRIGGER (DESIGN section 4b(2)): this class CAN CLIMB AFTER ONE GROUNDING -- it is not
+// a permanent ceiling and it is not merely unbuilt. It climbs when the variant-construction audit
+// wires coproduct construction through sole_constructor_construction_diags (the hole DESIGN
+// section 4b records as entirely unwired, measured by
+// test.claim.sole_constructor_completeness_audit_probe f13_variant_construction_refuses). At that
+// point the coproduct arm has somewhere for the flag to GO, refusing is no longer the only
+// alternative to silence, and the whole `=` family -- coproduct and leaf alias together -- is
+// threaded or refused in one motion by the lane that owns the wall. Until then the drop is
+// declared here rather than half-closed.
 fn alias_rhs_is_anonymous_record(te: Node) -> Bool {
   te.connective == Conj
     && te.ident_span == none
