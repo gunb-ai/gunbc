@@ -613,7 +613,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     );
 
     // Funnel host-effect traces per the .dag output policy (see claim_executor).
-    v1_compiler::cli_run::install_output_policy(&source_roots);
+    if let Err(why) = v1_compiler::cli_run::install_output_policy(&source_roots) {
+        eprintln!("claim_batch: {why}");
+        return Err(ExitCode::from(1));
+    }
     // GUNBC_FLOOR_PHASE_PROFILE support (same as claim_executor): without this,
     // claim_batch diagnostics cannot attribute time to resolve/typecheck/eval
     // phases — a 20-minute silent resolve is uninterpretable.

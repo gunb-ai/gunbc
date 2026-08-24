@@ -15699,24 +15699,47 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
         .into_inner())
 }
 
-pub fn install_output_policy(source_roots: &[String]) {
+/// FAILS CLOSED, and the signature is the reason it can (review 55298).
+///
+/// This function answered BOTH of its failure modes with `Err(_) => return`: an unreadable or
+/// unresolvable policy was indistinguishable from a valid policy decision, and the process
+/// continued under whatever output behaviour happened to be in force. That is the §5 silent widen
+/// — the deficit's frequency is zero by construction, so it never ranks for fixing — and one of the
+/// two arms was ADDED by the closure-scoping change this PR folds, which makes it new debt rather
+/// than inherited debt.
+///
+/// The repair is the signature, not a check: a typed located refusal nobody can receive is not a
+/// refusal, and while this returned `()` there was no arm a caller could take. Both callers now
+/// stop the line.
+///
+/// SCOPE, DECLARED: this fixes the STANDALONE form only. `install_output_policy_in` below carries
+/// the same pattern in further arms and reaches the required floor's path — a different blast
+/// radius, tracked separately as `node://adhoc-4456c93f-bf3`. A partial fix stated as partial is
+/// fine; one that reads as complete is not.
+pub fn install_output_policy(source_roots: &[String]) -> Result<(), String> {
     let entry = "dag/gunbc/output_policy.dag";
     // This standalone installer runs before `claim_batch` and `claim_executor` have a prepared
     // subject. Resolve only the policy's own import closure: entering the process-shared,
     // corpus-wide index here made this five-decision read the accidental first toucher of the
     // bare-reference edge index. That ~31.7s charge described the harness ordering, not work a
     // witness or the floor had demonstrated it needed.
-    let sources = match policy_entry_closure_sources(source_roots, entry, "gunbc.output_policy") {
-        Ok(sources) => sources,
-        Err(_) => return,
-    };
-    let (graph, indices) = match resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
-    {
-        Ok(g) => g,
-        Err(_) => return,
-    };
+    let sources = policy_entry_closure_sources(source_roots, entry, "gunbc.output_policy")
+        .map_err(|why| {
+            format!(
+                "OUTPUT-POLICY REFUSAL cause=PolicyClosureUnreadable entry={entry} — {why}; \
+                 refusing rather than continuing under an unstated output policy"
+            )
+        })?;
+    let (graph, indices) = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
+        .map_err(|why| {
+            format!(
+                "OUTPUT-POLICY REFUSAL cause=PolicyResolveFailed entry={entry} — {why}; \
+                 refusing rather than continuing under an unstated output policy"
+            )
+        })?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     install_output_policy_in(&ctx, source_roots);
+    Ok(())
 }
 
 /// INSTALL THE POLICY FROM AN ALREADY-PREPARED CONTEXT.
