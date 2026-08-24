@@ -258,13 +258,9 @@ import gunbc.build_cache_endpoint_path {
   stale_socket_unlink_command,
 }
 import gunbc.live_deploy.operations {
-  deploy_stage_dir_var,
-  deploy_stage_write_command,
-  deploy_stage_install_command,
   systemctl_daemon_reload_command,
   systemctl_enable_command,
   systemctl_restart_command,
-  systemctl_start_command,
 }
 import extdeps.jobserver { jobserver_config }
 import gunbc.host_layout {
@@ -295,6 +291,18 @@ import gunbc.compile_pool_ensure {
 import gunbc.compile_pool_observe { observe_compile_pool_slice }
 import gunbc.host_layout { gunbc_managed_compile_pool_slice }
 import extdeps.systemd.unit_file { SystemdUnitFile, serialize_systemd_unit_file }
+import extdeps.systemd.systemctl { systemctl_daemon_reload_argv, systemctl_start_argv }
+import extdeps.tools.gnu_coreutils { coreutils_install_binary_name, coreutils_install_mode_flag }
+import gunbc.file_access { FileTreeScope }
+import gunbc.typed_remote_file_write {
+  RemoteFileMode,
+  RemoteFileModeOwnerReadWriteWorldRead,
+  TypedRemoteFileConvergence,
+  TypedRemoteFileConverged,
+  TypedRemoteFileConvergenceRefused,
+  converge_typed_remote_file,
+  typed_remote_file_write_seal,
+}
 
 import gunbc.build_cache_instance { ci_cache_instance }
 import gunbc.srv3_boot_once_cd {
@@ -4464,53 +4472,97 @@ fn compile_pool_slice_system_path(slice_unit: NonEmptyStr) -> String {
 // (systemd.slice(5)), so restarting the compile pool would terminate the compilers it exists to hold, which
 // is the opposite of converging it. `start` on an already-active slice re-applies the unit's resource
 // directives and kills nothing.
-fn compile_pool_slice_install_body(slice_unit: NonEmptyStr, slice_unit_file: SystemdUnitFile) -> String {
-  join([
-    "set -euo pipefail",
-    compile_pool_stage_directory_line(),
-    compile_pool_stage_trap_line(),
-    deploy_stage_write_command(
-      stage_name: slice_unit as String,
-      content: serialize_systemd_unit_file(file: slice_unit_file),
-    ),
-    deploy_stage_install_command(
-      stage_name: slice_unit as String,
-      mode: compile_pool_slice_file_mode,
-      dest: compile_pool_slice_system_path(slice_unit: slice_unit),
-    ),
-    systemctl_daemon_reload_command(privileged: true),
-    systemctl_start_command(unit: slice_unit, privileged: true),
-    "",
-  ], "\n")
+// THE UNIT FILE REACHES THE HOST AS BYTES ON STDIN AND NEVER AS SHELL, and the privileged half is
+// argv rather than a script. What stood here was a concat-built program run through shell_exec_via_bash
+// -- net-new string-bodied shell on a growth surface bash-emit (#5828) exists to shrink, justified by a
+// dissolution trigger reading "the same debt as build_cache_provision_shell_script beside it". That
+// justification was invalid under the 2026-08-10 ruling: a dissolution condition describes how admitted
+// debt ENDS and does not authorize creating it, and "same as the row beside it" is a NEW row on the
+// surface, which makes the conversion larger rather than smaller.
+//
+// WHY THIS IS NOT MERELY THE SAME INSTALL SPELLED TYPED. converge_typed_remote_file stages to a sibling
+// path, sets the mode before the bytes are reachable under the real name, renames within one directory
+// (POSIX-atomic), and then READS THE DESTINATION BACK and compares it to the declared content. The shell
+// body it replaces published bytes under the destination name and trusted a zero exit -- on a unit file
+// that is a window where systemd can read something that was never a valid unit. So this is a rung
+// climb, not a respelling, and the two hand-authored lines the old note conceded were unmodelled (the
+// mktemp stage directory and the cleanup trap) are GONE rather than relocated: the typed writer owns
+// staging, so there is no stage directory for this module to name or clean up.
+//
+// THE PRIVILEGE SPLIT, because the typed writer cannot write a system path and that is not a defect in
+// it. typed_remote_file_stage_argv is a fixed [dd, status=none, of=...] with no privilege arm -- which is
+// why spark's consumer is user-scope, and why managed_grant_install installs /etc/sudoers.d by connecting
+// AS a privileged principal instead. Neither answer is available here: this realizer receives one
+// transport for observation and install both, so changing its principal would change what the OBSERVE
+// step reads. The split used instead needs no substrate change and no principal decision -- the typed
+// writer lands the bytes UNPRIVILEGED at a staging path under its own read-back guarantee, and one
+// privileged typed argv publishes that verified file to the system path. Every word is drawn from an
+// existing authority (coreutils_install_binary_name, coreutils_install_mode_flag, systemctl_*_argv), so
+// a slice unit name carrying a metacharacter is a word in an argv vector, not text in a program.
+fn compile_pool_slice_staging_path(slice_unit: NonEmptyStr) -> String {
+  join([compile_pool_slice_staging_root as String, "/", slice_unit as String], "")
 }
+
+data compile_pool_slice_staging_root: NonEmptyStr = "/tmp" as NonEmptyStr
 
 data compile_pool_slice_file_mode: NonEmptyStr = "0644" as NonEmptyStr
 
-// THE STAGE-DIRECTORY ASSIGNMENT AND THE TRAP ARE THE ONLY AUTHORED LINES LEFT, AND THEY ARE THE TWO
-// gunbc.live_deploy.emit ALREADY DECLARES AS UNMODELLED. That module's deploy_stage_directory_let_step
-// builds the assignment as a modeled Let over ExprCmdSubst, but it yields a PipelineStep and this
-// realizer's transport takes a script body, so there is no serializer between them to reach for; the
-// trap has no grammar row at all (deploy_stage_trap_is_unmodelled_note). Both are spelled here from the
-// same deploy_stage_dir_var authority the staged-path words read, so the variable name is not a second
-// spelling even though the two lines are.
+fn compile_pool_slice_staging_scope() -> FileTreeScope {
+  FileTreeScope { root_path: compile_pool_slice_staging_root }
+}
+
+// PUBLICATION IS TWO STEPS BECAUSE install(1) TRUNCATES, and getting this wrong is the difference
+// between a verified file and a verified file that systemd never reads. `install` opens its destination
+// O_CREAT|O_TRUNC and writes through it, so publishing STRAIGHT to /etc/systemd/system/<slice> would let
+// that path pass through truncated and partially-written states -- exactly the window the staged write
+// closes at the staging path and nowhere else. A concurrent systemd read would still see a unit that was
+// never valid, and the read-back one step earlier would have proven the STAGED copy while the PUBLISHED
+// copy is the only one systemd ever opens. (Caught in review, not by me: the first draft of this function
+// published in one install(1) call and claimed the window closed.)
 //
-// EVERYTHING ELSE ROUTES THROUGH THE EXISTING AUTHORITY. The unit bytes reach the host through
-// deploy_stage_write_command and the privileged install through deploy_stage_install_command -- both
-// built from v2.extdeps.languages.bash_build nodes rather than assembled here -- so a slice unit name
-// or a unit body carrying a quote, a space or a metacharacter keeps its word boundary structurally
-// instead of by whatever quoting this module remembered to write. The first draft of this function did
-// assemble them by hand: a `cat >` heredoc for the body and a hand-spelled `sudo -n install`, which was
-// a SECOND authority for staging-and-installing a unit file beside the one live_deploy already owns.
-// Reusing it is the section 3 repair, and it is also what shrinks the residue to the two lines above.
-fn compile_pool_stage_directory_line() -> String {
-  join([deploy_stage_dir_var, "=\"$(mktemp -d)\""], "")
+// So install(1) places the bytes at a sibling INCOMING name -- where a truncating write harms nothing,
+// because no reader knows that name -- with the mode set in the same call that writes them, and a second
+// step renames within the one directory. POSIX makes that rename atomic, so the destination goes from the
+// old unit to the new one with no observable state in between. `mv -f` is spelled here as
+// gunbc.typed_remote_file_write typed_remote_file_rename_argv spells it; there is no coreutils mv row to
+// cite, and minting one for this call site alone would be a second authority for a word that module
+// already writes.
+// THE INCOMING NAME IS A SUFFIX ON THE DESTINATION, NOT A PATH IN A TEMP DIRECTORY, and that is what
+// makes the rename atomic rather than merely quick. rename(2) is atomic only WITHIN one filesystem; a
+// temp directory elsewhere degrades it to copy-and-unlink, which silently reopens the truncation window
+// this two-step publish exists to close. Deriving the incoming name by concatenating onto the
+// destination guarantees the same directory, so same-filesystem holds by construction and there is no
+// mount-point fact to model or check.
+fn compile_pool_slice_incoming_path(slice_unit: NonEmptyStr) -> String {
+  concat(compile_pool_slice_system_path(slice_unit: slice_unit), ".gunbc-incoming")
 }
 
-fn compile_pool_stage_trap_line() -> String {
-  join(["trap 'rm -rf \"$", deploy_stage_dir_var, "\"' EXIT"], "")
+fn compile_pool_slice_publish_argv(slice_unit: NonEmptyStr) -> List<String> {
+  [
+    "sudo",
+    "-n",
+    coreutils_install_binary_name as String,
+    coreutils_install_mode_flag as String,
+    compile_pool_slice_file_mode as String,
+    compile_pool_slice_staging_path(slice_unit: slice_unit),
+    compile_pool_slice_incoming_path(slice_unit: slice_unit),
+  ]
 }
 
-data compile_pool_slice_install_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.host_effect_realize.compile_pool_slice_install_body -- concat-built systemd slice install shell run over shell_exec_via_bash transport, the same shape and the same debt as build_cache_provision_shell_script beside it. DISSOLVES WHEN bash-emit (#5828) realizes a unit-file install as typed host-effect argv, at which point both bodies retire together rather than this one being converted alone.")
+fn compile_pool_slice_rename_argv(slice_unit: NonEmptyStr) -> List<String> {
+  [
+    "sudo",
+    "-n",
+    "mv",
+    "-f",
+    compile_pool_slice_incoming_path(slice_unit: slice_unit),
+    compile_pool_slice_system_path(slice_unit: slice_unit),
+  ]
+}
+
+fn compile_pool_privileged_argv(argv: List<String>) -> List<String> {
+  concat(["sudo", "-n"], argv)
+}
 
 fn compile_pool_ensure_admission_for(
   node: ComputeHost,
@@ -4559,6 +4611,9 @@ fn compile_pool_sizing_for_host(node: ComputeHost, placement: CompilePoolPlaceme
 // provision_observes_before_it_acts_note records from srv3 -- and the whole point is that the pre-state and
 // the post-state can differ. Convergence is claimed only when the second admission answers
 // EnsureCompilePoolAlreadyConverged, which is the same predicate the preflight uses to skip the write.
+// FOUR TYPED STEPS, HALTING AT THE FIRST FAILURE, each located by name. The sequence is write ->
+// publish -> daemon-reload -> start; nothing after a failed step is attempted, and the reason names
+// WHICH step stopped rather than collapsing to one exit code.
 fn compile_pool_slice_install_step(
   node: ComputeHost,
   slice_unit: NonEmptyStr,
@@ -4567,59 +4622,278 @@ fn compile_pool_slice_install_step(
   transport: HostEffectTransport,
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let observed = run_shell_transport(
-    script: retained_srvn(
-      body: shell_exec_via_bash(body: compile_pool_slice_install_body(slice_unit: slice_unit, slice_unit_file: slice_unit_file)),
-      reason: "srvN compile-pool slice install (managed cgroup parent for cache-miss compilers)",
-    ),
-    transport: transport,
+  match transport {
+    FleetSsh { target: t, context: ctx } =>
+      compile_pool_slice_install_typed(
+        node: node,
+        slice_unit: slice_unit,
+        sized: sized,
+        slice_unit_file: slice_unit_file,
+        target: t,
+        context: ctx,
+        transport: transport,
+        effect_intent: effect_intent,
+      )
+    LocalShell =>
+      NotConverged {
+        reason: compile_pool_slice_transport_refusal(detail: "LocalShell carries no remote target"),
+        applied: effect_intent,
+      }
+    SshShell { ssh_host: h } =>
+      NotConverged {
+        reason: compile_pool_slice_transport_refusal(
+          detail: join(["SshShell(", h as String, ") carries no sealed trust context"], ""),
+        ),
+        applied: effect_intent,
+      }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      NotConverged {
+        reason: compile_pool_slice_transport_refusal(detail: "EmitArtifactThenThinRun is not a live session"),
+        applied: effect_intent,
+      }
+  }
+}
+
+// ONE EFFECT, TWO HALVES, DIFFERENT TRANSPORT READINESS -- AND THAT IS THE GENERAL RESULT, not a fact
+// about compile pools. A "convert this to the typed substrate" change reads as ONE migration, and here it
+// is two facts with different owners:
+//
+//   ARGV  -- publish, rename, daemon-reload, start. Typed TODAY on SshShell, via run_typed_argv_transport
+//            -> typed_argv_exec_over_ssh. No blocker, no context needed.
+//   BYTES -- the unit file itself. FleetSsh-ONLY, because converge_typed_remote_file shapes its
+//            invocation through shape_fleet_ssh_exec, which requires a sealed FleetSshExecutionContext.
+//
+// WHY THAT SPLIT IS LOAD-BEARING RATHER THAN TRIVIA. Every production route to this effect arrives on
+// SshShell: host_toolchain_ensure passes reach.access.transport, and host_toolchain_direct_access maps
+// srv1-srv4 to host_identity_ssh_access rows that construct SshShell. So a conversion that assumed the
+// substrate is available per-MODULE rather than per-HALF would have typed both halves, compiled clean,
+// passed its witnesses, and REFUSED ON ALL FOUR HOSTS -- a green-looking change that silently does
+// nothing. The availability question has to be asked separately of each half, against what callers
+// actually pass, not against what the transport enum can express.
+//
+// THE MISSING PIECE IS ALREADY OWNED. extdeps.ssh.session ssh_exec_portable_words_supersedes_exec_argv_note
+// lists this module FIRST among the consumers that must "route through a FleetSshExecutionContext". So the
+// bytes half is not unmodelled work -- it is scheduled work, and the refusal below is what makes its
+// absence observable instead of leaving it as a line in someone else's dissolve-on text.
+
+// THE REFUSAL NAMES THE MISSING CAPABILITY, NOT THE WRONG TRANSPORT, and the difference decides whether
+// anyone can act on it. "requires FleetSsh" tells a reader to change a call site, which is the wrong
+// remedy: EVERY production route reaches this effect over SshShell, because host_toolchain_ensure passes
+// reach.access.transport and host_toolchain_direct_access maps srv1-srv4 to host_identity_ssh_access rows
+// that construct SshShell. So there is no caller to fix. What is missing is that host_effect_realize does
+// not yet route through a FleetSshExecutionContext -- a migration extdeps.ssh.session names in its own
+// dissolve-on (ssh_exec_portable_words_supersedes_exec_argv_note lists this module FIRST) -- and the
+// refusal says exactly that, so its remedy points at the lane that can supply it.
+//
+// WHY REFUSING BEATS WRITING A SMALL SHELL BODY HERE. The bytes are the only step that cannot be typed on
+// SshShell; publish, rename, daemon-reload and start all can, and are. Spelling the write as a shell
+// program would add a net-new string-bodied row to the surface bash-emit (#5828) exists to shrink, and
+// would zero the deficit's frequency by construction -- nobody would learn the capability was missing,
+// so the migration that supplies it would never rank. Refusing keeps the gap observable. The effect is
+// unreachable on main today, so a loud refusal is not a regression against anything that works.
+//
+// WHAT THIS IS NOT: countable in the DESIGN sense. The reason is a String on NotConverged, so it is typed
+// and located but not enumerated anywhere a consumer can total. Saying otherwise would be the rung
+// inflation section 4b names as worse than sitting low. Next-rung trigger: a typed refusal variant on the
+// reconciliation carrier that a receipt can count, which is worth doing when a second call site needs it
+// and not before.
+fn compile_pool_slice_transport_refusal(detail: String) -> String {
+  join(
+    [
+      "host_effect_apply: EnsureCompilePoolSlice cannot deliver the unit file -- the typed write needs a sealed FleetSshExecutionContext and gunbc.host_effect_realize does not yet route through one (",
+      detail,
+      "). The argv steps are typed and reachable on this transport; only the bytes are blocked. No unit written, no start issued.",
+    ],
+    "",
   )
-  if observed.success == false {
+}
+
+// The admission runs TWICE and the second run is not a formality: it is the postcondition, re-derived from a
+// FRESH observation of the host rather than from the state we just wrote. A read-back that reused the
+// preflight observation would green on evidence it produced -- the exact defect
+// provision_observes_before_it_acts_note records from srv3 -- and the whole point is that the pre-state and
+// the post-state can differ. Convergence is claimed only when the second admission answers
+// EnsureCompilePoolAlreadyConverged, which is the same predicate the preflight uses to skip the write.
+//
+// NOTE THE TWO READ-BACKS ARE DIFFERENT CLAIMS AND BOTH ARE KEPT. converge_typed_remote_file reads the
+// STAGED FILE back and proves the declared bytes are on disk; the admission below re-observes the SLICE
+// and proves systemd actually took them. Bytes on disk is not a running cgroup, and neither read-back
+// substitutes for the other.
+fn compile_pool_slice_install_typed(
+  node: ComputeHost,
+  slice_unit: NonEmptyStr,
+  sized: ByteSize,
+  slice_unit_file: SystemdUnitFile,
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match converge_typed_remote_file(
+    target: target,
+    context: context,
+    admission: typed_remote_file_write_seal(
+      path: compile_pool_slice_staging_path(slice_unit: slice_unit) as FilePath,
+      content: serialize_systemd_unit_file(file: slice_unit_file),
+      allowed_scope: compile_pool_slice_staging_scope(),
+    ),
+    mode: RemoteFileModeOwnerReadWriteWorldRead,
+  ) {
+    TypedRemoteFileConvergenceRefused { step: st, reason: r } =>
+      NotConverged {
+        reason: compile_pool_slice_step_refusal(step: join(["write(", st, ")"], ""), detail: r),
+        applied: effect_intent,
+      }
+    TypedRemoteFileConverged { path: _, mode: _ } =>
+      compile_pool_slice_publish_step(
+        node: node,
+        slice_unit: slice_unit,
+        sized: sized,
+        transport: transport,
+        effect_intent: effect_intent,
+      )
+  }
+}
+
+fn compile_pool_slice_publish_step(
+  node: ComputeHost,
+  slice_unit: NonEmptyStr,
+  sized: ByteSize,
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match compile_pool_slice_argv_step(
+    argv: compile_pool_slice_publish_argv(slice_unit: slice_unit),
+    step: "publish",
+    transport: transport,
+    effect_intent: effect_intent,
+  ) {
+    Present { value: refused } => refused
+    Absent =>
+      match compile_pool_slice_argv_step(
+        argv: compile_pool_slice_rename_argv(slice_unit: slice_unit),
+        step: "rename",
+        transport: transport,
+        effect_intent: effect_intent,
+      ) {
+        Present { value: refused } => refused
+        Absent =>
+      match compile_pool_slice_argv_step(
+        argv: compile_pool_privileged_argv(argv: systemctl_daemon_reload_argv()),
+        step: "daemon-reload",
+        transport: transport,
+        effect_intent: effect_intent,
+      ) {
+        Present { value: refused } => refused
+        Absent =>
+          match compile_pool_slice_argv_step(
+            argv: compile_pool_privileged_argv(argv: systemctl_start_argv(unit: slice_unit)),
+            step: "start",
+            transport: transport,
+            effect_intent: effect_intent,
+          ) {
+            Present { value: refused } => refused
+            Absent =>
+              compile_pool_slice_readback_step(
+                node: node,
+                slice_unit: slice_unit,
+                sized: sized,
+                transport: transport,
+                effect_intent: effect_intent,
+              )
+          }
+      }
+      }
+  }
+}
+
+// PRESENT MEANS THE SEQUENCE STOPPED. The Optional carries the refusal rather than a Bool, so a caller
+// cannot continue past a failed step by reading the flag the wrong way round -- there is no "false"
+// that means "keep going" beside a reason it discarded.
+fn compile_pool_slice_argv_step(
+  argv: List<String>,
+  step: String,
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Optional<Reconciliation<HostEffectIntent, HostEffectEvidence>> {
+  match run_typed_argv_transport(argv: argv, transport: transport) {
+    TypedArgvExecRefused { reason: r } =>
+      Present {
+        value: NotConverged {
+          reason: compile_pool_slice_step_refusal(step: step, detail: r),
+          applied: effect_intent,
+        },
+      }
+    TypedArgvExecConverged { exit_code: code, stdout: out, stderr: err } =>
+      if code == 0 {
+        Absent
+      } else {
+        Present {
+          value: NotConverged {
+            reason: compile_pool_slice_step_refusal(
+              step: step,
+              detail: join(
+                ["exit ", to_string(code), ": ", if err == "" { out } else { err }],
+                "",
+              ),
+            ),
+            applied: effect_intent,
+          },
+        }
+      }
+  }
+}
+
+fn compile_pool_slice_step_refusal(step: String, detail: String) -> String {
+  join(
+    [
+      "host_effect_apply: EnsureCompilePoolSlice stopped at step ",
+      step,
+      " -- ",
+      detail,
+    ],
+    "",
+  )
+}
+
+fn compile_pool_slice_readback_step(
+  node: ComputeHost,
+  slice_unit: NonEmptyStr,
+  sized: ByteSize,
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let after = compile_pool_ensure_admission_for(node: node, transport: transport)
+  if compile_pool_ensure_is_converged(admission: after) {
+    Converged {
+      evidence: ShellEffectApplied {
+        exit_code: 0,
+        stdout: join(
+          [
+            "CompilePoolSliceReceipt: converged unit=",
+            slice_unit as String,
+            " memory.max=memory.high=",
+            to_string(byte_size_count(b: sized)),
+            " (typed write read back at the staging path, published, started; re-observed after install)",
+          ],
+          "",
+        ),
+        stderr: "",
+      },
+      applied: effect_intent,
+    }
+  } else {
     NotConverged {
       reason: join(
         [
-          "host_effect_apply: EnsureCompilePoolSlice ran its install and the shell exited ",
-          to_string(observed.exit_code),
-          ": ",
-          if observed.stderr == "" { observed.stdout } else { observed.stderr },
+          "host_effect_apply: EnsureCompilePoolSlice installed ",
+          slice_unit as String,
+          " and the read-back did not converge -- ",
+          compile_pool_admission_diagnostic(admission: after),
         ],
         "",
       ),
       applied: effect_intent,
-    }
-  } else {
-    let after = compile_pool_ensure_admission_for(node: node, transport: transport)
-    if compile_pool_ensure_is_converged(admission: after) {
-      Converged {
-        evidence: ShellEffectApplied {
-          exit_code: observed.exit_code,
-          stdout: join(
-            [
-              "CompilePoolSliceReceipt: converged unit=",
-              slice_unit as String,
-              " memory.max=memory.high=",
-              to_string(byte_size_count(b: sized)),
-              " (re-observed after install; the admission answered already-converged)",
-            ],
-            "",
-          ),
-          stderr: observed.stderr,
-        },
-        applied: effect_intent,
-      }
-    } else {
-      NotConverged {
-        reason: join(
-          [
-            "host_effect_apply: EnsureCompilePoolSlice installed ",
-            slice_unit as String,
-            " and the read-back did not converge -- ",
-            compile_pool_admission_diagnostic(admission: after),
-          ],
-          "",
-        ),
-        applied: effect_intent,
-      }
     }
   }
 }

@@ -44,37 +44,119 @@ test fn witness_production_entry_point_selects_the_compile_pool_effect() -> Bool
   }
 }
 
-// The install body must not re-assemble the staging and install that gunbc.live_deploy.operations already
-// owns. These assert the delegation by its observable residue: the unit bytes reach the host through a
-// printf redirect built by deploy_stage_write_command, and the privileged copy through
-// deploy_stage_install_command -- so a hand-rolled `cat` heredoc or a hand-spelled `sudo -n install`
-// reds here. RED is authorable: the first draft of this function contained exactly those two.
-test fn witness_install_body_delegates_to_the_deploy_staging_authority() -> Bool {
-  let body = compile_pool_slice_install_body(
-    slice_unit: gunbc_managed_compile_pool_slice,
-    slice_unit_file: compile_pool_slice_unit_file(
-      slice_unit: gunbc_managed_compile_pool_slice,
-      sized: byte_size(17179869184),
-    ),
-  )
-  (string_contains(s: body, pattern: "<<") == false)
-    && (string_contains(s: body, pattern: "cat > ") == false)
-    && string_contains(s: body, pattern: "printf")
-    && string_contains(s: body, pattern: "/etc/systemd/system/")
+// THE UNIT FILE IS NO LONGER A PROGRAM, so these assert an argv VECTOR rather than substrings in a shell
+// body. That is a stronger claim than the pair they replace: a substring assertion over a program cannot
+// tell a word from text that happens to contain it, and both of the old witnesses would have passed on a
+// body that spelled the right characters inside the wrong quoting. Word identity has no such gap.
+//
+// RED IS AUTHORABLE for each: re-fusing the publish into one string, dropping sudo, changing the mode away
+// from the declared authority, or reaching for restart all change a word this compares by equality.
+test fn witness_publish_is_typed_words_and_never_a_program() -> Bool {
+  let argv = compile_pool_slice_publish_argv(slice_unit: gunbc_managed_compile_pool_slice)
+  (argv ==
+    [
+      "sudo",
+      "-n",
+      "install",
+      "-m",
+      "0644",
+      concat("/tmp/", gunbc_managed_compile_pool_slice as String),
+      concat("/etc/systemd/system/", gunbc_managed_compile_pool_slice as String),
+    ])
+    && (any(argv, w => string_contains(s: w, pattern: " ")) == false)
+    && (any(argv, w => string_contains(s: w, pattern: ">")) == false)
 }
 
-// START, NEVER RESTART: stopping a slice kills every process in it, so a restart here would terminate the
-// compilers the pool exists to hold.
-test fn witness_install_body_starts_and_never_restarts_the_slice() -> Bool {
-  let body = compile_pool_slice_install_body(
-    slice_unit: gunbc_managed_compile_pool_slice,
-    slice_unit_file: compile_pool_slice_unit_file(
-      slice_unit: gunbc_managed_compile_pool_slice,
-      sized: byte_size(17179869184),
-    ),
+// THE MODE IS THE DECLARED AUTHORITY'S, NOT A LITERAL SPELLED TWICE. The vector above pins "0644" as the
+// value a reader can see; this pins that the value CAME FROM compile_pool_slice_file_mode, so editing the
+// authority moves the argv rather than leaving two spellings to drift apart.
+test fn witness_publish_mode_is_read_from_the_declared_authority() -> Bool {
+  any(
+    compile_pool_slice_publish_argv(slice_unit: gunbc_managed_compile_pool_slice),
+    w => w == compile_pool_slice_file_mode as String,
   )
-  string_contains(s: body, pattern: "systemctl")
-    && (string_contains(s: body, pattern: "restart") == false)
+}
+
+// START, NEVER RESTART: stopping a slice kills every process in it (systemd.slice(5)), so a restart here
+// would terminate the compilers the pool exists to hold.
+test fn witness_start_argv_starts_and_never_restarts_the_slice() -> Bool {
+  let argv = compile_pool_privileged_argv(argv: systemctl_start_argv(unit: gunbc_managed_compile_pool_slice))
+  (argv == ["sudo", "-n", "systemctl", "start", gunbc_managed_compile_pool_slice as String])
+    && (any(argv, w => w == "restart") == false)
+}
+
+// THE STAGING PATH IS INSIDE THE SCOPE THE SEAL IS GIVEN, and the negative is the point: a path outside it
+// must REFUSE rather than write. Without the second half this would pass on a seal that admitted anything.
+test fn witness_staging_seal_admits_its_scope_and_refuses_outside_it() -> Bool {
+  let inside = typed_remote_file_write_seal(
+    path: compile_pool_slice_staging_path(slice_unit: gunbc_managed_compile_pool_slice) as FilePath,
+    content: "[Slice]\n",
+    allowed_scope: compile_pool_slice_staging_scope(),
+  )
+  let outside = typed_remote_file_write_seal(
+    path: "/etc/systemd/system/gunbc-compile.slice" as FilePath,
+    content: "[Slice]\n",
+    allowed_scope: compile_pool_slice_staging_scope(),
+  )
+  match inside {
+    TypedRemoteFileWriteAdmitted { write: _ } =>
+      match outside {
+        TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// PUBLICATION IS TWO STEPS AND THE SECOND ONE IS A RENAME. install(1) opens its destination
+// O_CREAT|O_TRUNC -- measured on this fleet: same inode before and after -- so publishing straight to the
+// system path would let it pass through a truncated state that a concurrent systemd read can see. The
+// staged read-back cannot catch that, because it proves the STAGED copy while systemd opens the PUBLISHED
+// one. So install lands the bytes at a sibling incoming name and mv -f renames within the directory.
+test fn witness_publication_renames_rather_than_truncating_the_destination() -> Bool {
+  let publish = compile_pool_slice_publish_argv(slice_unit: gunbc_managed_compile_pool_slice)
+  let rename = compile_pool_slice_rename_argv(slice_unit: gunbc_managed_compile_pool_slice)
+  let dest = concat("/etc/systemd/system/", gunbc_managed_compile_pool_slice as String)
+  let incoming = concat(dest, ".gunbc-incoming")
+  (any(publish, w => w == dest) == false)
+    && any(publish, w => w == incoming)
+    && (rename == ["sudo", "-n", "mv", "-f", incoming, dest])
+}
+
+// THE RENAME MUST BE WITHIN ONE DIRECTORY OR IT IS NOT ATOMIC. rename(2) across filesystems degrades to
+// copy-and-unlink, which reopens the window the two-step publish closes. Deriving the incoming name as a
+// suffix on the destination makes same-directory structural, and this asserts that derivation rather than
+// trusting it: a future edit relocating staging to /tmp or a scratch dir reds here.
+test fn witness_incoming_name_is_a_sibling_of_the_destination() -> Bool {
+  let dest = compile_pool_slice_system_path(slice_unit: gunbc_managed_compile_pool_slice)
+  let incoming = compile_pool_slice_incoming_path(slice_unit: gunbc_managed_compile_pool_slice)
+  starts_with(s: incoming, prefix: concat(dest, "."))
+    && (string_contains(s: incoming, pattern: "/tmp") == false)
+}
+
+fn compile_pool_witness_intent() -> HostEffectIntent {
+  HostEffectIntent {
+    target: HostOs { node: srv1_host },
+    effect: EnsureCompilePoolSlice {},
+    evidence: host_effect_identity_evidence,
+    transport: SshShell { ssh_host: "srv1" as NonEmptyStr },
+    privilege_denial: none,
+  }
+}
+
+// THE TRANSPORT NARROWING, ASSERTED RATHER THAN DESCRIBED. The typed write needs the SshTarget and the
+// sealed context, so SshShell must refuse where the deleted shell body would have run. This is the one
+// behaviour this conversion REMOVES, so it is the one a reader is most entitled to see enforced.
+test fn witness_unanchored_transport_refuses_instead_of_installing() -> Bool {
+  match realize_ensure_compile_pool_slice(
+    transport: SshShell { ssh_host: "srv1" as NonEmptyStr },
+    effect_intent: compile_pool_witness_intent(),
+  ) {
+    NotConverged { reason: r, applied: _ } =>
+      string_contains(s: r, pattern: "FleetSshExecutionContext")
+        && string_contains(s: r, pattern: "No unit written")
+    _ => false
+  }
 }
 
 test fn witness_compile_pool_effect_routes_to_the_host_cell() -> Bool {
