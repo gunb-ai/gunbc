@@ -117,34 +117,37 @@ consumer does something the other cannot is how a 0% arm turns out to have been 
 route to something. **That read is now done, and the answer is: nothing the failure receipt
 does not.**
 
-Measured by reading `v1_compiler.cli_run`. The two channels are the same mechanism twice:
+Measured by reading `v1_compiler.cli_run`. **The two RUNNERS are byte-identical modulo one
+string literal.** Put `run_claim_failure_receipt` and `run_witness_verdict_diagnostic` side by
+side: same `match v1_interpreter::run_in_context(ctx, function, false)`, same four arms in the
+same order, same `Ok(Value::Str(s)) => s.to_string()`, same
+`Err(NoSuchFunction { .. }) => String::new()`, same wrong-type and error formats — differing
+only in whether the sentinel reads `failure_receipt_refused:` or
+`witness_verdict_diagnostic_refused:`.
 
-|   | failure receipt | verdict diagnostic |
-|---|---|---|
-| appender | `append_failure_receipt_companion_loudness` | `append_witness_verdict_diagnostic_loudness` |
-| runner returns | `String` | `String` |
-| `NoSuchFunction` | `String::new()` — not-declared, not refused | `String::new()` — identical |
-| wrong type | refusal sentinel appended | refusal sentinel appended |
-| appends to | the same `detail` / `failure` string | the same `detail` / `failure` string |
+**The only thing either runner carries that the other does not is the word in its own error
+message.** That is the load-bearing fact, and it is stronger than any argument about context:
+there is no behaviour available to differ.
 
-And the call sites are **in lockstep at every one of the three**, on adjacent lines, in the
-same order, against the same target:
+The appenders match too — `append_failure_receipt_companion_loudness` and
+`append_witness_verdict_diagnostic_loudness` — same three-arm `FailureReceiptCompanionLookup`
+match, same append-when-non-empty, same `NotDeclared => {}`, same target string.
 
-    claim_executor.rs   2598  /  2603
-    cli_run.rs         16150  / 16151   (inside seed_runner_bool_false_failure_detail)
-    cli_run.rs         24991  / 24992
+And every call site is a **lockstep pair**: both appenders are invoked on adjacent lines, in
+the same order, against the same target, at all three sites — inside
+`seed_runner_bool_false_failure_detail`, in `claim_executor`'s Bool(false) path, and in the
+discovery-summary failure path. No positions given deliberately: an earlier revision of this
+brief carried line offsets and they **rotted within twenty minutes**, drifting ~600 lines on
+two of the three. Name the symbol and grep for it (§3).
 
-There is no context one reaches that the other does not. A witness declaring both would be
-concatenating two strings it could have returned from one.
+So this is a §2 duplicate as well as a §3 fork: two derivations, two identical runners, one
+of which has never had a producer.
 
-**So the distinction is intent, not mechanism** — "verdict" versus "failure" — and with zero
-producers ever, that intent is recorded nowhere in the corpus. A 0% arm beside a 0.03% arm,
-mechanically interchangeable at every call site, is a fork.
-
-CAVEAT: this is a code read, not execution. What it establishes is that no CALL SITE
-distinguishes them. If someone wants to keep the channel, the argument has to be a design
-argument about future intent, and it has to explain why that intent needs a second derivation
-rather than a convention inside one string.
+CAVEAT: this is a code read, not execution. What it establishes is that no call site and no
+runner distinguishes them — not that nothing could. But with the runners identical, the space
+left for an objection is narrow: **anyone keeping the channel must argue for a future intent
+that needs a second DERIVATION AND A SECOND IDENTICAL RUNNER**, rather than a convention
+inside one string.
 
 ## The precedent to cite, and it points the right way
 
