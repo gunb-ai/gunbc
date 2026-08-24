@@ -94,8 +94,20 @@ fn container_template_alias_algebra(name: String) -> String? {
   map_get(container_template_alias_rows, name)
 }
 
+// THE COMPLETE ROSTER, and completing it is what lets its consumer stop patching it. This list
+// feeds `v1.compiler.coercion` `inhabitant_test_names`, which used to read
+// `concat(canonical_container_names(), ["PointwisePower"])` -- a hand-appended name compensating
+// for one this list omitted. That append is deleted with this change: a caller patching its
+// authority's answer is the authority being wrong, not the caller being thorough.
+//
+// TWO CORRECTIONS THE CARRIER SPLIT FORCED, both of which an unedited list would have got wrong in
+// opposite directions. `BooleanAlgebra` LEAVES: its container inhabitant row moved to
+// `FinitePowerSet`, so it names no container any more -- it is the lattice, and a lattice in a
+// container roster is the misfiling this change exists to end. `PartialFunction` STAYS: it keeps a
+// row and is now reachable as a declared spelling in its own right, so dropping it would have
+// silently retired its coercion coverage at the moment it acquired real callers.
 fn canonical_container_names() -> List<String> {
-  ["BooleanAlgebra", "FinitePowerSet", "FinitelySupportedFunction", "FreeMonoid", "List", "Map", "Set", "Witness"]
+  ["FinitePowerSet", "FinitelySupportedFunction", "FreeMonoid", "List", "Map", "PartialFunction", "PointwisePower", "Set", "Witness"]
 }
 
 type Bool = True | False
