@@ -377,3 +377,58 @@ instead of an order. The #9075 case fails the same test in the other direction: 
 *the evidence must execute on the gating path, or be declared authored-not-executing — is there a
 module whose honest disposition gets it there?*, the answer would have come back **no**, which is
 the correct answer and was unreachable from the instruction I actually gave.
+
+---
+
+## Trap 13 — when your predictions are absences, a dead harness confirms them
+
+Contributed by `deep-ant-102`, from a truncated floor probe. This is the sharpest member of the
+family recorded here and it subsumes part of traps 9 and 11.
+
+Their dispatch hit ctrl-build's 45-minute default cap mid-floor. Output ended at their own header:
+
+```
+===== FLOOR: real roots + probe fixture =====
+[exited with code 0]
+```
+
+No arm lines, no summary, no exit code from the subject. **And their grep for probe arms would have
+returned empty** — which is not a null result here, it is a **confirming** one:
+
+| pre-registered prediction | what a dead harness returns |
+|---|---|
+| `declined_live` +0 | nothing found → looks like +0 |
+| four files in the roster, not five (arm4 invisible) | nothing found → looks like invisible |
+| zero `test data` identities planned | nothing found → looks like zero |
+| **the run goes red on arm5** | nothing found → **fails** |
+
+Three of four predictions apparently confirmed by a run that never executed.
+
+**The general shape: an absence-shaped prediction is confirmed by the absence of the experiment.**
+A probe that predicts *X should not appear* cannot, without further construction, distinguish
+*X did not appear* from *nothing appeared, including the experiment*. Every trap in this document is
+some form of a signal answering a narrower question than asked; this is the form where the signal
+answers **the very question you asked, correctly, about a universe that does not exist**.
+
+**Why the liveness control is not optional, and why it is the one prediction that cannot be faked.**
+Arm 5 was added for a different reason — to catch a harness that runs and evaluates nothing. It
+happens also to be the only **presence** prediction in the set, and therefore the only one a dead
+harness cannot satisfy. That is not a coincidence to note in passing; it is the design rule:
+
+> **A pre-registration made mostly of absences needs at least one presence prediction, or the
+> experiment cannot fail in a way you will notice.**
+
+Count the moods in your predictions before you run. If they are all *should not appear*, *should be
+zero*, *should be unchanged*, then the null hypothesis and the broken instrument return the same
+string and the run cannot inform you.
+
+**And the marker rule gains its final clause.** Trap 11 established: anchor the marker to a whole
+line, because the request shares the channel. Trap 13 adds: **plant it AFTER the subject, not only
+before.** A header echo proves the dispatch started; only a trailing marker proves the subject
+finished. Their header printed; that is precisely why the truncation was legible as truncation
+rather than as data.
+
+Paired with silent-gull-867's `#9103` false negative (`mirror-drift-four-lanes-2026-08-24.md`),
+these are the two ways a run agrees with you for the wrong reason: **the treatment never reached
+the instrument**, and **the instrument never reached the subject**. Both return the control's
+answer. Neither raises an error.
