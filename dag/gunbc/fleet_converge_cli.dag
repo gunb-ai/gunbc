@@ -467,9 +467,9 @@ fn fleet_converge_receipt_staging_path(host: String) -> String {
 fn converge_cli_atomic_receipt_write(host: String, content: String) -> String? {
   let staging = fleet_converge_receipt_staging_path(host: host)
   let final_path = fleet_converge_receipt_path(host: host)
-  let test.claim.recorded_observation_envelope_witness.w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: staging, content: content)
-  if !test.claim.recorded_observation_envelope_witness.w.success {
-    Present { value: concat("gunbc converge: receipt staging write failed — ", test.claim.recorded_observation_envelope_witness.w.error) }
+  let w = extdeps.filesystem.filesystem_io.Filesystem.Write(path: staging, content: content)
+  if !w.success {
+    Present { value: concat("gunbc converge: receipt staging write failed — ", w.error) }
   } else {
     let moved = shell.Move.File(source: staging as std.types.FilePath, destination: final_path as std.types.FilePath)
     if moved.success {

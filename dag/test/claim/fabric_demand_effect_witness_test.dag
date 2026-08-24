@@ -448,7 +448,7 @@ test fn the_step_reuse_answer_alone_decides_what_the_new_attempt_may_reuse() -> 
 // by an implementation that refuses every supersede.
 
 test fn a_supersede_onto_a_different_work_refuses_while_the_matching_one_is_admitted() -> Bool {
-  let test.claim.planar_projection_witness.elsewhere = demand_of(principal: "github", key: "demand-gh2", work_key: "work-2", satisfaction: attaching_satisfaction())
+  let elsewhere = demand_of(principal: "github", key: "demand-gh2", work_key: "work-2", satisfaction: attaching_satisfaction())
   let same_work = product.fabric.demand.Demand {
     id: demand_id(principal: "github", key: "demand-gh2"),
     work: work_of(principal: "fabric", key: "work-1"),
@@ -460,7 +460,7 @@ test fn a_supersede_onto_a_different_work_refuses_while_the_matching_one_is_admi
   let refused = decide(
     population: both_demands(),
     grants: [running_grant()],
-    command: product.fabric.demand.SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: test.claim.planar_projection_witness.elsewhere, evidence: "sup-1" },
+    command: product.fabric.demand.SupersedeDemand { superseded: demand_id(principal: "github", key: "demand-gh"), replacement: elsewhere, evidence: "sup-1" },
   )
   let admitted = decide(
     population: both_demands(),

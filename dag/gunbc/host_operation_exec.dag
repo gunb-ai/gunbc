@@ -136,12 +136,12 @@ fn host_operation_label(operation: HostOperation) -> String {
 }
 
 fn host_operation_materialize_argv(operation: HostOperation) -> v2.std.operation_argv.ArgvMaterialization {
-  let v2.test.claim.effect_plan_bash_materialize_test.invocation = host_operation_invocation(operation: operation)
+  let invocation = host_operation_invocation(operation: operation)
   shell_materialize_operation_argv(
-    v2.test.claim.effect_plan_bash_materialize_test.invocation.at.path,
-    v2.test.claim.effect_plan_bash_materialize_test.invocation.at.service,
-    v2.test.claim.effect_plan_bash_materialize_test.invocation.at.operation,
-    v2.test.claim.effect_plan_bash_materialize_test.invocation.bindings,
+    invocation.at.path,
+    invocation.at.service,
+    invocation.at.operation,
+    invocation.bindings,
   )
 }
 

@@ -27,8 +27,8 @@ fn host_hygiene_read_control_group(unit: std.types.NonEmptyStr) -> String? {
 
 fn host_hygiene_read_procs(control_group: String) -> List<std.types.NonEmptyStr> {
   let raw = filesystem_read(path: join([host_hygiene_cgroupfs_root, control_group, "/cgroup.procs"], "")).content
-  let tools.dag_compile_clean_shard_totality.nonempty_lines = v2.std.algebra.filter(map(split(s: std.algebra.trim(raw), delimiter: "\n"), s => std.algebra.trim(s)), s => s != "")
-  map(tools.dag_compile_clean_shard_totality.nonempty_lines, gunbc.plans.md_helpers.p => gunbc.plans.md_helpers.p as std.types.NonEmptyStr)
+  let nonempty_lines = v2.std.algebra.filter(map(split(s: std.algebra.trim(raw), delimiter: "\n"), s => std.algebra.trim(s)), s => s != "")
+  map(nonempty_lines, gunbc.plans.md_helpers.p => gunbc.plans.md_helpers.p as std.types.NonEmptyStr)
 }
 
 fn host_hygiene_pid_cmdline_is_build_cache(pid: std.types.NonEmptyStr) -> Bool {
