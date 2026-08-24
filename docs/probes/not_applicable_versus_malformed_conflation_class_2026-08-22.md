@@ -27,7 +27,9 @@ They have opposite repairs. Malformed is fixed by the input's author; not-applic
 | gunbc#8828 | body lowering / normalize | `body_lowering_reason_unsupported_form` | a malformed form vs the ordinary statement-form `let`, whose body is not in its own subtree at all |
 | this record | parse | `parse_g0_tokens_remain` | a real partial parse leaving tokens over (`parse_production_prepared`) vs a **`PreparedVoidGrammar` beside a non-empty source** (`parse_module_prepared`) — where no parse was attempted and the fact is about grammar preparation, not about the source |
 
-Three stages, three independent discoveries, one shape. That is a property of this corpus's diagnostic vocabulary rather than three coincidences.
+| gunbc#9075 | parse / §4c annotation adjudication | `source annotation names no subject` | an annotation genuinely lacking a following module item vs **parse never reaching module scope**, so the check cannot see one |
+
+Four stages, four independent discoveries, one shape. That is a property of this corpus's diagnostic vocabulary rather than three coincidences.
 
 ## 3. Why it is expensive, in the currency this repository already counts
 
@@ -52,3 +54,77 @@ Here the receipt already carried the answer. `overlap_residue_stage_from_prepare
 No symbol was minted. The evidence to eliminate one arm was already inside the artifact that reported the other.
 
 *(The two producers still share one reason, and the class above still applies to them. What this section establishes is which one fired here, not that the conflation is harmless.)*
+
+
+---
+
+## 6. A fourth specimen, and the first one that is CROSS-STAGE
+
+*2026-08-24, from gunbc#9075's CI run 32725969809. Added because it extends the class in a way
+the three above do not: the conflated arm is not in the producer that failed.*
+
+### What happened
+
+An invalid `else match` in `src/v1/04_types.dag` left braces unbalanced. That run's
+`required-ci: parse` phase emitted **311 FAIL lines**, which partition into exactly three texts:
+
+```
+309  source annotation names no subject: no module item follows it. Move it above the declaration it describes.
+  1  expected LBrace, found keyword 'match'      <- the actual defect, named precisely
+  1  expected RParen, found Colon
+```
+
+### Why it is this class
+
+§4c attaches annotations to module-scope declarations, and the check asks *does a module item
+follow this annotation*. With braces unbalanced the parser never returns to module scope — so from
+its view nothing follows anything, and the check fires **correctly by its own logic on a premise
+that an earlier stage destroyed**. One reason symbol over two states with opposite owners:
+
+- **MALFORMED** — the annotation really does dangle, and its author must move it;
+- **NOT APPLICABLE** — the annotation is fine and *this check could not see its subject*, which is
+  the parser's problem and nobody else's.
+
+### What is new here
+
+**The conflation is cross-stage.** The three specimens above are each one producer whose own
+predecessor test returned "no". Here the check has no defective predecessor test — it has a
+*poisoned input*, produced two stages upstream. §4's recognition rule still reaches it, but only if
+you extend "what did the arm's predecessor test return" to include *did the pipeline that built my
+input succeed*. That is a question no arm currently asks.
+
+**The remediation text is actively wrong, at scale.** *"Move it above the declaration it describes"*
+instructs a reader to relocate 309 correctly-placed annotations. §3's specimens send an
+investigation to the wrong subject; this one issues a confident, specific, wrong instruction 309
+times. That is worse than an unhelpful diagnostic and worse than silence, because a reader acts on
+the majority.
+
+**And the correct diagnostic was already there.** This is the encouraging half: nothing needs to be
+written. `expected LBrace, found keyword 'match'` was emitted, first try, exactly right — at a
+signal-to-noise ratio of **1:154**.
+
+### The repair
+
+Not a split, and not a new symbol. **A parse failure should make §4c adjudication for that file
+refuse rather than answer**: `cannot adjudicate annotations: parse did not reach module scope`.
+The check does not need to be smarter; it needs an arm for *my input is not trustworthy*. That is
+§5's fail-closed shape — refuse rather than assert a specific wrong cause — and it costs one
+condition.
+
+This also satisfies §5's caution from §4 above: it is not instrument work dressed as progress,
+because it removes 309 wrong instructions rather than relabelling them.
+
+### A method note, recorded because it nearly corrupted this entry
+
+The first version of this specimen claimed **zero** of the 311 named the cause. That was false, and
+it came from grepping for `annotation|expected item declaration|parse error` — none of which appear
+in `expected LBrace, found keyword 'match'`. The pattern could not match a true positive, so the
+absence was a property of the search.
+
+The correction, and it generalises to any run failing with hundreds of diagnostics:
+
+> **Partition the message texts before reading any of them.**
+
+`... | sed 's|<prefix>||' | sort | uniq -c | sort -rn` turned 311 lines into three rows in one
+command, and the two singletons at the bottom were the entire content. Reading top-down, or
+grepping for what you expect, finds the 309 every time.
