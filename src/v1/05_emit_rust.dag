@@ -392,7 +392,7 @@ fn rust_host_string_op_fn_emit(name: String) -> String? {
     Present { value: concat(
       "pub fn string_head(s: String) -> Rc<CharResult> {\n",
       "    match s.chars().next() {\n",
-      "        Some(c) => Rc::new(CharResult::CharFound { value: Box::new(c as i64) }),\n",
+      "        Some(c) => Rc::new(CharResult::CharFound { value: c as i64 }),\n",
       "        None => Rc::new(CharResult::CharAbsent),\n",
       "    }\n",
       "}\n"
