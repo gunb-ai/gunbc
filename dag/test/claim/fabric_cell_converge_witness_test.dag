@@ -425,3 +425,47 @@ test fn witness_fabric_cell_unobserved_is_host_exact_not_the_global_roster() -> 
         )
       )
 }
+
+// TWO READBACKS FOR ONE SLOT ARE BOTH EXAMINED, and before this row the LAST one silently won. That
+// is the favourable-reading-by-position hazard the address-level evidence fold exists to eliminate,
+// reintroduced one level above where that fold could see it -- it only ever received the surviving
+// readback, so every address-level contradiction row passed while the hazard sat upstream of them.
+//
+// The pair below is authored so that discarding EITHER entry yields a green answer, which is what
+// makes the row discriminating rather than decorative: the converged readback alone is Provisioned,
+// and the drifted readback alone is Unprovisioned. Only merging both puts two disagreeing positive
+// observations in front of the evidence fold, where the join answers Contradicted -- and refusal,
+// not a plan, is what a cell with two irreconcilable readings deserves.
+//
+// AND IT IS ASSERTED IN BOTH ORDERS, because a last-wins implementation is green in one of them by
+// construction. A single-order row would have passed against exactly the code this fixes.
+fn drifted_root_readback() -> FabricCellReadback {
+  FabricCellReadback {
+    slot: srv3_fabric_slot(),
+    observations: [
+      AddressObserved {
+        member: FabricCellMember {
+          slot: srv3_fabric_slot(),
+          address: FabricCellRootAddress,
+          state_digest: "/opt/fabric-cells/srv3-06-a-different-reading" as NonEmptyStr,
+        }
+      }
+    ],
+  }
+}
+
+fn host_readback_of(entries: List<FabricCellReadback>) -> FabricCellHostReadback {
+  FabricCellHostReadback { host: operator_host_srv3, cell_readbacks: entries }
+}
+
+test fn witness_fabric_cell_duplicate_slot_readbacks_merge_rather_than_last_wins() -> Bool {
+  population_is_observation_refused(
+    p: fabric_cell_population(readback: host_readback_of(entries: [converged_readback(), drifted_root_readback()]))
+  )
+    && population_is_observation_refused(
+        p: fabric_cell_population(readback: host_readback_of(entries: [drifted_root_readback(), converged_readback()]))
+      )
+    && !population_is_observation_refused(
+        p: fabric_cell_population(readback: host_readback_of(entries: [converged_readback()]))
+      )
+}

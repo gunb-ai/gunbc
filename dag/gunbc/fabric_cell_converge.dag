@@ -296,15 +296,34 @@ fn fabric_cell_expected_slots(host: HostIdentity) -> List<RunnerSlotIdentity> {
 // caller remembering to supply one. The expected subjects come from the slot authority; a slot the
 // caller did not read folds to an observation-less readback, whose addresses are all
 // AddressUnobserved, which StandingBlocked routes to the refused arm.
+// EVERY READBACK FOR A SLOT IS MERGED; NONE IS DISCARDED BY ARRIVING EARLIER. An earlier cut folded
+// with `if matches { r } else { acc }`, so when `cell_readbacks` carried two entries for one slot --
+// a retried probe, two attesters, a re-read after a timeout -- the LAST one silently won and the
+// earlier one was thrown away unexamined. That is the favourable-reading-by-position hazard the
+// address-level evidence fold was written to eliminate, reintroduced one level up where that fold
+// could never see it: it only ever received the surviving readback (codex review 55453).
+//
+// THE REPAIR IS TO MERGE RATHER THAN TO REJECT, and the reason is that the address level already
+// decides this correctly. Concatenating the observations puts every reading in front of
+// fabric_cell_address_evidence, whose join then answers the question properly per address: two
+// probes agreeing on a digest are Present, two disagreeing are Contradicted, one refusing makes the
+// address Unreadable whatever the other said. Rejecting duplicate slot entries outright would have
+// been a coarser wall -- it would refuse a redundant probe that agrees with its twin, which is
+// exactly the healthy case, and it would decide at slot grain a question whose facts are per
+// address.
 fn fabric_cell_readback_for_slot(
   readback: FabricCellHostReadback,
   slot: RunnerSlotIdentity,
 ) -> FabricCellReadback {
-  fold(
-    readback.cell_readbacks,
-    init: fabric_cell_readback_without_observations(slot: slot),
-    f: (acc, r) => if runner_slot_identity_equal(a: r.slot, b: slot) { r } else { acc }
-  )
+  FabricCellReadback {
+    slot: slot,
+    observations: fold(
+      readback.cell_readbacks,
+      init: [],
+      f: (acc, r) =>
+        if runner_slot_identity_equal(a: r.slot, b: slot) { concat(acc, r.observations) } else { acc }
+    ),
+  }
 }
 
 fn fabric_cell_host_standings(readback: FabricCellHostReadback) -> List<FabricCellAddressStanding> {
@@ -624,10 +643,17 @@ fn fabric_cell_substrate_verdict(readback: FabricCellReadback) -> FabricCellSubs
   }
 }
 
-// A READBACK THAT WAS NEVER TAKEN IS NOT AN UNPROVISIONED CELL AND IS NOT A REFUSED OBSERVATION.
-// Every address folds to AddressUnobserved, which is unmet and therefore Unprovisioned -- correct,
-// and deliberately not Refused, because "we hold no observations" is a statement about our own
-// evidence rather than about the host refusing to be read.
+// A READBACK THAT WAS NEVER TAKEN IS AN UNKNOWN SUBSTRATE, NOT AN UNPROVISIONED ONE. Every address
+// folds to AddressUnobserved, which StandingBlocked routes to ObservationRefused -- so a cell nobody
+// read is refused, never planned against.
+//
+// THIS COMMENT SAID THE OPPOSITE UNTIL codex review 55453, and it is worth recording why rather than
+// quietly correcting it. It described the behaviour before the empty-observation narrow was closed,
+// when AddressUnobserved was unmet and therefore Unprovisioned; the fix changed the code and left
+// the prose asserting the old answer, three functions below the annotation that describes the fix.
+// A stale comment in substrate documentation is not cosmetic here: Unprovisioned means "plan the
+// missing members" and Refused means "plan nothing until this host is read", so a reader who trusted
+// this sentence would have concluded the module does exactly what it was repaired not to do.
 fn fabric_cell_readback_without_observations(slot: RunnerSlotIdentity) -> FabricCellReadback {
   FabricCellReadback { slot: slot, observations: [] }
 }
