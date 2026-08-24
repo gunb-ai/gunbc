@@ -20,7 +20,7 @@ module test.claim.direct_call_argument_type_witness_test
 // that is larger than this class and is reported separately rather than quietly repaired here.
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn direct_call_arg_type_census_of(source: std.types.String) -> gunbc.compile_diagnostic_census.CompileDiagnosticCensus {
+fn direct_call_arg_type_census_of(source: String) -> gunbc.compile_diagnostic_census.CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
 }
 
@@ -29,11 +29,11 @@ fn direct_call_arg_type_census_of(source: std.types.String) -> gunbc.compile_dia
 // same formal, same actual, same call form. The v2 GREEN differs from the v2 RED only in the
 // actual's type. Any wider difference would let a reader attribute a verdict to something other
 // than the axis being tested.
-data direct_call_arg_type_v2_red_source: std.types.String = "module v2.probe_direct_call_arg_type_red\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: \"not an int\") }\n"
+data direct_call_arg_type_v2_red_source: String = "module v2.probe_direct_call_arg_type_red\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: \"not an int\") }\n"
 
-data direct_call_arg_type_ordinary_red_source: std.types.String = "module probe_direct_call_arg_type_red\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: \"not an int\") }\n"
+data direct_call_arg_type_ordinary_red_source: String = "module probe_direct_call_arg_type_red\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: \"not an int\") }\n"
 
-data direct_call_arg_type_v2_green_source: std.types.String = "module v2.probe_direct_call_arg_type_green\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: 7) }\n"
+data direct_call_arg_type_v2_green_source: String = "module v2.probe_direct_call_arg_type_green\nfn takes_int(n: Int) -> Int { n }\nfn f() -> Int { takes_int(n: 7) }\n"
 
 // THE DISCRIMINATING RED for the v2.* direct-call argument-type exemption, and it is EXPECTED-RED
 // today: the exemption is still standing, so the census carries zero blocking diagnostics for this

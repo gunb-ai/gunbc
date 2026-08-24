@@ -1,11 +1,11 @@
 module test.claim.spark_serving_boot_provenance_witness
 
 
-fn bad(err: std.types.String) -> extdeps.ssh.session.extdeps.ssh.session.SshSessionExecResult {
+fn bad(err: String) -> extdeps.ssh.session.extdeps.ssh.session.SshSessionExecResult {
   extdeps.ssh.session.extdeps.ssh.session.SshSessionExecResult { exit_code: 1, success: false, stdout: "", stderr: err }
 }
 
-fn uptime(secs: std.types.String) -> extdeps.ssh.session.extdeps.ssh.session.SshSessionExecResult {
+fn uptime(secs: String) -> extdeps.ssh.session.extdeps.ssh.session.SshSessionExecResult {
   test.claim.spark_serving_boot_provenance_witness.ok(out: join([secs, ".41 90000.00\n"], ""))
 }
 
@@ -77,7 +77,7 @@ test fn a_failed_probe_is_unobserved_and_not_a_durability_verdict() -> std.types
     default_target_enter: ok(out: "999999999"),
     uptime: uptime(secs: "100"),
   ) {
-    gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: c } => string_contains(c as std.types.String, "Failed to connect to bus")
+    gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: c } => string_contains(c as String, "Failed to connect to bus")
     gunbc.spark.serving_boot_provenance.UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
     gunbc.spark.serving_boot_provenance.UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
     gunbc.spark.serving_boot_provenance.UnitNotActiveAtAll => false
@@ -92,7 +92,7 @@ test fn an_unreadable_uptime_refuses_rather_than_deciding() -> std.types.Bool {
     default_target_enter: test.claim.spark_serving_boot_provenance_witness.ok(out: "999999999"),
     uptime: bad(err: "cat: /proc/uptime: Permission denied"),
   ) {
-    gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: c } => string_contains(c as std.types.String, "Permission denied")
+    gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: c } => string_contains(c as String, "Permission denied")
     gunbc.spark.serving_boot_provenance.UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
     gunbc.spark.serving_boot_provenance.UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => false
     gunbc.spark.serving_boot_provenance.UnitNotActiveAtAll => false
@@ -169,7 +169,7 @@ test fn an_unreached_default_target_refuses_rather_than_deciding() -> std.types.
     default_target_enter: ok(out: "0"),
     uptime: uptime(secs: "101662"),
   ) {
-    gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: c } => string_contains(c as std.types.String, "no observed end")
+    gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: c } => string_contains(c as String, "no observed end")
     _ => false
   }
 }

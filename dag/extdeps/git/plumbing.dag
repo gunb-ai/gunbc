@@ -20,7 +20,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 // plumbing is a different reading of git from porcelain even though it is the same
 // upstream product (DESIGN, external upstream decomposition -- one product may be
 // grounded by several modules; it may not be forked across several authorities).
-data git_plumbing_service_note: std.types.String = "Git's object-store plumbing surface: object database (hash-object, cat-file, unpack-file), index and tree (read-tree, update-index, write-tree, checkout-index), commit (commit-tree) and ref store (rev-parse --verify, update-ref). Every operation names its repository as a typed input rather than inheriting the process working directory, per extdeps.git remote_url_takes_its_repository_as_a_parameter_note. No plumbing argv is spelled outside this service."
+data git_plumbing_service_note: String = "Git's object-store plumbing surface: object database (hash-object, cat-file, unpack-file), index and tree (read-tree, update-index, write-tree, checkout-index), commit (commit-tree) and ref store (rev-parse --verify, update-ref). Every operation names its repository as a typed input rather than inheriting the process working directory, per extdeps.git remote_url_takes_its_repository_as_a_parameter_note. No plumbing argv is spelled outside this service."
 
 // EVERY OPERATION REPORTS `exit_code` AND `stderr`, NEVER A `success` BOOL. The seed
 // derives `exit_success` as exactly `exit_code == 0` (v1_interpreter.rs, the shell dispatch
@@ -34,7 +34,7 @@ data git_plumbing_service_note: std.types.String = "Git's object-store plumbing 
 // NO OPERATION DECLARES AN `exit` BLOCK, per extdeps.git ls_remote_carries_no_exit_block_note:
 // those arms are parsed, re-emitted, and never realized, so authoring one here would mint
 // fresh declared-but-unrealized instances rather than inherit existing ones.
-data git_plumbing_outcome_shape_note: std.types.String = "Operations report exit_code and stderr and declare no exit block. Two of them - CatFileExists and ObserveRef - answer a QUESTION with a nonzero exit, which is why pre-judging termination as success is not available to this layer at all."
+data git_plumbing_outcome_shape_note: String = "Operations report exit_code and stderr and declare no exit block. Two of them - CatFileExists and ObserveRef - answer a QUESTION with a nonzero exit, which is why pre-judging termination as success is not available to this layer at all."
 
 // REPOSITORY ADDRESSING IS ONE AXIS, NOT TWO OPERATION FAMILIES. Git accepts a repository
 // two ways and they are not interchangeable: `-C <path>` changes directory and then
@@ -56,11 +56,11 @@ type GitRepositoryAddress
   = GitWorktreeAt { path: std.types.FilePath }
   | GitDirectoryAt { path: std.types.FilePath, run_in: std.types.FilePath }
 
-fn git_repository_address_argv(address: GitRepositoryAddress) -> List<std.types.String> {
+fn git_repository_address_argv(address: GitRepositoryAddress) -> List<String> {
   match address {
-    GitWorktreeAt { path } => ["-C", path as std.types.String]
+    GitWorktreeAt { path } => ["-C", path as String]
     GitDirectoryAt { path, run_in } =>
-      ["-C", run_in as std.types.String, concat("--git-dir=", path as std.types.String)]
+      ["-C", run_in as String, concat("--git-dir=", path as String)]
   }
 }
 
@@ -75,8 +75,8 @@ fn git_repository_address_argv(address: GitRepositoryAddress) -> List<std.types.
 // the identity is the DECLARATION NAME (`git.Plumbing.WriteTreeFromIndex`), and `env` is a
 // transport detail of it, which is the whole difference between an operation that has a
 // name and an argv that has a prefix.
-fn git_index_file_env_argv(index: std.types.FilePath) -> List<std.types.String> {
-  ["env", concat("GIT_INDEX_FILE=", index as std.types.String)]
+fn git_index_file_env_argv(index: std.types.FilePath) -> List<String> {
+  ["env", concat("GIT_INDEX_FILE=", index as String)]
 }
 
 // COMMIT PARENTS ARE A CLOSED SHAPE, NOT A POSSIBLY-EMPTY LIST OF FLAGS. `commit-tree`
@@ -89,11 +89,11 @@ type GitCommitParents
   = GitNoParents
   | GitParents { first: std.types.NonEmptyStr, remaining: List<std.types.NonEmptyStr> }
 
-fn git_commit_parent_flag_argv(parent: std.types.NonEmptyStr) -> List<std.types.String> {
-  ["-p", parent as std.types.String]
+fn git_commit_parent_flag_argv(parent: std.types.NonEmptyStr) -> List<String> {
+  ["-p", parent as String]
 }
 
-fn git_commit_parents_argv(parents: GitCommitParents) -> List<std.types.String> {
+fn git_commit_parents_argv(parents: GitCommitParents) -> List<String> {
   match parents {
     GitNoParents => []
     GitParents { first, remaining } =>
@@ -108,69 +108,69 @@ service git.Plumbing {
   operation HashObjectWrite {
     input { address: GitRepositoryAddress, path: std.types.FilePath }
     output {
-      oid: std.types.String from "stdout"
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      oid: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["git", git_repository_address_argv(address: address), "hash-object", "-w", "--", "{path}"] }
   }
 
   operation CatFileBlob {
-    input { address: GitRepositoryAddress, object: std.types.String }
+    input { address: GitRepositoryAddress, object: String }
     output {
-      content: std.types.String from "stdout"
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      content: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     readonly
     transport shell { argv: ["git", git_repository_address_argv(address: address), "cat-file", "blob", "{object}"] }
   }
 
   operation CatFileExists {
-    input { address: GitRepositoryAddress, object: std.types.String }
+    input { address: GitRepositoryAddress, object: String }
     output {
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     readonly
     transport shell { argv: ["git", git_repository_address_argv(address: address), "cat-file", "-e", "{object}"] }
   }
 
   operation CatFileSize {
-    input { address: GitRepositoryAddress, object: std.types.String }
+    input { address: GitRepositoryAddress, object: String }
     output {
-      size: std.types.String from "stdout"
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      size: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     readonly
     transport shell { argv: ["git", git_repository_address_argv(address: address), "cat-file", "-s", "{object}"] }
   }
 
   operation UnpackObject {
-    input { address: GitRepositoryAddress, object: std.types.String }
+    input { address: GitRepositoryAddress, object: String }
     output {
-      path: std.types.String from "stdout"
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      path: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["git", git_repository_address_argv(address: address), "unpack-file", "{object}"] }
   }
 
   operation ReadTreeIntoIndex {
-    input { address: GitRepositoryAddress, index: std.types.FilePath, treeish: std.types.String }
+    input { address: GitRepositoryAddress, index: std.types.FilePath, treeish: String }
     output {
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "read-tree", "{treeish}"] }
   }
 
   operation ReadTreeIntoIndexPrefixed {
-    input { address: GitRepositoryAddress, index: std.types.FilePath, prefix: std.types.String, treeish: std.types.String }
+    input { address: GitRepositoryAddress, index: std.types.FilePath, prefix: String, treeish: String }
     output {
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "read-tree", "--prefix={prefix}", "{treeish}"] }
   }
@@ -178,17 +178,17 @@ service git.Plumbing {
   operation AddAllIntoIndex {
     input { address: GitRepositoryAddress, index: std.types.FilePath }
     output {
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "add", "-A"] }
   }
 
   operation UpdateIndexCacheInfo {
-    input { address: GitRepositoryAddress, index: std.types.FilePath, mode: std.types.String, oid: std.types.String, path: std.types.String }
+    input { address: GitRepositoryAddress, index: std.types.FilePath, mode: String, oid: String, path: String }
     output {
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "update-index", "--add", "--cacheinfo", "{mode},{oid},{path}"] }
   }
@@ -196,28 +196,28 @@ service git.Plumbing {
   operation WriteTreeFromIndex {
     input { address: GitRepositoryAddress, index: std.types.FilePath }
     output {
-      tree: std.types.String from "stdout"
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      tree: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "write-tree"] }
   }
 
   operation CheckoutIndexToPrefix {
-    input { address: GitRepositoryAddress, index: std.types.FilePath, prefix: std.types.String }
+    input { address: GitRepositoryAddress, index: std.types.FilePath, prefix: String }
     output {
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     transport shell { argv: [git_index_file_env_argv(index: index), "git", git_repository_address_argv(address: address), "checkout-index", "-a", "-f", "--prefix={prefix}"] }
   }
 
   operation CommitTree {
-    input { address: GitRepositoryAddress, tree: std.types.String, parents: GitCommitParents, message: std.types.String }
+    input { address: GitRepositoryAddress, tree: String, parents: GitCommitParents, message: String }
     output {
-      commit: std.types.String from "stdout"
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      commit: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["git", git_repository_address_argv(address: address), "commit-tree", "{tree}", git_commit_parents_argv(parents: parents), "-m", "{message}"] }
   }
@@ -225,8 +225,8 @@ service git.Plumbing {
   operation InitAt {
     input { address: GitRepositoryAddress, path: std.types.FilePath }
     output {
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["git", git_repository_address_argv(address: address), "init", "--quiet", "{path}"] }
   }
@@ -234,46 +234,46 @@ service git.Plumbing {
   operation InitBareAt {
     input { address: GitRepositoryAddress, path: std.types.FilePath }
     output {
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["git", git_repository_address_argv(address: address), "init", "--bare", "--quiet", "{path}"] }
   }
 
   operation ObserveRef {
-    input { address: GitRepositoryAddress, ref_name: std.types.String }
+    input { address: GitRepositoryAddress, ref_name: String }
     output {
-      revision: std.types.String from "stdout"
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      revision: String from "stdout"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     readonly
     transport shell { argv: ["git", git_repository_address_argv(address: address), "rev-parse", "--verify", "--quiet", "{ref_name}"] }
   }
 
   operation CreateRefIfAbsent {
-    input { address: GitRepositoryAddress, ref_name: std.types.String, new: std.types.String }
+    input { address: GitRepositoryAddress, ref_name: String, new: String }
     output {
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["git", git_repository_address_argv(address: address), "update-ref", "{ref_name}", "{new}", ""] }
   }
 
   operation AdvanceRefIfExpected {
-    input { address: GitRepositoryAddress, ref_name: std.types.String, new: std.types.String, expected_old: std.types.String }
+    input { address: GitRepositoryAddress, ref_name: String, new: String, expected_old: String }
     output {
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["git", git_repository_address_argv(address: address), "update-ref", "{ref_name}", "{new}", "{expected_old}"] }
   }
 
   operation DeleteRefIfExpected {
-    input { address: GitRepositoryAddress, ref_name: std.types.String, expected_old: std.types.String }
+    input { address: GitRepositoryAddress, ref_name: String, expected_old: String }
     output {
-      exit_code: std.types.Int from "exit_code"
-      stderr: std.types.String from "stderr"
+      exit_code: Int from "exit_code"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["git", git_repository_address_argv(address: address), "update-ref", "-d", "{ref_name}", "{expected_old}"] }
   }
@@ -301,7 +301,7 @@ type GitExactRefMutation
 type GitRefObservation
   = GitRefObserved { oid: extdeps.git.object_store.GitObjectId }
   | GitRefAbsent
-  | GitRefObservationRefused { exit_code: std.types.Int, stderr: std.types.String }
+  | GitRefObservationRefused { exit_code: Int, stderr: String }
 
 // WHY THE OUTCOME IS DECIDED BY OBSERVATION AND NOT BY THE EXIT CODE ALONE. Losing a
 // precondition race and failing to reach the object store BOTH exit 128 from `update-ref`
@@ -315,8 +315,8 @@ type GitRefObservation
 type GitRefMutationOutcome
   = GitRefMutationApplied { mutation: GitExactRefMutation }
   | GitRefMutationPreconditionNotHeld { mutation: GitExactRefMutation, observed: GitRefObservation }
-  | GitRefMutationExecutionRefused { mutation: GitExactRefMutation, exit_code: std.types.Int, stderr: std.types.String }
-  | GitRefMutationObservationRefused { mutation: GitExactRefMutation, exit_code: std.types.Int, stderr: std.types.String }
+  | GitRefMutationExecutionRefused { mutation: GitExactRefMutation, exit_code: Int, stderr: String }
+  | GitRefMutationObservationRefused { mutation: GitExactRefMutation, exit_code: Int, stderr: String }
   | GitRefMutationReadBackMismatch { mutation: GitExactRefMutation, observed: GitRefObservation }
 
 fn git_exact_ref_mutation_name(mutation: GitExactRefMutation) -> extdeps.git.object_store.GitRefName {
@@ -376,8 +376,8 @@ fn git_ref_observation_eq(left: GitRefObservation, right: GitRefObservation) -> 
 // not a receipt either: it says the process ended, not that the store holds what was asked.
 fn git_ref_mutation_outcome(
   mutation: GitExactRefMutation,
-  exit_code: std.types.Int,
-  stderr: std.types.String,
+  exit_code: Int,
+  stderr: String,
   observed_after: GitRefObservation,
 ) -> GitRefMutationOutcome {
   match observed_after {
@@ -406,8 +406,8 @@ fn git_ref_mutation_outcome(
 
 fn git_ref_mutation_outcome_observed(
   mutation: GitExactRefMutation,
-  exit_code: std.types.Int,
-  stderr: std.types.String,
+  exit_code: Int,
+  stderr: String,
   observed_after: GitRefObservation,
 ) -> GitRefMutationOutcome {
   if exit_code == 0 {

@@ -28,8 +28,8 @@ fn loginctl_binary_path() -> std.types.NonEmptyStr {
 // forgetting it.
 data loginctl_enable_linger_verb: std.types.NonEmptyStr = "enable-linger" as std.types.NonEmptyStr
 
-fn loginctl_enable_linger_argv(subject: std.types.NonEmptyStr) -> List<std.types.String> {
-  [loginctl_binary_name as std.types.String, loginctl_enable_linger_verb as std.types.String, subject as std.types.String]
+fn loginctl_enable_linger_argv(subject: std.types.NonEmptyStr) -> List<String> {
+  [loginctl_binary_name as String, loginctl_enable_linger_verb as String, subject as String]
 }
 
 // The same command rendered for a sudoers Cmnd_Spec: absolute path, same verb, same subject. It is
@@ -37,8 +37,8 @@ fn loginctl_enable_linger_argv(subject: std.types.NonEmptyStr) -> List<std.types
 // both fold the same three rows rather than each spelling the command.
 fn loginctl_enable_linger_command(subject: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
   join([
-    loginctl_binary_path() as std.types.String,
-    " ", loginctl_enable_linger_verb as std.types.String,
-    " ", subject as std.types.String,
+    loginctl_binary_path() as String,
+    " ", loginctl_enable_linger_verb as String,
+    " ", subject as String,
   ], "") as std.types.NonEmptyStr
 }

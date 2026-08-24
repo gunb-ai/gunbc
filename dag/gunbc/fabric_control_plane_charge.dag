@@ -14,7 +14,7 @@ data fabric_control_plane_charge_authority: std.disposition.Disposition = std.di
 type HostFabricControlPlaneClaim
   = ControlPlaneNotPlaced
   | ControlPlaneClaimResolved { memory: std.measure.ByteSize }
-  | ControlPlaneClaimUnmeasured { cause: std.types.String }
+  | ControlPlaneClaimUnmeasured { cause: String }
 
 // UNMEASURED REFUSES ON EVERY HOST, because unmeasured is unmeasured -- that arm is host-independent
 // and is not a capacity judgment. Whether a MEASURED envelope fits is a separate question the
@@ -22,7 +22,7 @@ type HostFabricControlPlaneClaim
 // produces a refusal that cannot say whether the problem is the size or the ignorance.
 type FabricControlPlaneEnvelope
   = ControlPlaneEnvelopeDeclared { memory_max: std.measure.ByteSize, provenance: std.types.NonEmptyStr }
-  | ControlPlaneEnvelopeUnmeasured { cause: std.types.String }
+  | ControlPlaneEnvelopeUnmeasured { cause: String }
 
 type FabricControlPlanePlacement
   = ControlPlaneUnplaced
@@ -73,7 +73,7 @@ fn host_fabric_control_plane_claim_under(host: product.placement_supply.HostIden
   match placement {
     ControlPlaneUnplaced => ControlPlaneNotPlaced
     ControlPlaneStaticPinned { host: placed, envelope: envelope } =>
-      if (placed as std.types.String) == (host as std.types.String) {
+      if (placed as String) == (host as String) {
         match envelope {
           ControlPlaneEnvelopeUnmeasured { cause: c } => ControlPlaneClaimUnmeasured { cause: c }
           ControlPlaneEnvelopeDeclared { memory_max: m, provenance: _ } =>

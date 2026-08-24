@@ -100,7 +100,7 @@ fn host_identity_data_declarations() -> List<v2.std.decl_index.DataDeclTypeFact>
   )
 }
 
-fn host_identity_declarations_in(module_path: std.types.String) -> List<v2.std.decl_index.DataDeclTypeFact> {
+fn host_identity_declarations_in(module_path: String) -> List<v2.std.decl_index.DataDeclTypeFact> {
   filter(host_identity_data_declarations(), f => f.module_path == module_path)
 }
 

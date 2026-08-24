@@ -4,7 +4,7 @@ module gunbc.emit_summary_map_consumer_partition
 // THE READ SIDE OF THE EMIT SUMMARY MAP, PARTITIONED ON TWO QUESTIONS RATHER THAN ONE.
 //
 // SUBJECT. `v1.compiler.infer_emit_info` `build_emit_graph_info` folds every module in the closure
-// into one Map<std.types.String, TypeSummary> keyed on the BARE AUTHORED DECLARATION NAME, with no collision
+// into one Map<String, TypeSummary> keyed on the BARE AUTHORED DECLARATION NAME, with no collision
 // arm: two declarations sharing a spelling resolve last-write-wins in fold order. That map is the
 // denominator gunbc.bare_name_identity_consumer_census ranks first, and this carrier is the
 // measurement that must precede re-keying it.
@@ -30,7 +30,7 @@ module gunbc.emit_summary_map_consumer_partition
 // unchanged -- but only if BOTH parts get one, and the enum half arrives from a bare-name-derived
 // map (variant_to_enum), so this arm is not self-sufficient.
 //
-// SpellingOnlyFromMapValue is the severed arm: the key is a std.types.String the consumer pulled out of a
+// SpellingOnlyFromMapValue is the severed arm: the key is a String the consumer pulled out of a
 // TypeSummary field, and nothing declaration-shaped is in scope. It names WHERE the severance
 // happened, because that is where the repair is, not here.
 //
@@ -38,10 +38,10 @@ module gunbc.emit_summary_map_consumer_partition
 // roster because its ANSWER is a name, so it re-enters the bare-name world at its output rather
 // than at its input, and a re-key alone does not reach it.
 type AskIdentity
-  = NodeHeldAtAsk { holder_expression: std.types.String }
-  | CompositeOfTwoSpellings { parts: std.types.String, second_part_source: std.types.String }
-  | SpellingOnlyFromMapValue { severed_at: std.decl_ref.DeclarationRef, map_field: std.types.String }
-  | NoKeyWholeMapScan { what_is_scanned: std.types.String }
+  = NodeHeldAtAsk { holder_expression: String }
+  | CompositeOfTwoSpellings { parts: String, second_part_source: String }
+  | SpellingOnlyFromMapValue { severed_at: std.decl_ref.DeclarationRef, map_field: String }
+  | NoKeyWholeMapScan { what_is_scanned: String }
 
 // WHAT HAPPENS TO THE SUMMARY ONCE THE SITE HAS IT.
 //
@@ -49,7 +49,7 @@ type AskIdentity
 // std.types.Bool or is consumed structurally, and no spelling leaves the site.
 //
 // ReKeyedIntoSameMap is the kind-3 class wearing a better hat: the site queried with a node in hand
-// and then keys a SECOND lookup on a std.types.String drawn out of the summary it just received.
+// and then keys a SECOND lookup on a String drawn out of the summary it just received.
 //
 // SpellingEscapesToCaller is the same defect one frame up: the site RETURNS a name out of the
 // summary and its caller decides on that spelling.
@@ -57,17 +57,17 @@ type AskIdentity
 // ReKeyedIntoForeignNameTable is the arm re-keying cannot reach at all: the spelling leaves this
 // map and keys a different bare-name authority, which has no identity parameter to accept one.
 type UseDisposition
-  = TerminalAtSite { what_is_decided: std.types.String }
-  | ReKeyedIntoSameMap { second_key_source: std.types.String, second_lookup_decides: std.types.String }
-  | SpellingEscapesToCaller { escapes_as: std.types.String, consumed_by: std.decl_ref.DeclarationRef }
-  | ReKeyedIntoForeignNameTable { table: std.decl_ref.DeclarationRef, why_a_rekey_cannot_reach_it: std.types.String }
+  = TerminalAtSite { what_is_decided: String }
+  | ReKeyedIntoSameMap { second_key_source: String, second_lookup_decides: String }
+  | SpellingEscapesToCaller { escapes_as: String, consumed_by: std.decl_ref.DeclarationRef }
+  | ReKeyedIntoForeignNameTable { table: std.decl_ref.DeclarationRef, why_a_rekey_cannot_reach_it: String }
 
 type SummaryMapConsumer {
   site: std.decl_ref.DeclarationRef
-  keys_on: std.types.String
+  keys_on: String
   ask: AskIdentity
   use: UseDisposition
-  lookup_expression_count: std.types.Int
+  lookup_expression_count: Int
 }
 
 // THE ROSTER. Every row was read in the live tree on 2026-08-22; the selector and its blind spot are
@@ -294,31 +294,31 @@ fn consumer_use_leaves_the_map(c: SummaryMapConsumer) -> std.types.Bool {
   }
 }
 
-fn partition_member_count() -> std.types.Int {
+fn partition_member_count() -> Int {
   emit_summary_map_consumers |> count
 }
 
-fn partition_lookup_expression_total() -> std.types.Int {
+fn partition_lookup_expression_total() -> Int {
   emit_summary_map_consumers |> fold(init: 0, f: (acc, c) => acc + c.lookup_expression_count)
 }
 
-fn partition_holds_node_count() -> std.types.Int {
+fn partition_holds_node_count() -> Int {
   emit_summary_map_consumers |> filter(c => consumer_holds_node_at_ask(c: c)) |> count
 }
 
-fn partition_spelling_only_count() -> std.types.Int {
+fn partition_spelling_only_count() -> Int {
   emit_summary_map_consumers |> filter(c => consumer_ask_is_spelling_only(c: c)) |> count
 }
 
-fn partition_composite_count() -> std.types.Int {
+fn partition_composite_count() -> Int {
   emit_summary_map_consumers |> filter(c => consumer_ask_is_composite(c: c)) |> count
 }
 
-fn partition_scan_count() -> std.types.Int {
+fn partition_scan_count() -> Int {
   emit_summary_map_consumers |> filter(c => consumer_ask_is_scan(c: c)) |> count
 }
 
-fn partition_terminal_use_count() -> std.types.Int {
+fn partition_terminal_use_count() -> Int {
   emit_summary_map_consumers |> filter(c => consumer_use_is_terminal(c: c)) |> count
 }
 
@@ -341,7 +341,7 @@ fn partition_repaired_by_rekey_alone() -> List<SummaryMapConsumer> {
 // FIRST, the severance is FOUR folds and not one, and the correction is directional: an earlier
 // read made this look like one fold storing a name where it could store an identity. It is three of
 // the summary's own fields plus the map key, and collect_type_node_import_surface_names returns a
-// List<std.types.String>, so identity there changes an ELEMENT TYPE rather than a field type -- a different
+// List<String>, so identity there changes an ELEMENT TYPE rather than a field type -- a different
 // and larger shape of change than the other three.
 //
 // SECOND, is_known_variant is the sharpest row on the roster: it quantifies over the whole closure
@@ -396,9 +396,9 @@ fn partition_repaired_by_rekey_alone() -> List<SummaryMapConsumer> {
 // at the discarding expression; a row without one would be a claim a reader cannot check.
 type SeverancePoint {
   fold: std.decl_ref.DeclarationRef
-  holder_at_discard: std.types.String
-  stores_instead: std.types.String
-  fills_summary_field: std.types.String
+  holder_at_discard: String
+  stores_instead: String
+  fills_summary_field: String
 }
 
 data emit_summary_map_severance_points: List<SeverancePoint> = [
@@ -439,7 +439,7 @@ fn consumer_severance_is_rostered(c: SummaryMapConsumer) -> std.types.Bool {
   }
 }
 
-fn partition_severance_point_count() -> std.types.Int {
+fn partition_severance_point_count() -> Int {
   emit_summary_map_severance_points |> count
 }
 
@@ -489,8 +489,8 @@ fn partition_severance_point_count() -> std.types.Int {
 // RULE 3 -- WHOLE-TREE UNION over the three roots. This is the upper bound, and it is the ONLY
 // population measured here in which v1.std.core and v2.std.node are co-resident.
 type CollisionPopulation
-  = WholeTreeUpperBound { distinct_colliding_names: std.types.Int, total_type_declarations: std.types.Int, measurement: std.types.String, why_not_the_refusal_population: std.types.String }
-  | PoolMeasured { pool_rule: std.types.String, pool_subject: std.types.String, modules_in_pool: std.types.Int, type_declarations: std.types.Int, distinct_colliding_names: std.types.Int, specimens: std.types.String }
+  = WholeTreeUpperBound { distinct_colliding_names: Int, total_type_declarations: Int, measurement: String, why_not_the_refusal_population: String }
+  | PoolMeasured { pool_rule: String, pool_subject: String, modules_in_pool: Int, type_declarations: Int, distinct_colliding_names: Int, specimens: String }
 
 // INSTRUMENT CONTROL: the compiler's own resolver reports `resolved 6 sources` for this carrier's
 // own entry, and the walk independently counts 6 modules for it under both rule 1 and rule 2, so
@@ -600,7 +600,7 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 // SPECIMEN OF MINE THAT WAS WRONG.
 //
 // THE MECHANISM IS EXECUTED. add_emit_item_summary does map_insert(with_variants, summary.name,
-// summary) into one corpus-wide Map<std.types.String, TypeSummary>, so a second declaration sharing a spelling
+// summary) into one corpus-wide Map<String, TypeSummary>, so a second declaration sharing a spelling
 // OVERWRITES the first and one declaration is destroyed before any consumer runs. Run on the real
 // interpreter: two map_insert calls under one key return the SECOND value and leave the map with ONE
 // key.
@@ -669,15 +669,15 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 // alias-versus-coproduct collision in the corpus is invisible to type_summaries BY CONSTRUCTION, not
 // by accident of which modules a closure pulls.
 //
-// AND std.types.Int IS EXCLUDED ON BOTH SIDES: dag/std/integer.dag and src/v2/std/integer.dag are both
-// conn=NoConnective, summary=false. std.types.Int cannot be in type_summaries at all, and therefore cannot
+// AND Int IS EXCLUDED ON BOTH SIDES: dag/std/integer.dag and src/v2/std/integer.dag are both
+// conn=NoConnective, summary=false. Int cannot be in type_summaries at all, and therefore cannot
 // reach shared_types through the summary fold. That independently corroborates a third lane's
-// consumer-side trace finding zero shared-type sites for std.types.Int, arrived at by tracing producers rather
+// consumer-side trace finding zero shared-type sites for Int, arrived at by tracing producers rather
 // than by reading connectives -- and the connective is the explanation for both.
 //
 // WHAT THIS DOES TO THE POOL ROWS ABOVE, said explicitly because I have already made this conflation
 // once. Those rows count DECLARATION collisions in a pool: that is what the walk measures and it is
-// the right denominator for the question they answer. They are NOT map collisions. std.types.Int and Nat are
+// the right denominator for the question they answer. They are NOT map collisions. Int and Nat are
 // both named there as specimens and both are now known to be alias-excluded, so neither is a live
 // collision in type_summaries. std.types.Bool, RankingDimension and TerminationProof are the three that are.
 //
@@ -690,7 +690,7 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 // about whose four names are wrong, which is the only open question between 79 and 83.
 //
 // WHAT THE FIVE DO ESTABLISH, kept because it is real: both classifiers agree with the connective on
-// std.types.Int (alias/alias, neither side produces), Nat (alias/coproduct, exactly one), and std.types.Bool,
+// Int (alias/alias, neither side produces), Nat (alias/coproduct, exactly one), and std.types.Bool,
 // RankingDimension and TerminationProof (both sides producing -- exactly the live three). So the
 // four-name disagreement lies OUTSIDE every name ground truth has been read for. That is a constraint
 // on WHERE the gap is and carries nothing about WHOSE side it falls on.
@@ -704,8 +704,8 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 // enumerated here; with the 116-name set they determine the partition completely.
 // EXACTLY-ONE side produces a summary (13): AdmissionState, Byte, FilePath, FixedPointCheck, Float32,
 // Float64, Json, Nat, NonNegativeInt, ObjectId, PositiveInt, ReservedWordStrategy, SourceSpan.
-// NEITHER side produces one (24): Compose, CoreNode, Float, std.types.Int, Int128, Int16, Int32, Int64, Int8,
-// IntPlatform, std.types.List, MachineWidth, PointerWidth, RustPrimitive, ShapeFromCatalogInput, std.types.String, UInt,
+// NEITHER side produces one (24): Compose, CoreNode, Float, Int, Int128, Int16, Int32, Int64, Int8,
+// IntPlatform, std.types.List, MachineWidth, PointerWidth, RustPrimitive, ShapeFromCatalogInput, String, UInt,
 // UInt128, UInt16, UInt32, UInt64, UInt8, UIntPlatform, Unit.
 
 // THE Connective SPECIMEN, NOW A COUNTED ROW: THE POOL IS NAMED AND I VERIFIED IT MYSELF.
@@ -766,9 +766,9 @@ data emit_summary_map_collision_population: List<CollisionPopulation> = [
 // row failing refusal needs a BETTER CHECK. Those are different repairs, and a single "this row is
 // broken" column would have put them in the same bucket.
 type GuardCondition
-  = HoldsHere { how: std.types.String }
-  | FailsHere { what_merged_the_input: std.decl_ref.DeclarationRef, what_is_lost: std.types.String }
-  | NotAGuard { what_it_does_instead: std.types.String }
+  = HoldsHere { how: String }
+  | FailsHere { what_merged_the_input: std.decl_ref.DeclarationRef, what_is_lost: String }
+  | NotAGuard { what_it_does_instead: String }
 
 type GuardRow {
   site: std.decl_ref.DeclarationRef
@@ -842,7 +842,7 @@ fn guard_refuses(g: GuardRow) -> std.types.Bool {
   }
 }
 
-fn guard_row_count() -> std.types.Int {
+fn guard_row_count() -> Int {
   emit_summary_map_guard_rows |> count
 }
 
@@ -862,9 +862,9 @@ fn guards_preserving_their_trigger() -> List<GuardRow> {
 // overstates it, since nothing was masking anything -- the mechanism returned the right answer for
 // the input it had.
 type PopulationCorrectness
-  = PopulationIndependentCorrectness { why: std.types.String }
-  | PopulationConditionalCorrectness { unenforced_premise: std.types.String, who_could_violate_it: std.types.String }
-  | TriggeredWrongAnswer { population: std.types.String, observed: std.types.String }
+  = PopulationIndependentCorrectness { why: String }
+  | PopulationConditionalCorrectness { unenforced_premise: String, who_could_violate_it: String }
+  | TriggeredWrongAnswer { population: String, observed: String }
 
 data emit_summary_map_population_state: List<PopulationCorrectness> = [
   PopulationConditionalCorrectness {
@@ -881,7 +881,7 @@ data emit_summary_map_population_state: List<PopulationCorrectness> = [
 // no pool row may report more colliding names than the whole-tree bound. The two
 // numbers were taken by different walks over different populations, so this is a real consistency
 // check between them and not a restatement.
-fn collision_row_colliding_names(r: CollisionPopulation) -> std.types.Int {
+fn collision_row_colliding_names(r: CollisionPopulation) -> Int {
   match r {
     WholeTreeUpperBound { distinct_colliding_names: n, total_type_declarations: _, measurement: _, why_not_the_refusal_population: _ } => n
     PoolMeasured { pool_rule: _, pool_subject: _, modules_in_pool: _, type_declarations: _, distinct_colliding_names: n, specimens: _ } => n
@@ -895,19 +895,19 @@ fn collision_row_is_pool_measured(r: CollisionPopulation) -> std.types.Bool {
   }
 }
 
-fn whole_tree_collision_upper_bound() -> std.types.Int {
+fn whole_tree_collision_upper_bound() -> Int {
   emit_summary_map_collision_population
     |> filter(r => !collision_row_is_pool_measured(r: r))
     |> fold(init: 0, f: (acc, r) => if collision_row_colliding_names(r: r) > acc { collision_row_colliding_names(r: r) } else { acc })
 }
 
-fn largest_measured_pool_collision_count() -> std.types.Int {
+fn largest_measured_pool_collision_count() -> Int {
   emit_summary_map_collision_population
     |> filter(r => collision_row_is_pool_measured(r: r))
     |> fold(init: 0, f: (acc, r) => if collision_row_colliding_names(r: r) > acc { collision_row_colliding_names(r: r) } else { acc })
 }
 
-fn measured_pool_row_count() -> std.types.Int {
+fn measured_pool_row_count() -> Int {
   emit_summary_map_collision_population |> filter(r => collision_row_is_pool_measured(r: r)) |> count
 }
 
@@ -921,8 +921,8 @@ fn measured_pool_row_count() -> std.types.Int {
 // touching the map itself is outside the selector. Those derived carriers inherit the bare key and
 // have their own consumers, several of them counted only indirectly here through the escape arm.
 type PartitionBasis
-  = SweptByMechanicalSelector { selector: std.types.String, modules_read: std.types.String, known_blind_spot: std.types.String }
-  | DerivedByLens { lens: std.types.String }
+  = SweptByMechanicalSelector { selector: String, modules_read: String, known_blind_spot: String }
+  | DerivedByLens { lens: String }
 
 data emit_summary_map_partition_basis: PartitionBasis = SweptByMechanicalSelector {
   selector: "map_get or map_contains_key against type_summaries, every lookup_emit_type_summary call, and every map_values or map_keys scan of the map, grouped by enclosing top-level fn",

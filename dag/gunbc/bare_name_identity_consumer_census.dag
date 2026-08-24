@@ -28,10 +28,10 @@ module gunbc.bare_name_identity_consumer_census
 // deciding call already has, and at several rows it is computed on an ADJACENT LINE for a different
 // question. AvailableUpstreamNotThreaded is the design gap that is still closable: the caller holds
 // a node, the callee's signature has nowhere to put it. UnavailableNoNodeAtSite is the genuine gap:
-// the value flowing into the decision is a std.types.String that was severed from its declaration earlier,
+// the value flowing into the decision is a String that was severed from its declaration earlier,
 // so threading identity here requires re-shaping what upstream carries, not editing this call.
 type IdentityAvailability
-  = AvailableAtSite { holder_expression: std.types.String, adjacent_consulting_call: std.decl_ref.DeclarationRef }
+  = AvailableAtSite { holder_expression: String, adjacent_consulting_call: std.decl_ref.DeclarationRef }
   | AvailableUpstreamNotThreaded { nearest_holder: std.decl_ref.DeclarationRef }
   | UnavailableNoNodeAtSite { severed_at: std.decl_ref.DeclarationRef }
 
@@ -41,9 +41,9 @@ type IdentityAvailability
 // fact that it could not decide and then decided anyway, which is strictly worse than never having
 // looked, because the detection is what makes the refusal one line away rather than a redesign.
 type BareKeyOutcome
-  = SilentWrongProviderAnswer { what_is_emitted: std.types.String }
-  | AmbiguityDetectedThenAnswered { sentinel: std.types.String, what_is_emitted: std.types.String }
-  | SilentDefaultNoAnswer { what_is_emitted: std.types.String }
+  = SilentWrongProviderAnswer { what_is_emitted: String }
+  | AmbiguityDetectedThenAnswered { sentinel: String, what_is_emitted: String }
+  | SilentDefaultNoAnswer { what_is_emitted: String }
   | TypedRefusal { refusal_site: std.decl_ref.DeclarationRef }
 
 // REACH IS NOT PRESENCE, AND IT IS ITS OWN COLUMN. A site no current input can reach is a real
@@ -59,9 +59,9 @@ type BareKeyOutcome
 // only way to file a row is to claim something about it, and the roster would acquire fabricated
 // reach the moment an author met a site they could not price.
 type Reachability
-  = ReachedByMeasuredPopulation { measurement: std.types.String }
-  | UnreachableByConstantBody { body_answer: std.types.String }
-  | ReachabilityUnmeasured { what_would_settle_it: std.types.String }
+  = ReachedByMeasuredPopulation { measurement: String }
+  | UnreachableByConstantBody { body_answer: String }
+  | ReachabilityUnmeasured { what_would_settle_it: String }
 
 // WHETHER AN IDENTITY-KEYED SIBLING IS ALREADY SITTING BESIDE THIS SITE UNUSED. This is the column
 // that decides the shape of the terminal repair: a row with a sibling is a ROUTING question, a row
@@ -73,19 +73,19 @@ type Reachability
 // rows: the sibling is not missing, it is CONSULTED SECOND, and a bare-name arm that answers first
 // makes the second arm unreachable however correct it is.
 type IdentityKeyedSibling
-  = SiblingPresentButOrdered { sibling: std.decl_ref.DeclarationRef, precedence: std.types.String }
-  | SiblingPresentButUnreachable { sibling: std.decl_ref.DeclarationRef, why_unreachable: std.types.String }
-  | NoSiblingExists { what_would_have_to_be_built: std.types.String }
+  = SiblingPresentButOrdered { sibling: std.decl_ref.DeclarationRef, precedence: String }
+  | SiblingPresentButUnreachable { sibling: std.decl_ref.DeclarationRef, why_unreachable: String }
+  | NoSiblingExists { what_would_have_to_be_built: String }
 
 type BareNameConsumer {
   site: std.decl_ref.DeclarationRef
-  fact_sought: std.types.String
-  keys_on: std.types.String
+  fact_sought: String
+  keys_on: String
   identity: IdentityAvailability
   outcome: BareKeyOutcome
   reach: Reachability
   sibling: IdentityKeyedSibling
-  call_site_count: std.types.Int
+  call_site_count: Int
 }
 
 // THE ROSTER. Every row was established by reading the deciding function and its call sites in the
@@ -254,27 +254,27 @@ fn consumer_reach_is_measured(c: BareNameConsumer) -> std.types.Bool {
   }
 }
 
-fn census_member_count() -> std.types.Int {
+fn census_member_count() -> Int {
   bare_name_identity_consumers |> count
 }
 
-fn census_call_site_total() -> std.types.Int {
+fn census_call_site_total() -> Int {
   bare_name_identity_consumers |> fold(init: 0, f: (acc, c) => acc + c.call_site_count)
 }
 
-fn census_identity_available_count() -> std.types.Int {
+fn census_identity_available_count() -> Int {
   bare_name_identity_consumers |> filter(c => consumer_identity_was_available(c: c)) |> count
 }
 
-fn census_unused_sibling_count() -> std.types.Int {
+fn census_unused_sibling_count() -> Int {
   bare_name_identity_consumers |> filter(c => consumer_has_unused_identity_sibling(c: c)) |> count
 }
 
-fn census_wrong_answer_today_count() -> std.types.Int {
+fn census_wrong_answer_today_count() -> Int {
   bare_name_identity_consumers |> filter(c => consumer_answers_wrongly_today(c: c)) |> count
 }
 
-fn census_measured_reach_count() -> std.types.Int {
+fn census_measured_reach_count() -> Int {
   bare_name_identity_consumers |> filter(c => consumer_reach_is_measured(c: c)) |> count
 }
 
@@ -292,18 +292,18 @@ fn census_reachable_and_wrong_today() -> List<BareNameConsumer> {
 // emitter's realization decisions -- so its row is upgraded here from "no sweep run" to a swept
 // population WITH A NAMED SCOPE, and the scope is what bounds the claim: the sweep read every
 // top-level fn in v1.compiler.emit_rust, v1.compiler.emit, v1.compiler.infer_emit_info and
-// v1.compiler.coercion that takes a name-shaped std.types.String parameter or hardcodes decl_file to the empty
+// v1.compiler.coercion that takes a name-shaped String parameter or hardcodes decl_file to the empty
 // string, and followed each one's call sites.
 //
 // WHAT THAT SCOPE DOES NOT REACH, named rather than left as a silent edge: a decision keyed on a
-// name that is neither a std.types.String parameter nor a decl_file argument -- a match on a name computed
+// name that is neither a String parameter nor a decl_file argument -- a match on a name computed
 // inline, a comparison against a literal inside a larger expression -- is outside the sweep's
 // selector and would not have been found. Three rows here were found that way anyway, while reading
 // call sites for something else, which is evidence that the selector is not complete rather than
 // evidence that it is.
 type CensusBasis
-  = SweptByDeclaredSelector { selector: std.types.String, modules_read: std.types.String, known_blind_spot: std.types.String }
-  | DerivedByLens { lens: std.types.String }
+  = SweptByDeclaredSelector { selector: String, modules_read: String, known_blind_spot: String }
+  | DerivedByLens { lens: String }
 
 data bare_name_census_basis: CensusBasis = SweptByDeclaredSelector {
   selector: "top-level fns taking a name-shaped String parameter, plus every call passing decl_file as the empty string literal",
