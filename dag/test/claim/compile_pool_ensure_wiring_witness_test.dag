@@ -1,0 +1,181 @@
+module test.claim.compile_pool_ensure_wiring_witness
+
+import gunbc.host_toolchain_ensure { host_toolchain_ensure_effect, CompilePool }
+// IMPORTED FOR LOADING, NOT FOR BINDING, and the distinction is what this import is here to record.
+// Names in this corpus resolve by global uniqueness across the modules a run has LOADED -- an import
+// list does not bind them, which is why the other ten witnesses below reference symbols no import
+// names and resolve fine. But a module enters the load graph only by being imported by something in
+// the entry's closure, and gunbc.host_compile_pool_provision is a LEAF entry point: like its siblings
+// gunbc.host_build_cache_provision and gunbc.srv3_os_install_actuator_toolchain_ensure, nothing in the
+// corpus imports it. Without this line its symbols are absent rather than unbound, and the entry-point
+// witness fails with NoSuchFunction -- measured, not reasoned: that is exactly how it failed under
+// `gunbc run` before this import was added, while the same witness passed under the floor, which
+// prepares one subject over all 3873 modules and therefore loads it anyway.
+import gunbc.host_compile_pool_provision {
+  provision_compile_pool_effect_for_host,
+  provision_compile_pool_routes_through_host_effect_apply,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THIS MODULE IS FOR: gunbc.compile_pool_ensure was proven over fixtures and computed by nothing --
+// its only caller was its own test module -- so an admission named as the wall between a host and an
+// unbounded compile pool was green without ever being asked a question. These witnesses assert the parts of
+// the wiring that make it reachable, and the parts of the observation that decide what it is asked.
+
+// REACHABILITY, not shape: the entrypoint a person or a converge pass actually calls must produce the effect,
+// and the effect must resolve to a cell that dispatches to the realizer. Asserting the arm exists on the
+// coproduct would prove nothing -- it existed before this change too, with nothing routing to it.
+test fn witness_compile_pool_kind_produces_the_effect() -> Bool {
+  match host_toolchain_ensure_effect(kind: CompilePool, host: "srv1" as HostIdentity) {
+    EnsureCompilePoolSlice {} => true
+    _ => false
+  }
+}
+
+// THE ENTRY POINT EXISTS AND SELECTS THIS KIND. Without this the CompilePool arm is reachable from the
+// dispatcher and the dispatcher reachable from nobody -- which is the same unreachability this module
+// exists to close, moved one layer out. It asserts the production func's own effect selection rather
+// than re-asserting the dispatcher's, so deleting provision_compile_pool reds here.
+test fn witness_production_entry_point_selects_the_compile_pool_effect() -> Bool {
+  match provision_compile_pool_effect_for_host(host: "srv1" as HostIdentity) {
+    EnsureCompilePoolSlice {} => provision_compile_pool_routes_through_host_effect_apply()
+    _ => false
+  }
+}
+
+// The install body must not re-assemble the staging and install that gunbc.live_deploy.operations already
+// owns. These assert the delegation by its observable residue: the unit bytes reach the host through a
+// printf redirect built by deploy_stage_write_command, and the privileged copy through
+// deploy_stage_install_command -- so a hand-rolled `cat` heredoc or a hand-spelled `sudo -n install`
+// reds here. RED is authorable: the first draft of this function contained exactly those two.
+test fn witness_install_body_delegates_to_the_deploy_staging_authority() -> Bool {
+  let body = compile_pool_slice_install_body(
+    slice_unit: gunbc_managed_compile_pool_slice,
+    slice_unit_file: compile_pool_slice_unit_file(
+      slice_unit: gunbc_managed_compile_pool_slice,
+      sized: byte_size(17179869184),
+    ),
+  )
+  (string_contains(s: body, pattern: "<<") == false)
+    && (string_contains(s: body, pattern: "cat > ") == false)
+    && string_contains(s: body, pattern: "printf")
+    && string_contains(s: body, pattern: "/etc/systemd/system/")
+}
+
+// START, NEVER RESTART: stopping a slice kills every process in it, so a restart here would terminate the
+// compilers the pool exists to hold.
+test fn witness_install_body_starts_and_never_restarts_the_slice() -> Bool {
+  let body = compile_pool_slice_install_body(
+    slice_unit: gunbc_managed_compile_pool_slice,
+    slice_unit_file: compile_pool_slice_unit_file(
+      slice_unit: gunbc_managed_compile_pool_slice,
+      sized: byte_size(17179869184),
+    ),
+  )
+  string_contains(s: body, pattern: "systemctl")
+    && (string_contains(s: body, pattern: "restart") == false)
+}
+
+test fn witness_compile_pool_effect_routes_to_the_host_cell() -> Bool {
+  match resolve_host_effect_cell(target: HostOs { node: srv1_host }, effect: EnsureCompilePoolSlice {}) {
+    EnsureCompilePoolSliceOnHost { node: _ } => true
+    _ => false
+  }
+}
+
+// The BMC arm is the discriminating negative: a slice is an in-band systemd fact, so a Redfish target must
+// refuse rather than resolve. Without it the routing witness above would pass on a fold that resolved
+// everything to the same cell.
+test fn witness_compile_pool_effect_refuses_a_bmc_target() -> Bool {
+  match resolve_host_effect_cell(target: BmcController { node: srv1_host }, effect: EnsureCompilePoolSlice {}) {
+    IncompatibleCell { reason: why } => string_contains(s: why, pattern: "EnsureCompilePoolSlice")
+    _ => false
+  }
+}
+
+// THE LIVE TOPOLOGY TRIPWIRE, and it reads the REAL gunbc_compile_pool_placement rather than a fixture, so it
+// is a claim about this fleet. It asserts a REFUSAL today: the row is CompilePoolInRunnerSlots, so no host has
+// a managed slice and every convergence attempt refuses naming that row. When the row flips to
+// CompilePoolSliceDeclared this witness reds -- deliberately, in the same change that shrinks runner_pool --
+// and at that point it becomes an assertion that the pool converges rather than being deleted.
+test fn witness_live_topology_refuses_the_slice_ensure() -> Bool {
+  let a = admit_ensure_compile_pool_slice(
+    topology: gunbc_compile_pool_placement,
+    sizing: compile_pool_bytes_for(
+      placement: gunbc_compile_pool_placement,
+      nproc: hardware_thread_count(count: 128),
+      host: byte_size(134317047808),
+      citation: jobserver_config,
+    ),
+    cache_placement: ServerPlacementAbsent,
+    observed: CompilePoolSliceAbsent { slice_unit: gunbc_managed_compile_pool_slice },
+  )
+  match a {
+    EnsureCompilePoolRefused { reason: r } =>
+      match r {
+        EnsurePoolTopologyUndeclared { detail: d } =>
+          string_contains(s: d as String, pattern: "gunbc_compile_pool_placement")
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// INFINITY IS NOT A SIZE, AND THIS IS THE RED THAT MATTERS MOST IN THE OBSERVATION. `systemctl show
+// --property=MemoryMax --value` answers `infinity` both for a unit the manager never heard of and for a
+// loaded slice with no ceiling. Reading either as a magnitude would let a slice with NO LIMIT be reported as
+// a sized pool, which is the unbounded charge the managed slice exists to replace -- reported as its own
+// remedy. The refusal is what keeps the two apart.
+test fn witness_unbounded_memory_max_is_not_read_as_a_size() -> Bool {
+  match compile_pool_limit_of_capture(
+    slice_unit: gunbc_managed_compile_pool_slice,
+    property_name: "MemoryMax",
+    capture: SystemdPropertyCaptured { value: "infinity" },
+  ) {
+    CompilePoolLimitRefused { observation: o } =>
+      match o {
+        CompilePoolObservationUnavailable { reason: _ } => true
+        _ => false
+      }
+    CompilePoolLimitBytes { bytes: _ } => false
+  }
+}
+
+// The paired positive control: a real byte count must decode, or the refusal above would be satisfied by a
+// decoder that refuses everything.
+test fn witness_numeric_memory_max_decodes_to_bytes() -> Bool {
+  match compile_pool_limit_of_capture(
+    slice_unit: gunbc_managed_compile_pool_slice,
+    property_name: "MemoryMax",
+    capture: SystemdPropertyCaptured { value: "17179869184" },
+  ) {
+    CompilePoolLimitBytes { bytes: b } => byte_size_count(b: b) == 17179869184
+    CompilePoolLimitRefused { observation: _ } => false
+  }
+}
+
+// A read that could not run is UNAVAILABLE, never ABSENT. The two have opposite remedies -- install the slice
+// versus fix the reach -- and folding an unreadable manager into "the slice is not there" would send a
+// converger to write a unit on a host it cannot see.
+test fn witness_unreadable_property_is_unavailable_not_absent() -> Bool {
+  match compile_pool_limit_of_capture(
+    slice_unit: gunbc_managed_compile_pool_slice,
+    property_name: "MemoryMax",
+    capture: SystemdPropertyCaptureRefused { reason: "systemctl show exited unsuccessfully" },
+  ) {
+    CompilePoolLimitRefused { observation: o } =>
+      match o {
+        CompilePoolObservationUnavailable { reason: _ } => true
+        CompilePoolSliceAbsent { slice_unit: _ } => false
+        CompilePoolSliceObserved { slice_unit: _, limits: _ } => false
+      }
+    CompilePoolLimitBytes { bytes: _ } => false
+  }
+}
+
+// The load-state argv the transport materializes must be the argv extdeps.systemd.systemctl declares. Without
+// this the operation could drift from its own authority and every reading above would be of the wrong unit.
+test fn witness_load_state_operation_argv_matches_its_authority() -> Bool {
+  systemctl_show_load_state_operation_argv_matches_transport(unit: gunbc_managed_compile_pool_slice)
+}
