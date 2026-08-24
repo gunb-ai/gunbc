@@ -662,7 +662,7 @@ pub fn rust_host_string_op_fn_emit(name: String) -> Option<String> {
         ))
     } else {
         if (name.clone() == "string_head".to_string()) {
-            Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn string_head(s: String) -> Rc<CharResult> {\n".to_string(), "    match s.chars().next() {\n".to_string()), "        Some(c) => Rc::new(CharResult::CharFound { value: Box::new(c as i64) }),\n".to_string()), "        None => Rc::new(CharResult::CharAbsent),\n".to_string()), "    }\n".to_string()), "}\n".to_string()))
+            Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn string_head(s: String) -> Rc<CharResult> {\n".to_string(), "    match s.chars().next() {\n".to_string()), "        Some(c) => Rc::new(CharResult::CharFound { value: c as i64 }),\n".to_string()), "        None => Rc::new(CharResult::CharAbsent),\n".to_string()), "    }\n".to_string()), "}\n".to_string()))
         } else {
             if (name.clone() == "string_tail".to_string()) {
                 Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn string_tail(s: String) -> Rc<ListTailResult<Char>> {\n".to_string(), "    let mut __it = s.chars();\n".to_string()), "    match __it.next() {\n".to_string()), "        Some(_) => Rc::new(ListTailResult::TailFound { tail: Rc::new(__it.map(|c| c as i64).collect::<Vec<i64>>()) }),\n".to_string()), "        None => Rc::new(ListTailResult::TailAbsent),\n".to_string()), "    }\n".to_string()), "}\n".to_string()))
@@ -6470,6 +6470,56 @@ pub fn collect_items_field_import_surface_names(
     }
 }
 
+pub fn collect_pattern_ref_names(
+    pattern: Rc<MatchPattern>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*pattern.clone()).clone() {
+            MatchPattern::VariantPattern {
+                name: n,
+                parent_enum,
+                field_bindings: fbs,
+                ..
+            } => {
+                let own = match pattern_parent_enum(
+                    qualified_last_segment(n.clone()),
+                    parent_enum.clone(),
+                    "".to_string(),
+                    type_summaries.clone(),
+                ) {
+                    Some(parent) => {
+                        if (parent.clone() == "".to_string()) {
+                            Rc::new(vec![])
+                        } else {
+                            Rc::new(vec![parent.clone()])
+                        }
+                    }
+                    None => Rc::new(vec![]),
+                };
+                v1_rt::concat(
+                    own.clone(),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for fb in fbs.iter().cloned() {
+                            __result.extend(
+                                (*collect_pattern_ref_names(
+                                    field_binding_pattern(fb.clone()),
+                                    type_summaries.clone(),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }),
+                )
+            }
+            _ => Rc::new(vec![]),
+        }
+    })
+}
+
 pub fn collect_value_ref_names(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -6608,9 +6658,16 @@ pub fn collect_value_ref_names(
                 },
             ),
         );
+        let pattern_names = match n.match_pattern.clone() {
+            Some(p) => collect_pattern_ref_names(p.clone(), type_summaries.clone()),
+            None => Rc::new(vec![]),
+        };
         v1_rt::concat(
             self_name.clone(),
-            v1_rt::concat(list_fields.clone(), opt_fields.clone()),
+            v1_rt::concat(
+                pattern_names.clone(),
+                v1_rt::concat(list_fields.clone(), opt_fields.clone()),
+            ),
         )
     })
 }
