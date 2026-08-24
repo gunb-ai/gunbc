@@ -34,6 +34,17 @@ import v2.extdeps.languages.bash_build {
 import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_stmts_semi }
 import v2.std.node { Node }
 import v2.std.diagnostic { Accepted, Rejected, None }
+import gunbc.fabric_cell_converge {
+  FabricCellMember,
+  fabric_cell_member_key_eq,
+  fabric_cell_member_value_eq,
+  fabric_cell_member_ownership,
+  FabricCellPopulation,
+  FabricCellPopulationObserved,
+  FabricCellPopulationObservationRefused,
+  fabric_cell_member_key,
+  fabric_cell_desired_members,
+}
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberAction,
@@ -137,6 +148,7 @@ fn fleet_converge_plan_subject(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellPopulation,
 ) -> FleetConvergePlanSubject {
   FleetConvergePlanSubject {
     host: host,
@@ -146,6 +158,7 @@ fn fleet_converge_plan_subject(
       observed_caps: observed_caps,
       observed_spark: observed_spark,
       observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
     ),
   }
 }
@@ -156,6 +169,7 @@ fn fleet_converge_member_set_fingerprint(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellPopulation,
 ) -> ContentHash {
   content_hash_of_value(
     value: observed_baseline_text(
@@ -164,6 +178,7 @@ fn fleet_converge_member_set_fingerprint(
       observed_caps: observed_caps,
       observed_spark: observed_spark,
       observed_slots: observed_slots,
+      observed_fabric_cells: observed_fabric_cells,
     ) as NonEmptyStr,
   )
 }
@@ -179,6 +194,7 @@ fn fleet_converge_apply_subject_admits(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellPopulation,
 ) -> Bool {
   fleet_converge_apply_subject_host_matches(planned_host: planned_subject.host, observed_host: observed_host)
     && compare_content_hash(
@@ -189,6 +205,7 @@ fn fleet_converge_apply_subject_admits(
         observed_caps: observed_caps,
         observed_spark: observed_spark,
         observed_slots: observed_slots,
+        observed_fabric_cells: observed_fabric_cells,
       ),
     ) == ContentHashEqual
 }
@@ -224,6 +241,7 @@ fn fleet_converge_member_set_fingerprint_matches(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellPopulation,
 ) -> Bool {
   trim(s: planned_fingerprint_text) == (
     serialize_content_hash(
@@ -233,6 +251,7 @@ fn fleet_converge_member_set_fingerprint_matches(
         observed_caps: observed_caps,
         observed_spark: observed_spark,
         observed_slots: observed_slots,
+        observed_fabric_cells: observed_fabric_cells,
       ),
     ) as String
   )
@@ -386,6 +405,85 @@ fn fleet_converge_slot_family(
   }
 }
 
+// THE FABRIC CELL FAMILY IS A SIBLING OF THE GitHub RUNNER SLOT FAMILY, NOT A FILTER OVER IT.
+//
+// Its desired population comes from gunbc.runner_slot_allocation's exact fabric identities, and it
+// shares with the slot family exactly one thing: the RunnerSlotIdentity that names the physical
+// cell. It routes through none of runner_host_deploy_for, actions_runner_binary_artifact_for_arch
+// or runner_slot_provision_plan -- those are the GitHub family's facts, and a fabric cell that
+// resolved through them would be a fabric executor provisioned from an Actions runner release.
+//
+// THE OBSERVED SIDE IS A TYPED POPULATION RATHER THAN A BARE LIST, AND THAT IS THE WHOLE REASON
+// THIS ARM EXISTS. The sibling families take List<Member> and a caller with no observer passes the
+// empty list, which reconcile then reads as "the host has none of these" and plans a full install.
+// For a family whose resources are a cgroup and two directories that is the empty-observation
+// narrow: a probe that could not read the host is indistinguishable from a host that has nothing,
+// and the two have opposite remedies. FabricCellPopulation makes them different values, so an
+// unreadable cell stops the line here instead of arriving as work to do.
+type FleetConvergeFabricCellFamily
+  = FabricCellFamilyPlanned { plan: MembershipPlan<FabricCellMember, String> }
+  | FabricCellFamilyObservationRefused { cause: String }
+
+fn fleet_converge_fabric_cell_family(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellPopulation,
+) -> FleetConvergeFabricCellFamily {
+  match observed_fabric_cells {
+    FabricCellPopulationObservationRefused { cell: c, blocked: _ } =>
+      FabricCellFamilyObservationRefused {
+        cause: concat(
+          "fabric cell observation refused for cell=",
+          c as String,
+          "; the host was not read, so its substrate state is unknown and no membership may be planned against it",
+        )
+      }
+    FabricCellPopulationObserved { cell: _, members: observed } =>
+      FabricCellFamilyPlanned {
+        plan: membership_plan_admitting_outcome(
+          outcome: membership_reconcile(
+            desired: fabric_cell_desired_members(host: host as HostIdentity),
+            observed: observed,
+            key_of: fabric_cell_member_key,
+            key_eq: fabric_cell_member_key_eq,
+            value_eq: fabric_cell_member_value_eq,
+            ownership_of: fabric_cell_member_ownership,
+          )
+        )
+      }
+  }
+}
+
+// THE REFUSAL IS RENDERED FOR THE REVIEWER RATHER THAN FILTERED, exactly as MemberRemovalRefused is.
+// A plan that silently omitted the fabric family when its observation failed would read as "no
+// fabric work to do", which is the same wrong answer the typed population exists to prevent, one
+// layer further out.
+fn fleet_converge_fabric_cell_lines(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellPopulation,
+) -> List<String> {
+  match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
+    FabricCellFamilyObservationRefused { cause: c } =>
+      [concat("REFUSED-OBSERVATION fabric-cell ", c)]
+    FabricCellFamilyPlanned { plan: p } =>
+      map(p.actions, a => fabric_cell_action_line(action: a))
+  }
+}
+
+fn fabric_cell_action_line(action: MemberAction<FabricCellMember, String>) -> String {
+  match action {
+    MemberAdded { at: _, to: t } =>
+      concat("ADD fabric-cell ", fabric_cell_member_key(member: t))
+    MemberChanged { at: _, from: _, to: t } =>
+      concat("CHANGE fabric-cell ", fabric_cell_member_key(member: t))
+    MemberRemoved { at: _, from: f } =>
+      concat("REMOVE fabric-cell ", fabric_cell_member_key(member: f))
+    MemberRemovalRefused { from: f, cause: _ } =>
+      concat("REFUSED-REMOVAL fabric-cell ", fabric_cell_member_key(member: f))
+    MemberRosterDuplicateKeyRefused { roster: _, first: f, duplicate: _ } =>
+      concat("REFUSED-DUPLICATE-KEY fabric-cell ", fabric_cell_member_key(member: f))
+  }
+}
+
 fn fleet_converge_slot_lines(
   host: NonEmptyStr,
   observed_slots: List<RunnerSlotMember>,
@@ -500,28 +598,49 @@ fn fleet_converge_desired_caps() -> List<CapMember> {
 // good as the baseline it was planned against. Each member contributes its ADDRESS and its
 // state_digest -- the address alone would let a value change without moving the fingerprint, which
 // is precisely the drift being guarded.
+// AN UNREADABLE FABRIC POPULATION CONTRIBUTES A ROW, NOT AN ABSENCE OF ROWS, AND THAT IS THE POINT
+// OF CARRYING THE TYPED POPULATION THIS FAR IN. If the refused arm rendered nothing, the baseline of
+// a host whose cells could not be read would be byte-identical to the baseline of a host observed to
+// have no cells -- two states with opposite remedies hashing to one fingerprint, so a plan approved
+// under one would admit under the other. The cause is in the row because the cause is part of what
+// was observed: "we could not read it, for this reason" is the observation.
+fn fabric_cell_baseline_rows(population: FabricCellPopulation) -> List<String> {
+  match population {
+    FabricCellPopulationObserved { cell: _, members: ms } =>
+      map(ms, m => concat(
+        "fabric-cell:", fabric_cell_member_key(member: m), "=", m.state_digest as String,
+      ))
+    FabricCellPopulationObservationRefused { cell: c, blocked: _ } =>
+      [concat("fabric-cell-observation-refused:", c as String)]
+  }
+}
+
 fn observed_baseline_text(
   host: NonEmptyStr,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellPopulation,
 ) -> String {
   join(
     concat(
       concat(
-        [concat("host:", host as String)],
-        map(observed_timers, m => concat("timer:", m.unit_name as String)),
-      ),
-      concat(
         concat(
-          map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
-          map(observed_spark, m => concat(
-            "spark:", spark_serving_member_key(member: m), "=", m.state_digest as String,
-          )),
+          [concat("host:", host as String)],
+          map(observed_timers, m => concat("timer:", m.unit_name as String)),
         ),
-        map(observed_slots, m => concat("slot:", runner_slot_member_key(m: m) as String)),
+        concat(
+          concat(
+            map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
+            map(observed_spark, m => concat(
+              "spark:", spark_serving_member_key(member: m), "=", m.state_digest as String,
+            )),
+          ),
+          map(observed_slots, m => concat("slot:", runner_slot_member_key(m: m) as String)),
+        ),
       ),
+      fabric_cell_baseline_rows(population: observed_fabric_cells),
     ),
     "\n",
   )
@@ -1184,6 +1303,7 @@ fn fleet_converge_apply_shell(
   timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>,
   host: NonEmptyStr,
   observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellPopulation,
 ) -> String {
   join(
     concat(
@@ -1197,9 +1317,51 @@ fn fleet_converge_apply_shell(
       timer_apply_lines(plan: timer_plan),
       ["sudo -n systemctl daemon-reload"],
       ["# runner-slot membership (gunbc.runner_slot_provision) — ADD only; see slot_apply_lines"],
-      slot_apply_lines(host: host, observed_slots: observed_slots),
+      concat(
+        slot_apply_lines(host: host, observed_slots: observed_slots),
+        fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+      ),
     ),
     "\n",
+  )
+}
+
+// THE FABRIC FAMILY EMITS NO HOST EFFECT YET, AND THE COMMENT IT EMITS INSTEAD IS NOT DECORATION.
+//
+// Its resources are a cgroup slice and two directories, and provisioning them is a realization this
+// cut deliberately does not ship -- the brief stops at the model and its readback. Emitting the
+// resolved membership as comments keeps the property the plan/apply split rests on: what apply would
+// do is derived from the SAME typed resolution the reviewer read, so when the realization lands it
+// replaces a comment whose content already had to be right, rather than introducing a second
+// resolution nobody had reviewed.
+//
+// AN OBSERVATION REFUSAL REACHES THE SCRIPT AS A REFUSAL LINE rather than as no lines at all, for
+// the same reason it reaches the baseline as a row: a host that could not be read must not look
+// like a host with no fabric work.
+// THE REFUSAL COUNT IS RENDERED BESIDE THE OTHER FAMILIES' BECAUSE A DEGRADATION MUST BE COUNTABLE.
+// An observation refusal counts as one refusal for the family rather than zero: the arm that could
+// not be read is the arm whose frequency has to be visible, or nobody ever ranks fixing the missing
+// observer.
+fn fleet_converge_fabric_cell_refusal_count(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellPopulation,
+) -> Int {
+  match fleet_converge_fabric_cell_family(host: host, observed_fabric_cells: observed_fabric_cells) {
+    FabricCellFamilyObservationRefused { cause: _ } => 1
+    FabricCellFamilyPlanned { plan: p } => membership_refusal_count(plan: p)
+  }
+}
+
+fn fabric_cell_apply_lines(
+  host: NonEmptyStr,
+  observed_fabric_cells: FabricCellPopulation,
+) -> List<String> {
+  concat(
+    ["# fabric-cell membership (gunbc.fabric_cell_converge) — resolved at plan time; no host effect is emitted by this cut"],
+    map(
+      fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+      l => concat("# ", l),
+    ),
   )
 }
 
@@ -1210,6 +1372,7 @@ fn fleet_converge_plan_artifact(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellPopulation,
 ) -> FleetConvergePlanArtifact? {
   let subject = fleet_converge_plan_subject(
     host: host,
@@ -1217,6 +1380,7 @@ fn fleet_converge_plan_artifact(
     observed_caps: observed_caps,
     observed_spark: observed_spark,
     observed_slots: observed_slots,
+    observed_fabric_cells: observed_fabric_cells,
   )
   let timer_plan = timer_retirement_plan(observed: observed_timers)
   let cap_plan = caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)
@@ -1228,6 +1392,7 @@ fn fleet_converge_plan_artifact(
     observed_caps: observed_caps,
     observed_spark: observed_spark,
     observed_slots: observed_slots,
+    observed_fabric_cells: observed_fabric_cells,
   )
   let planned_generation = prior_generation + 1
   let body = join(
@@ -1250,10 +1415,13 @@ fn fleet_converge_plan_artifact(
       cap_lines,
       ["# runner-slot"],
       fleet_converge_slot_lines(host: host, observed_slots: observed_slots),
+      ["# fabric-cell"],
+      fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells),
       [
         concat("# slot-refusals=", to_string(fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots))),
         concat("# cap-refusals=", to_string(membership_refusal_count(plan: cap_plan))),
         concat("# timer-refusals=", to_string(membership_refusal_count(plan: timer_plan))),
+        concat("# fabric-cell-refusals=", to_string(fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells))),
       ],
     ),
     "\n",
@@ -1268,6 +1436,7 @@ fn fleet_converge_plan_artifact(
     timer_plan: timer_plan,
     host: host,
     observed_slots: observed_slots,
+    observed_fabric_cells: observed_fabric_cells,
   )
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) =>
@@ -1311,6 +1480,7 @@ fn fleet_converge_observed_baseline_matches(
   observed_caps: List<CapMember>,
   observed_spark: List<SparkServingMember>,
   observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellPopulation,
 ) -> Bool {
   let baseline = observed_baseline_text(
     host: host,
@@ -1318,6 +1488,7 @@ fn fleet_converge_observed_baseline_matches(
     observed_caps: observed_caps,
     observed_spark: observed_spark,
     observed_slots: observed_slots,
+    observed_fabric_cells: observed_fabric_cells,
   )
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) => structural.digest == observed_baseline_hex

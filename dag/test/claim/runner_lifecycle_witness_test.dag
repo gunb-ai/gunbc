@@ -7,7 +7,7 @@ import gunbc.runner_lifecycle {
   runner_slot_add_sequence_for,
   RunnerSlotAddSequence,
   GitHubRunnerAddSequence,
-  FabricSlotProvisioningNotModeled,
+  FabricSlotHasNoGitHubAddSequence,
   SlotIsNotACommittedMember,
   runner_slot_add_steps_ordered,
   runner_slot_caps_precede_start,
@@ -144,7 +144,7 @@ test fn witness_slot_identity_formats_zero_padded_unit() -> Bool {
 fn sequence_registers_with_github(seq: RunnerSlotAddSequence) -> Bool {
   match seq {
     GitHubRunnerAddSequence { steps: s } => list_length(items: s) == 12
-    FabricSlotProvisioningNotModeled { reason: _ } => false
+    FabricSlotHasNoGitHubAddSequence { reason: _ } => false
     SlotIsNotACommittedMember { reason: _ } => false
   }
 }

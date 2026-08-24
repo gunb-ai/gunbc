@@ -1,10 +1,24 @@
 module test.claim.fleet_converge_plan_witness
 
-import std.types { Bool, String, NonEmptyStr, Int }
+import std.types { Bool, String, NonEmptyStr, Int, list_length }
 import std.content_hash { serialize_content_hash }
 import gunbc.membership_reconcile { MemberRemoved }
 import gunbc.host_axis_caps { CapMember }
 import gunbc.host_converge { gunbc_runner_per_slot_dropin_path }
+import gunbc.fabric_cell_converge {
+  FabricCellPopulation,
+  FabricCellPopulationObserved,
+  FabricCellMember,
+  FabricCellRootAddress,
+  FabricCellAttemptRootAddress,
+  FabricCellResourceBoundaryAddress,
+  fabric_cell_desired_members,
+  fabric_cell_id_for_slot,
+  fabric_cell_population_unobserved,
+}
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.ownership { Owned }
 import gunbc.fleet_converge_plan {
   TimerRetirementMember,
   FleetConvergePlanSubject,
@@ -16,6 +30,9 @@ import gunbc.fleet_converge_plan {
   fleet_converge_apply_generation_admits,
   fleet_converge_apply_generation_stale,
   fleet_converge_member_set_fingerprint_matches,
+  fleet_converge_member_set_fingerprint,
+  fleet_converge_fabric_cell_lines,
+  fleet_converge_fabric_cell_refusal_count,
   timer_retirement_plan,
   fleet_converge_locked_apply_script,
   fleet_converge_plan_apply_shell_path,
@@ -59,6 +76,7 @@ test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
     observed_caps: [foreign],
     observed_spark: [],
     observed_slots: [],
+    observed_fabric_cells: fabric_cell_population_unobserved(),
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "REFUSED-REMOVAL cap ")
@@ -87,6 +105,7 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
     observed_caps: [observed_cap],
     observed_spark: [],
     observed_slots: [],
+    observed_fabric_cells: fabric_cell_population_unobserved(),
   ) {
     Present { value: a1 } =>
       match fleet_converge_plan_artifact(
@@ -96,6 +115,7 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
         observed_caps: [observed_cap],
         observed_spark: [],
         observed_slots: [],
+        observed_fabric_cells: fabric_cell_population_unobserved(),
       ) {
         Present { value: a2 } =>
           match fleet_converge_plan_artifact_hash(artifact: a1) {
@@ -124,6 +144,7 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
     observed_caps: [observed_cap],
     observed_spark: [],
     observed_slots: [],
+    observed_fabric_cells: fabric_cell_population_unobserved(),
   ) {
     Present { value: artifact } => {
       let drifted = CapMember {
@@ -137,6 +158,7 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
         observed_caps: [drifted],
         observed_spark: [],
         observed_slots: [],
+        observed_fabric_cells: fabric_cell_population_unobserved(),
       )
     }
     Absent => false
@@ -151,6 +173,7 @@ test fn plan_body_names_subject_host_and_generation() -> Bool {
     observed_caps: [],
     observed_spark: [],
     observed_slots: [],
+    observed_fabric_cells: fabric_cell_population_unobserved(),
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "subject_host:srv1")
@@ -174,6 +197,7 @@ test fn cross_host_apply_refuses_subject_identity() -> Bool {
     observed_caps: [observed_cap],
     observed_spark: [],
     observed_slots: [],
+    observed_fabric_cells: fabric_cell_population_unobserved(),
   ) {
     Present { value: artifact } =>
       !fleet_converge_apply_subject_admits(
@@ -183,6 +207,7 @@ test fn cross_host_apply_refuses_subject_identity() -> Bool {
         observed_caps: [observed_cap],
         observed_spark: [],
         observed_slots: [],
+        observed_fabric_cells: fabric_cell_population_unobserved(),
       )
     Absent => false
   }
@@ -200,6 +225,7 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
     observed_caps: [observed_cap],
     observed_spark: [],
     observed_slots: [],
+    observed_fabric_cells: fabric_cell_population_unobserved(),
   ) {
     Present { value: gen0 } =>
       match fleet_converge_plan_artifact(
@@ -209,6 +235,7 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
         observed_caps: [observed_cap],
         observed_spark: [],
         observed_slots: [],
+        observed_fabric_cells: fabric_cell_population_unobserved(),
       ) {
         Present { value: gen1 } =>
           match fleet_converge_plan_artifact_hash(artifact: gen0) {
@@ -245,6 +272,7 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
     observed_caps: [observed_cap],
     observed_spark: [],
     observed_slots: [],
+    observed_fabric_cells: fabric_cell_population_unobserved(),
   ) {
     Present { value: artifact } => {
       let drifted = CapMember {
@@ -258,6 +286,7 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
         observed_caps: [drifted],
         observed_spark: [],
         observed_slots: [],
+        observed_fabric_cells: fabric_cell_population_unobserved(),
       )
     }
     Absent => false
@@ -282,6 +311,7 @@ test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
     observed_caps: [],
     observed_spark: [],
     observed_slots: [],
+    observed_fabric_cells: fabric_cell_population_unobserved(),
   ) {
     Present { value: artifact } =>
       match fleet_converge_plan_bundle_digest_hex(
@@ -454,6 +484,7 @@ test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
     observed_caps: [],
     observed_spark: [],
     observed_slots: [],
+    observed_fabric_cells: fabric_cell_population_unobserved(),
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.apply_shell, pattern: "dissolve-on: fleet_converge_apply_shell")
@@ -530,6 +561,7 @@ test fn a_slot_add_reaches_the_emitted_apply_script() -> Bool {
     observed_caps: [],
     observed_spark: [],
     observed_slots: [],
+    observed_fabric_cells: fabric_cell_population_unobserved(),
   ) {
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "ADD runner-slot srv1-01")
@@ -551,6 +583,7 @@ test fn slot_drift_breaks_the_member_set_fingerprint() -> Bool {
     observed_caps: [],
     observed_spark: [],
     observed_slots: [],
+    observed_fabric_cells: fabric_cell_population_unobserved(),
   ) {
     Present { value: artifact } =>
       fleet_converge_member_set_fingerprint_matches(
@@ -560,6 +593,7 @@ test fn slot_drift_breaks_the_member_set_fingerprint() -> Bool {
         observed_caps: [],
         observed_spark: [],
         observed_slots: [],
+        observed_fabric_cells: fabric_cell_population_unobserved(),
       )
       && (fleet_converge_member_set_fingerprint_matches(
         planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
@@ -568,7 +602,112 @@ test fn slot_drift_breaks_the_member_set_fingerprint() -> Bool {
         observed_caps: [],
         observed_spark: [],
         observed_slots: [runner_slot_member_from_instance_name(instance_name: "srv1-01")],
+        observed_fabric_cells: fabric_cell_population_unobserved(),
       ) == false)
     Absent => false
   }
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// FABRIC CELL FAMILY: the controls that prove the population is load-bearing in the spine rather
+// than merely threaded through it.
+// ---------------------------------------------------------------------------------------------
+
+fn fabric_witness_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
+}
+
+fn fabric_cells_observed_converged() -> FabricCellPopulation {
+  FabricCellPopulationObserved {
+    cell: fabric_cell_id_for_slot(slot: fabric_witness_slot()),
+    members: fabric_cell_desired_members(host: operator_host_srv3),
+  }
+}
+
+fn fabric_cells_observed_empty() -> FabricCellPopulation {
+  FabricCellPopulationObserved {
+    cell: fabric_cell_id_for_slot(slot: fabric_witness_slot()),
+    members: [],
+  }
+}
+
+fn fabric_fingerprint_with(population: FabricCellPopulation) -> String {
+  serialize_content_hash(
+    hash: fleet_converge_member_set_fingerprint(
+      host: "srv3" as NonEmptyStr,
+      observed_timers: [],
+      observed_caps: [],
+      observed_spark: [],
+      observed_slots: [],
+      observed_fabric_cells: population,
+    ),
+  ) as String
+}
+
+// THE FINGERPRINT DEPENDS ON THE FABRIC POPULATION, WHICH IS THE WHOLE POINT OF THREADING IT.
+//
+// Both halves are asserted because only one of them is the safety claim and only the other proves
+// the instrument is not stuck. If a converged population and an empty one hashed the same, the cell
+// could change between plan and apply without invalidating the approved bundle -- apply would admit
+// against a host that had drifted. If EVERY population hashed differently including a population
+// against itself, the comparison would be measuring something other than the members.
+//
+// THIS IS ALSO THE MUTATION CONTROL FOR THE THREADING ITSELF: delete the fabric rows from
+// observed_baseline_text and the first conjunct goes red immediately, because the two populations
+// then differ in nothing the fingerprint reads.
+test fn witness_fabric_cell_population_moves_the_member_set_fingerprint() -> Bool {
+  fabric_fingerprint_with(population: fabric_cells_observed_converged())
+    != fabric_fingerprint_with(population: fabric_cells_observed_empty())
+    && fabric_fingerprint_with(population: fabric_cells_observed_converged())
+        == fabric_fingerprint_with(population: fabric_cells_observed_converged())
+}
+
+// AN UNREADABLE POPULATION IS NOT AN EMPTY ONE, AND THE FINGERPRINT MUST SAY SO.
+//
+// This is the empty-observation narrow at the spine seam: a host whose cells could not be read and a
+// host observed to have no cells have opposite remedies, and if they hash identically a plan
+// approved under one admits under the other. The refused arm contributes its own baseline row
+// precisely so this comparison can fail.
+test fn witness_fabric_cell_unreadable_population_is_not_an_empty_one() -> Bool {
+  fabric_fingerprint_with(population: fabric_cell_population_unobserved())
+    != fabric_fingerprint_with(population: fabric_cells_observed_empty())
+}
+
+// AN UNREADABLE OBSERVATION PRODUCES A TYPED REFUSAL, NEVER "NO WORK".
+//
+// The pairing is the content: an observed-empty host yields ADD lines because there is genuinely
+// nothing there, and an unread host yields a refusal and NO adds. A family that answered adds in
+// both cases would provision over a host it could not see; one that answered nothing in both cases
+// would silently skip a host that needs provisioning.
+test fn witness_fabric_cell_refusal_is_rendered_and_counted_not_silent() -> Bool {
+  let refused_lines = fleet_converge_fabric_cell_lines(
+    host: "srv3" as NonEmptyStr,
+    observed_fabric_cells: fabric_cell_population_unobserved(),
+  )
+  let empty_lines = fleet_converge_fabric_cell_lines(
+    host: "srv3" as NonEmptyStr,
+    observed_fabric_cells: fabric_cells_observed_empty(),
+  )
+  list_length(items: refused_lines) == 1
+    && list_length(items: empty_lines) == 3
+    && fleet_converge_fabric_cell_refusal_count(
+        host: "srv3" as NonEmptyStr,
+        observed_fabric_cells: fabric_cell_population_unobserved(),
+      ) == 1
+    && fleet_converge_fabric_cell_refusal_count(
+        host: "srv3" as NonEmptyStr,
+        observed_fabric_cells: fabric_cells_observed_converged(),
+      ) == 0
+}
+
+// A CONVERGED CELL PRODUCES NO ACTION. Without this row the family could be answering "add
+// everything" unconditionally and every other row here would still pass.
+test fn witness_fabric_cell_converged_population_plans_nothing() -> Bool {
+  list_length(
+    items: fleet_converge_fabric_cell_lines(
+      host: "srv3" as NonEmptyStr,
+      observed_fabric_cells: fabric_cells_observed_converged(),
+    )
+  ) == 0
 }

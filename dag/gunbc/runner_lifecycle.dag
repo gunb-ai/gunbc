@@ -88,7 +88,7 @@ fn runner_slot_add_steps_ordered() -> List<RunnerSlotAddStep> {
 
 type RunnerSlotAddSequence
   = GitHubRunnerAddSequence { steps: List<RunnerSlotAddStep> }
-  | FabricSlotProvisioningNotModeled { reason: String }
+  | FabricSlotHasNoGitHubAddSequence { reason: String }
   | SlotIsNotACommittedMember { reason: String }
 
 // REGISTRATION IS DERIVED FROM PURPOSE, WHICH IS THE HALF THAT MAKES THE PURPOSE FIELD REAL. A
@@ -106,10 +106,21 @@ type RunnerSlotAddSequence
 // modeled yet. Answering with a plausible subsequence would be the fabricated-plausible-output
 // failure DESIGN section 5 forbids; refusing names the gap and stops the line.
 //
-// NEXT-RUNG TRIGGER: the fabric slot's own provisioning sequence -- whatever installs and starts
-// the fabric executor -- landing as its own arm here. Until then this refusal is the honest
-// terminal state for the one fabric slot that exists (srv3-06), and it is why that slot is
-// declared but not yet convergeable.
+// THE FABRIC SLOT'S OWN PROVISIONING SEQUENCE NOW EXISTS, AND IT IS NOT AN ARM HERE. An earlier
+// revision of this annotation named "landing as its own arm here" as the next-rung trigger; that
+// would have been the wrong shape and is corrected rather than deleted, because the reason is the
+// load-bearing part. The two families answer different questions -- this one selects a GitHub
+// Actions add sequence, gunbc.fabric_cell_converge selects a fabric cell provisioning sequence --
+// and folding the second into this return type would put a step vocabulary that must never install
+// an actions-runner inside the coproduct whose other arm is exactly that installation. They are
+// siblings with disjoint step enums, so "a fabric cell provisioning run installs no actions-runner"
+// has no representation to violate.
+//
+// WHAT IS STILL NOT TRUE, SAID PLAINLY: srv3-06 is not yet convergeable. A sequence is modeled; no
+// production caller selects it and no apply path executes it, exactly as this gate's own header
+// records for itself below. NEXT-RUNG TRIGGER: a fabric-execution desired population in
+// gunbc.runner_capacity_plan -- a sibling of desired_github_identities rather than a filter over
+// it -- so that a fabric cell can be planned at all.
 // THIS GATE HAS NO PRODUCTION CALLER TODAY, AND SAYING SO IS THE DIFFERENCE BETWEEN A WALL AND A
 // CLAIM ABOUT A WALL. Only its witness calls it. The apply path never reaches a step sequence at
 // all: gunbc.runner_capacity_realize matches RunnerSlotAdd and discards the identity, counting adds
@@ -141,8 +152,8 @@ fn runner_slot_add_sequence_for(host: HostIdentity, slot_index: Nat) -> RunnerSl
         SlotServesGitHubActions =>
           GitHubRunnerAddSequence { steps: runner_slot_add_steps_ordered() }
         SlotServesFabricExecution =>
-          FabricSlotProvisioningNotModeled {
-            reason: "fabric execution slot: the GitHub runner add sequence does not apply and no fabric provisioning sequence is modeled yet; refusing rather than returning a filtered subsequence that would install an actions-runner for a slot that never serves Actions"
+          FabricSlotHasNoGitHubAddSequence {
+            reason: "fabric execution slot: the GitHub runner add sequence does not apply to it, and refusing is not the same as having nothing to say -- its provisioning sequence is gunbc.fabric_cell_converge fabric_cell_provision_sequence_for, a separate closed step vocabulary that shares no term with this one. What is refused here is the FILTERED SUBSEQUENCE: this sequence fetches an actions-runner release, verifies its arch digest and starts an actions-runner unit, so the GitHub steps minus the GitHub-specific ones would provision a slot that downloads GitHub's runner in order never to run GitHub's runner"
           }
       }
   }
