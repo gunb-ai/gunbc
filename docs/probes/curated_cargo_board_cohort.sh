@@ -1,8 +1,25 @@
 #!/usr/bin/env bash
-# PROBE INSTRUMENT (measurement only).
-# dissolve-on: the frontier board reaches zero, or a modeled .dag transport drives the cohort
-# sweep (the same trigger curated_cargo_probe_one.sh already carries; this adds no new debt beyond
-# the one it composes).
+# SCAFFOLD -- hand-authored shell orchestration, PROBE-ONLY, awaiting an operator verdict.
+# dissolve-on: gunbc bash-emit #5828, or a modeled cssl_probe transport in .dag, drives this sweep
+#              from the substrate; at that point this file is DELETED, not ported.
+#
+# THE HONEST CLASSIFICATION, corrected after review 55258 (codex/gpt-5.6-sol) on gunbc#9064. An
+# earlier revision of this header claimed composing an existing scaffold "adds no new debt beyond
+# the one it composes". That was self-authorized dissolution -- DESIGN.md names it by that name --
+# and it was wrong on its own terms: a second removable unit is a second obligation whoever deletes
+# the first must also find, and a trigger the author writes is a lifecycle fact, never permission.
+# This IS a new scaffold. It is DESIGN §6's out-of-band-actuation tell (raw shell implementing
+# semantics the substrate should express) and it lands only if the operator approves that exact
+# exception; absent that verdict the correct disposition is deletion, and the boards this file
+# already produced survive it intact -- they are committed data with committed sha256s, and
+# reproducing them needs curated_cargo_probe_one.sh, which is in tree, plus the roster read this
+# file mechanises.
+#
+# WHAT WOULD BE LOST BY DELETING IT, stated so the operator is deciding against something real
+# rather than against a convenience: the roster read below is the only mechanised defence against
+# the denominator failure described further down, and without it every future cohort re-derives
+# its own module list by hand -- which is exactly the enumeration that produced three wrong
+# populations in this fleet in one evening.
 #
 # WHAT THIS IS: one board per frontier module, taken in ONE process at ONE ref, with the module
 # list and each module's shim_lib_rel READ FROM THE ROSTER AUTHORITY

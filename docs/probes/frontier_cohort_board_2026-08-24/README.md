@@ -262,6 +262,14 @@ python3 docs/probes/cross_module_mechanism_weighting.py <log-dir> <out-prefix> \
   --shim-board parse_engine_hooks --shim-board use_site_verdict
 ```
 
+**One caveat on the second command below.** `curated_cargo_board_cohort.sh` is a hand-authored
+shell runner and therefore a DESIGN §6 scaffold awaiting an operator verdict (raised by
+review 55258 on gunbc#9064; its own header carries the corrected classification and the
+dissolution trigger). If that verdict refuses it, the file is deleted and nothing in this board
+changes: the fifteen logs, their sha256s, the probe rows and the join are all committed here, and
+`curated_cargo_probe_one.sh` — already in tree — takes a board on its own. What deletion costs is
+the mechanised roster read, i.e. the defence against the denominator failure described above.
+
 To take the boards again at a new ref:
 
 ```sh
