@@ -82,6 +82,28 @@ So closing lanes does **not** free child slots while their PRs are open. With ma
 operator merges, subtree throughput is bounded by **merge rate**, not by lanes. "Close lanes
 to free capacity" frees attention, which is real, but is not what the queue is short of.
 
+## 7a. The side-chat read returns ONLY the other side — your own messages are never in it
+
+`dashboard-ops side-chat` returns a `turns` array containing the assistant/operator turns.
+**Your own posts do not appear in it, ever.**
+
+So "my message is not in the thread" is *not* evidence that the send failed. It is what the
+view always shows. This was measured the hard way: a post was reported as failed on exactly
+that reasoning, twice, to a peer who then recorded the wrong lesson — while the operator's
+next turn quoted the post's specific content back, including a commit sha only that message
+had supplied.
+
+**And a send can complete asynchronously long after its foreground call gives up.** A send
+that produced no output, and appeared absent from a subsequent read, had in fact landed; the
+token counter decremented later, which was the only true signal available and was initially
+dismissed as stale.
+
+Correct readings, in order of reliability: the **token counter decrementing**; the other
+side **responding to your content**; the returned turns — which cannot answer the question at
+all. The action that survives every reading is the same: **never re-send on a missing
+receipt**, and under the asynchronous-landing reading that rule gets *stronger*, because a
+missing receipt now carries no information whatsoever about whether the send will land.
+
 ## 7. The side chat's read path needs a long BACKGROUND budget
 
 Foreground calls (100s, 110s, 400s) return `HTTP 502: conversation fetch failed` or hang with

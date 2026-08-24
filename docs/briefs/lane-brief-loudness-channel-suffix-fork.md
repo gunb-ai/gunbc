@@ -20,6 +20,47 @@ brief's history.** Both were name-based and both were wrong in the same directio
   one of four conflated states and leaves the mechanism `String → String`. The suffix stays
   as a **compatibility projection**, not as the law and not as a totalised law.
 
+**REFINED BY A SECOND RULING, 2026-08-24 08:39.** The decomposition below is the operative
+one, and it is sharper than "bind the producer": there are **three** questions and each gets
+exactly one authority.
+
+    Is this an executing witness?            -> structural discovery / enrolment
+    What legacy companion spelling matches?  -> TOTAL companion-name projection
+    Does that companion exist and produce?   -> lookup / result standing
+
+The suffix belongs only in the second, as backward-compatible normalisation, and **gets no
+vote on witness membership**:
+
+    x_holds   -> x_failure_receipt
+    x_passes  -> x_failure_receipt
+    x         -> x_failure_receipt
+
+That is a clean deletion of a false predicate, not a migration of 10408 badly-named witnesses.
+
+**What lands with it, and what must NOT be claimed.** `NoSuchFunction -> ""` makes the total
+projection *operationally non-breaking* — newly derivable names cannot turn absent companions
+into runtime failures. It does **not** complete the evidence path: witness false + companion
+absent is still an opaque `Bool(false)`. Honest standings afterwards:
+
+    suffix-eligibility disagreement    dissolved
+    legacy failure-receipt producers   16 companions / 4 working pairs
+    typed verdict-diagnostic producers 0
+    opaque-false population            still large, UNMEASURED at execution grain
+
+Record only: *every structurally discovered witness can be mapped to its conventional
+companion spelling; suffixes no longer determine witness eligibility.* Do **not** record
+*every witness can explain failure.*
+
+**`_verdict_diagnostic` disposition is binary and must not spawn a migration lane:** either
+establish one real producer end to end from an existing typed verdict, or delete the inert
+channel *and its consumer*. One executed producer is enough to decide whether the architecture
+is real. Until then, **mark it uninhabited** — it must not be cited as a capability the
+repository possesses.
+
+**SEQUENCING, AND IT IS AN INSTRUCTION:** do not dispatch another failure-evidence or
+frontier-analysis lane while twelve PRs sit at the merge bar. New child work is HELD; the
+active constraint is merge throughput.
+
 ---
 
 ## The four states the suffix conflates
