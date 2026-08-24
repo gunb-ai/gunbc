@@ -7795,6 +7795,25 @@ fn module_self_declared_names(content: &str) -> BTreeSet<String> {
             if let Some(name) = ident_head(rest) {
                 out.insert(name);
             }
+            // TYPE PARAMETERS on the declaration head. `type Result<ok, err> = Ok { value: ok }
+            // | Err { value: err }` in `std.error_primitives` binds `ok` and `err`; scanned as
+            // references they resolved against the whole pool to `fn ok(out: String) ->
+            // SshSessionExecResult` in a spark serving witness test, so `std.error_primitives`
+            // acquired closure edges to that witness and to `extdeps.ssh.session` — and
+            // `extdeps.dns.domain_name`'s `Ok { value: labels |> list_push(label) }` then
+            // typed `labels` as `SshSessionExecResult`.
+            let after_name = rest.trim_start();
+            let ident_end = after_name
+                .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+                .unwrap_or(after_name.len());
+            let tail = after_name[ident_end..].trim_start();
+            if let Some(params) = tail.strip_prefix('<').and_then(|s| s.split_once('>')) {
+                for part in params.0.split(',') {
+                    if let Some(name) = ident_head(part) {
+                        out.insert(name);
+                    }
+                }
+            }
             // `type X =` opens a coproduct whose variant heads continue on this line
             // and on following lines that begin with `|`.
             in_coproduct =
@@ -7994,9 +8013,21 @@ fn bare_reference_pull_paths_for_source(
                 }
             }
         };
-        let target_module = match resolve_in(&census) {
-            Some(m) => Some(m),
-            None => resolve_in(&pool_bare_census(index)?),
+        // WHICH ARM ANSWERED is a fact the caller needs and this match used to destroy
+        // one line after computing it: `Some(m) => Some(m)` collapsed a scoped-census hit
+        // and a whole-pool fallback hit into one `Option<String>`, so a name that the
+        // file's own tree could NOT resolve — and that only the pool answered — was
+        // indistinguishable from one resolved in scope. The two have different meanings:
+        // the second is the closure depending on ambient pool membership rather than on
+        // anything the file's tree provides, and it is exactly the state a zero-import
+        // corpus can sit in while looking green.
+        //
+        // Carrying the provenance costs nothing (the arms already know it) and makes the
+        // existing `GUNBC_BARE_PULL_TRACE` line answer "how was this resolved", not only
+        // "what did it resolve to".
+        let (target_module, resolution_arm) = match resolve_in(&census) {
+            Some(m) => (Some(m), "scoped"),
+            None => (resolve_in(&pool_bare_census(index)?), "pool-fallback"),
         };
         let Some(module_path) = target_module else {
             continue;
@@ -8027,8 +8058,8 @@ fn bare_reference_pull_paths_for_source(
         let dep_rel = workspace_relative_repo_path(&dep.path);
         if std::env::var("GUNBC_BARE_PULL_TRACE").is_ok() {
             eprintln!(
-                "[bare-pull] {} -> '{}' -> {} ({})",
-                file_rel, name, module_path, dep_rel
+                "[bare-pull] {} -> '{}' -> {} ({}) [{}]",
+                file_rel, name, module_path, dep_rel, resolution_arm
             );
         }
         if !index.module_graph_facts.declares_repo_path(&dep_rel) {
