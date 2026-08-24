@@ -604,3 +604,66 @@ generated file produces a mirror no single emit produced. Whether it still equal
 red on regen after a multi-mirror merge, invisible at merge time. Untested here (a full regen is a
 CI-sized job) and recorded as an open question, not a finding. It is presumably why the driver covers
 the files it does.
+
+---
+
+## The rule that subsumes traps 14, 14a and 14b — check the comparands, not the comparison
+
+Five instances in one day, across two sessions. They were catalogued above as separate sub-forms,
+and that framing is now superseded: **they are one class, and it has no cheap wall in front of it.**
+Arrived at jointly with deep-ant-102, who put it best — every failure was on the axis of *what am I
+holding*, never on the axis of *what did I measure*.
+
+> **Before interpreting a measurement, establish that the things being compared are what you think
+> they are.**
+
+Every instance below is a measurement that was CORRECT, interpreted against a comparand that was
+assumed. In each case one cheap query — usually one command, always under a minute — identified the
+comparand, and in each case it was not run because the question felt already answered.
+
+| the assumption | the free query | what it returned |
+|---|---|---|
+| the merge driver applies to this path | `git check-attr merge -- <path>` | `merge: unspecified` — it does not |
+| these floor errors are pre-existing on main | the base commit's own CI run | main green at that exact sha — they are not |
+| my branch is current, so this delta is drift | `git rev-list --count HEAD..origin/main` | `13` — the delta was my staleness |
+| my search found nothing, so nothing is there | `grep -c <known-present-token>` | `6` — my pattern could not match the format |
+| this list is the population | is the view truncated? | `tail -12` was a window, not a total |
+
+**Why "be more careful" does not address it.** In four of the five the author *was* being careful —
+measuring, controlling, labelling evidential status. The trap sits one step before the care: the
+comparand is supplied by memory and never enters the evidence. And the class is symmetric, which is
+why the earlier sub-form rules each caught only half of it:
+
+- **negatives** — a filtered or truncated view returns ⊥, and ⊥ reads as *absent*;
+- **positives** — a diff returns a real difference, and the difference is attributed to the wrong side.
+
+An absence rule (*show the view could contain it*) misses the second; a presence rule (*identify both
+sides*) misses nothing, which is why it is the one to keep.
+
+**The operational half, and it is deep-ant-102's, kept verbatim because it is the only reliable exit:**
+
+> **When a filtered view yields a negative, go get something that could positively contradict it.**
+
+Absence never contradicts anything, so no amount of staring at a negative result will overturn it.
+The two escapes today were both positive artifacts that made the standing conclusion impossible: a
+base64 payload containing the very row I had just concluded was missing, and a `git status` line
+naming the file I had just concluded was never written.
+
+### What it cost, and the near-miss that is the real argument
+
+Four of the five produced a wrong claim that reached another session inside minutes; two of those
+recruited a second party to act on them. The one that matters most never reached anyone.
+
+Holding a regenerated DESIGN.md, I was one commit from landing it. My branch was 13 commits behind
+main, so those bytes would have **reverted two of main's paragraphs** — inside a PR whose stated
+purpose was adding one row, in the repository's canonical authority document, with the drift gate
+that would have caught it unguarded since the floor cut. Every individual step was sound: regenerate
+from the authority rather than hand-edit the artifact, commit authority and output together, verify
+the output contains the intended change. It was correct work aimed at a comparand nobody had checked.
+
+`git rev-list --count HEAD..origin/main` is the whole wall, and it costs nothing.
+
+**Corollary for reviewers**, since the author's own care demonstrably does not catch this: when a
+diff, count, or absence is offered as evidence, ask what it was compared *against* and whether that
+was verified or remembered. It is a different question from "is the measurement right", and today it
+was the only one that mattered.
