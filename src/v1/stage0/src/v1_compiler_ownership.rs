@@ -150,7 +150,7 @@ pub struct UsageAccum {
 
 pub fn empty_usage_accum() -> Rc<UsageAccum> {
     Rc::new(UsageAccum {
-        bindings: v1_rt::rc_empty_map::<String, Rc<BindingUsage>>(),
+        bindings: panic!("call target identity was not established before Rust emission")(),
         fold_call_nodes: Rc::new(vec![]),
         touched: Rc::new(vec![]),
     })
@@ -291,7 +291,7 @@ pub fn walk_expr(
             ExprData::ExprVar {
                 binding_kind: bk, ..
             } => {
-                let n = expr_var_name_at(texpr.clone(), si.clone());
+                let n = crate::v1_std_core::expr_var_name_at(texpr.clone(), si.clone());
                 if in_tail.clone() {
                     record_use(
                         accum.clone(),
@@ -314,13 +314,15 @@ pub fn walk_expr(
             }
             ExprData::ExprLiteral { value: _, .. } => accum.clone(),
             ExprData::ExprFieldAccess { .. } => {
-                let base_node = field_access_base(texpr.clone());
+                let base_node = crate::v1_std_core::field_access_base(texpr.clone());
                 match (*base_node.expr_data.clone()).clone() {
                     ExprData::ExprVar {
                         binding_kind: bk, ..
                     } => {
-                        let vn = expr_var_name_at(base_node.clone(), si.clone());
-                        let f = field_access_field_at(texpr.clone(), si.clone());
+                        let vn =
+                            crate::v1_std_core::expr_var_name_at(base_node.clone(), si.clone());
+                        let f =
+                            crate::v1_std_core::field_access_field_at(texpr.clone(), si.clone());
                         record_use(
                             accum.clone(),
                             vn.clone(),
@@ -334,13 +336,15 @@ pub fn walk_expr(
                 }
             }
             ExprData::ExprCall { .. } => {
-                let fname = expr_call_func_at(texpr.clone(), si.clone());
+                let fname = crate::v1_std_core::expr_call_func_at(texpr.clone(), si.clone());
                 if (fname.clone() == "fold".to_string()) {
                     {
                         let init_arg = Rc::new({
                             let mut __result = Vec::new();
                             for a in texpr.children.clone().iter().cloned() {
-                                if (authored_name_at(si.clone(), a.clone()) == "init".to_string()) {
+                                if (crate::v1_std_core::authored_name_at(si.clone(), a.clone())
+                                    == "init".to_string())
+                                {
                                     __result.push(a);
                                 }
                             }
@@ -350,12 +354,15 @@ pub fn walk_expr(
                         .cloned();
                         let threaded_accum = match init_arg.clone() {
                             Some(ia) => {
-                                let ia_val = arg_value(ia.clone());
+                                let ia_val = crate::v1_std_core::arg_value(ia.clone());
                                 match (*ia_val.expr_data.clone()).clone() {
                                     ExprData::ExprVar {
                                         binding_kind: bk, ..
                                     } => {
-                                        let vn = expr_var_name_at(ia_val.clone(), si.clone());
+                                        let vn = crate::v1_std_core::expr_var_name_at(
+                                            ia_val.clone(),
+                                            si.clone(),
+                                        );
                                         record_use(
                                             accum.clone(),
                                             vn.clone(),
@@ -375,7 +382,9 @@ pub fn walk_expr(
                         let non_init = Rc::new({
                             let mut __result = Vec::new();
                             for a in texpr.children.clone().iter().cloned() {
-                                if (authored_name_at(si.clone(), a.clone()) != "init".to_string()) {
+                                if (crate::v1_std_core::authored_name_at(si.clone(), a.clone())
+                                    != "init".to_string())
+                                {
                                     __result.push(a);
                                 }
                             }
@@ -384,7 +393,12 @@ pub fn walk_expr(
                         non_init.iter().cloned().fold(
                             threaded_accum.clone(),
                             |acc: Rc<UsageAccum>, a: Rc<Node>| {
-                                walk_expr(acc, arg_value(a.clone()), false, si.clone())
+                                walk_expr(
+                                    acc,
+                                    crate::v1_std_core::arg_value(a.clone()),
+                                    false,
+                                    si.clone(),
+                                )
                             },
                         )
                     }
@@ -392,22 +406,29 @@ pub fn walk_expr(
                     texpr.children.clone().iter().cloned().fold(
                         accum.clone(),
                         |acc: Rc<UsageAccum>, a: Rc<Node>| {
-                            walk_expr(acc, arg_value(a.clone()), false, si.clone())
+                            walk_expr(
+                                acc,
+                                crate::v1_std_core::arg_value(a.clone()),
+                                false,
+                                si.clone(),
+                            )
                         },
                     )
                 }
             }
             ExprData::ExprMethodCall { .. } => {
-                let recv = method_receiver(texpr.clone());
-                let mc_args = method_arg_nodes(texpr.clone());
-                let mname = expr_method_name_at(texpr.clone(), si.clone());
+                let recv = crate::v1_std_core::method_receiver(texpr.clone());
+                let mc_args = crate::v1_std_core::method_arg_nodes(texpr.clone());
+                let mname = crate::v1_std_core::expr_method_name_at(texpr.clone(), si.clone());
                 if (mname.clone() == "fold".to_string()) {
                     {
                         let recv_accum = walk_expr(accum.clone(), recv.clone(), false, si.clone());
                         let init_arg = Rc::new({
                             let mut __result = Vec::new();
                             for a in mc_args.iter().cloned() {
-                                if (authored_name_at(si.clone(), a.clone()) == "init".to_string()) {
+                                if (crate::v1_std_core::authored_name_at(si.clone(), a.clone())
+                                    == "init".to_string())
+                                {
                                     __result.push(a);
                                 }
                             }
@@ -417,12 +438,15 @@ pub fn walk_expr(
                         .cloned();
                         let threaded_accum = match init_arg.clone() {
                             Some(ia) => {
-                                let ia_val = arg_value(ia.clone());
+                                let ia_val = crate::v1_std_core::arg_value(ia.clone());
                                 match (*ia_val.expr_data.clone()).clone() {
                                     ExprData::ExprVar {
                                         binding_kind: bk, ..
                                     } => {
-                                        let vn = expr_var_name_at(ia_val.clone(), si.clone());
+                                        let vn = crate::v1_std_core::expr_var_name_at(
+                                            ia_val.clone(),
+                                            si.clone(),
+                                        );
                                         record_use(
                                             recv_accum.clone(),
                                             vn.clone(),
@@ -445,7 +469,9 @@ pub fn walk_expr(
                         let non_init = Rc::new({
                             let mut __result = Vec::new();
                             for a in mc_args.iter().cloned() {
-                                if (authored_name_at(si.clone(), a.clone()) != "init".to_string()) {
+                                if (crate::v1_std_core::authored_name_at(si.clone(), a.clone())
+                                    != "init".to_string())
+                                {
                                     __result.push(a);
                                 }
                             }
@@ -454,7 +480,12 @@ pub fn walk_expr(
                         let walked = non_init.iter().cloned().fold(
                             threaded_accum.clone(),
                             |acc: Rc<UsageAccum>, a: Rc<Node>| {
-                                walk_expr(acc, arg_value(a.clone()), false, si.clone())
+                                walk_expr(
+                                    acc,
+                                    crate::v1_std_core::arg_value(a.clone()),
+                                    false,
+                                    si.clone(),
+                                )
                             },
                         );
                         Rc::new(UsageAccum {
@@ -472,15 +503,20 @@ pub fn walk_expr(
                         mc_args.iter().cloned().fold(
                             recv_accum.clone(),
                             |acc: Rc<UsageAccum>, a: Rc<Node>| {
-                                walk_expr(acc, arg_value(a.clone()), false, si.clone())
+                                walk_expr(
+                                    acc,
+                                    crate::v1_std_core::arg_value(a.clone()),
+                                    false,
+                                    si.clone(),
+                                )
                             },
                         )
                     }
                 }
             }
             ExprData::ExprMatch => {
-                let scrut = match_scrutinee(texpr.clone());
-                let arm_nodes = match_arm_nodes(texpr.clone());
+                let scrut = crate::v1_std_core::match_scrutinee(texpr.clone());
+                let arm_nodes = crate::v1_std_core::match_arm_nodes(texpr.clone());
                 let s_accum = walk_expr(accum.clone(), scrut.clone(), false, si.clone());
                 let seed = branch_seed(s_accum.clone());
                 let branch_accums = Rc::new({
@@ -488,7 +524,7 @@ pub fn walk_expr(
                     for arm_node in arm_nodes.iter().cloned() {
                         __result.push(walk_expr(
                             seed.clone(),
-                            arm_body(arm_node.clone()),
+                            crate::v1_std_core::arm_body(arm_node.clone()),
                             in_tail.clone(),
                             si.clone(),
                         ));
@@ -498,12 +534,12 @@ pub fn walk_expr(
                 merge_branch_usages(s_accum.clone(), branch_accums.clone())
             }
             ExprData::ExprIf => {
-                let c = if_condition(texpr.clone());
-                let t = if_then_branch(texpr.clone());
+                let c = crate::v1_std_core::if_condition(texpr.clone());
+                let t = crate::v1_std_core::if_then_branch(texpr.clone());
                 let c_accum = walk_expr(accum.clone(), c.clone(), false, si.clone());
                 let seed = branch_seed(c_accum.clone());
                 let t_accum = walk_expr(seed.clone(), t.clone(), in_tail.clone(), si.clone());
-                let e_accum = match if_else_branch(texpr.clone()) {
+                let e_accum = match crate::v1_std_core::if_else_branch(texpr.clone()) {
                     Some(eb) => walk_expr(seed.clone(), eb.clone(), in_tail.clone(), si.clone()),
                     None => seed.clone(),
                 };
@@ -513,9 +549,9 @@ pub fn walk_expr(
                 )
             }
             ExprData::ExprLet => {
-                let v = let_value(texpr.clone());
+                let v = crate::v1_std_core::let_value(texpr.clone());
                 let v_accum = walk_expr(accum.clone(), v.clone(), false, si.clone());
-                match let_body(texpr.clone()) {
+                match crate::v1_std_core::let_body(texpr.clone()) {
                     Some(b) => walk_expr(v_accum.clone(), b.clone(), in_tail.clone(), si.clone()),
                     None => v_accum.clone(),
                 }
@@ -573,7 +609,7 @@ pub fn walk_expr(
                 },
             ),
             ExprData::ExprLambda => {
-                let body = lambda_body(texpr.clone());
+                let body = crate::v1_std_core::lambda_body(texpr.clone());
                 let inner = walk_expr(empty_usage_accum(), body.clone(), false, si.clone());
                 let binding_merged = Rc::new(v1_rt::map_values(&inner.bindings.clone()))
                     .iter()
@@ -601,9 +637,9 @@ pub fn walk_expr(
                 })
             }
             ExprData::ExprForEach => {
-                let coll = foreach_collection(texpr.clone());
+                let coll = crate::v1_std_core::foreach_collection(texpr.clone());
                 let coll_accum = walk_expr(accum.clone(), coll.clone(), false, si.clone());
-                let body = foreach_body(texpr.clone());
+                let body = crate::v1_std_core::foreach_body(texpr.clone());
                 let inner = walk_expr(empty_usage_accum(), body.clone(), false, si.clone());
                 let binding_merged = Rc::new(v1_rt::map_values(&inner.bindings.clone()))
                     .iter()
@@ -816,21 +852,22 @@ pub fn collect_callable_refs(
                 binding_kind: bk, ..
             } => match bk.clone().as_deref().cloned() {
                 Some(VarBindingKind::FunctionValueBinding) => {
-                    let n = expr_var_name_at(texpr.clone(), si.clone());
+                    let n = crate::v1_std_core::expr_var_name_at(texpr.clone(), si.clone());
                     v1_rt::rc_set_insert(v1_rt::rc_empty_set::<_>(), n.clone())
                 }
                 _ => v1_rt::rc_empty_set::<String>(),
             },
             ExprData::ExprLiteral { value: _, .. } => v1_rt::rc_empty_set::<String>(),
-            ExprData::ExprFieldAccess { .. } => {
-                collect_callable_refs(field_access_base(texpr.clone()), si.clone())
-            }
+            ExprData::ExprFieldAccess { .. } => collect_callable_refs(
+                crate::v1_std_core::field_access_base(texpr.clone()),
+                si.clone(),
+            ),
             ExprData::ExprCall { .. } => texpr.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_set::<String>(),
                 |acc: Rc<BTreeSet<String>>, a: Rc<Node>| {
                     v1_rt::rc_set_union(
                         acc,
-                        collect_callable_refs(arg_value(a.clone()), si.clone()),
+                        collect_callable_refs(crate::v1_std_core::arg_value(a.clone()), si.clone()),
                     )
                 },
             ),
@@ -838,21 +875,33 @@ pub fn collect_callable_refs(
                 method_semantics: _,
                 ..
             } => {
-                let recv = collect_callable_refs(method_receiver(texpr.clone()), si.clone());
-                method_arg_nodes(texpr.clone()).iter().cloned().fold(
-                    recv.clone(),
-                    |acc: Rc<BTreeSet<String>>, a: Rc<Node>| {
+                let recv = collect_callable_refs(
+                    crate::v1_std_core::method_receiver(texpr.clone()),
+                    si.clone(),
+                );
+                crate::v1_std_core::method_arg_nodes(texpr.clone())
+                    .iter()
+                    .cloned()
+                    .fold(recv.clone(), |acc: Rc<BTreeSet<String>>, a: Rc<Node>| {
                         v1_rt::rc_set_union(
                             acc,
-                            collect_callable_refs(arg_value(a.clone()), si.clone()),
+                            collect_callable_refs(
+                                crate::v1_std_core::arg_value(a.clone()),
+                                si.clone(),
+                            ),
                         )
-                    },
-                )
+                    })
             }
             ExprData::ExprIf => {
-                let cond = collect_callable_refs(if_condition(texpr.clone()), si.clone());
-                let then_br = collect_callable_refs(if_then_branch(texpr.clone()), si.clone());
-                let else_br = match if_else_branch(texpr.clone()) {
+                let cond = collect_callable_refs(
+                    crate::v1_std_core::if_condition(texpr.clone()),
+                    si.clone(),
+                );
+                let then_br = collect_callable_refs(
+                    crate::v1_std_core::if_then_branch(texpr.clone()),
+                    si.clone(),
+                );
+                let else_br = match crate::v1_std_core::if_else_branch(texpr.clone()) {
                     Some(eb) => collect_callable_refs(eb.clone(), si.clone()),
                     None => v1_rt::rc_empty_set::<String>(),
                 };
@@ -862,20 +911,27 @@ pub fn collect_callable_refs(
                 )
             }
             ExprData::ExprMatch => {
-                let scrut = collect_callable_refs(match_scrutinee(texpr.clone()), si.clone());
-                match_arm_nodes(texpr.clone()).iter().cloned().fold(
-                    scrut.clone(),
-                    |acc: Rc<BTreeSet<String>>, arm: Rc<Node>| {
+                let scrut = collect_callable_refs(
+                    crate::v1_std_core::match_scrutinee(texpr.clone()),
+                    si.clone(),
+                );
+                crate::v1_std_core::match_arm_nodes(texpr.clone())
+                    .iter()
+                    .cloned()
+                    .fold(scrut.clone(), |acc: Rc<BTreeSet<String>>, arm: Rc<Node>| {
                         v1_rt::rc_set_union(
                             acc,
-                            collect_callable_refs(arm_body(arm.clone()), si.clone()),
+                            collect_callable_refs(
+                                crate::v1_std_core::arm_body(arm.clone()),
+                                si.clone(),
+                            ),
                         )
-                    },
-                )
+                    })
             }
             ExprData::ExprLet => {
-                let val = collect_callable_refs(let_value(texpr.clone()), si.clone());
-                match let_body(texpr.clone()) {
+                let val =
+                    collect_callable_refs(crate::v1_std_core::let_value(texpr.clone()), si.clone());
+                match crate::v1_std_core::let_body(texpr.clone()) {
                     Some(lb) => v1_rt::rc_set_union(
                         val.clone(),
                         collect_callable_refs(lb.clone(), si.clone()),
@@ -893,12 +949,20 @@ pub fn collect_callable_refs(
                 Some(child) => collect_callable_refs(child.clone(), si.clone()),
                 None => v1_rt::rc_empty_set::<String>(),
             },
-            ExprData::ExprLambda => collect_callable_refs(lambda_body(texpr.clone()), si.clone()),
+            ExprData::ExprLambda => {
+                collect_callable_refs(crate::v1_std_core::lambda_body(texpr.clone()), si.clone())
+            }
             ExprData::ExprForEach => {
-                let col = collect_callable_refs(foreach_collection(texpr.clone()), si.clone());
+                let col = collect_callable_refs(
+                    crate::v1_std_core::foreach_collection(texpr.clone()),
+                    si.clone(),
+                );
                 v1_rt::rc_set_union(
                     col.clone(),
-                    collect_callable_refs(foreach_body(texpr.clone()), si.clone()),
+                    collect_callable_refs(
+                        crate::v1_std_core::foreach_body(texpr.clone()),
+                        si.clone(),
+                    ),
                 )
             }
             ExprData::ExprRecordLit { .. } => texpr.children.clone().iter().cloned().fold(
@@ -906,7 +970,10 @@ pub fn collect_callable_refs(
                 |acc: Rc<BTreeSet<String>>, field: Rc<Node>| {
                     v1_rt::rc_set_union(
                         acc,
-                        collect_callable_refs(arg_value(field.clone()), si.clone()),
+                        collect_callable_refs(
+                            crate::v1_std_core::arg_value(field.clone()),
+                            si.clone(),
+                        ),
                     )
                 },
             ),
@@ -918,7 +985,7 @@ pub fn collect_callable_refs(
 pub fn fold_terminal_expr(mut body: Rc<Node>) -> Rc<Node> {
     loop {
         match (*body.expr_data.clone()).clone() {
-            ExprData::ExprLet => match let_body(body.clone()) {
+            ExprData::ExprLet => match crate::v1_std_core::let_body(body.clone()) {
                 Some(inner) => {
                     let __tco_0 = inner.clone();
                     body = __tco_0;
@@ -975,7 +1042,9 @@ pub fn summarize_fold_acc_uses(
             ExprData::ExprVar {
                 binding_kind: _, ..
             } => {
-                if (expr_var_name_at(node.clone(), si.clone()) == acc_name.clone()) {
+                if (crate::v1_std_core::expr_var_name_at(node.clone(), si.clone())
+                    == acc_name.clone())
+                {
                     if inside_nested.clone() {
                         Rc::new(FoldAccUseSummary {
                             whole_acc_uses: 0,
@@ -994,11 +1063,14 @@ pub fn summarize_fold_acc_uses(
                 }
             }
             ExprData::ExprFieldAccess { summary: _, .. } => {
-                let base = field_access_base(node.clone());
+                let base = crate::v1_std_core::field_access_base(node.clone());
                 let is_direct = match (*base.expr_data.clone()).clone() {
                     ExprData::ExprVar {
                         binding_kind: _, ..
-                    } => (expr_var_name_at(base.clone(), si.clone()) == acc_name.clone()),
+                    } => {
+                        (crate::v1_std_core::expr_var_name_at(base.clone(), si.clone())
+                            == acc_name.clone())
+                    }
                     _ => false,
                 };
                 if is_direct.clone() {
@@ -1011,7 +1083,7 @@ pub fn summarize_fold_acc_uses(
                     } else {
                         Rc::new(FoldAccUseSummary {
                             whole_acc_uses: 0,
-                            field_moves: Rc::new(vec![field_access_field_at(
+                            field_moves: Rc::new(vec![crate::v1_std_core::field_access_field_at(
                                 node.clone(),
                                 si.clone(),
                             )]),
@@ -1037,7 +1109,7 @@ pub fn summarize_fold_acc_uses(
             }
             ExprData::ExprLambda => {
                 let body_summary = summarize_fold_acc_uses(
-                    lambda_body(node.clone()),
+                    crate::v1_std_core::lambda_body(node.clone()),
                     acc_name.clone(),
                     si.clone(),
                     true,
@@ -1057,13 +1129,13 @@ pub fn summarize_fold_acc_uses(
             }
             ExprData::ExprForEach => {
                 let coll_summary = summarize_fold_acc_uses(
-                    foreach_collection(node.clone()),
+                    crate::v1_std_core::foreach_collection(node.clone()),
                     acc_name.clone(),
                     si.clone(),
                     inside_nested.clone(),
                 );
                 let body_summary = summarize_fold_acc_uses(
-                    foreach_body(node.clone()),
+                    crate::v1_std_core::foreach_body(node.clone()),
                     acc_name.clone(),
                     si.clone(),
                     true,
@@ -1107,7 +1179,7 @@ pub fn fold_lambda_acc_use_summary(
 ) -> Rc<FoldAccUseSummary> {
     match (*lambda_node.expr_data.clone()).clone() {
         ExprData::ExprLambda => summarize_fold_acc_uses(
-            lambda_body(lambda_node.clone()),
+            crate::v1_std_core::lambda_body(lambda_node.clone()),
             acc_name.clone(),
             si.clone(),
             false,
@@ -1123,11 +1195,12 @@ pub fn fold_body_constructs_acc_struct(
 ) -> bool {
     match (*lambda_node.expr_data.clone()).clone() {
         ExprData::ExprLambda => {
-            let body = lambda_body(lambda_node.clone());
+            let body = crate::v1_std_core::lambda_body(lambda_node.clone());
             let terminal = fold_terminal_expr(body.clone());
             match (*terminal.expr_data.clone()).clone() {
                 ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                    (authored_name_at(si.clone(), terminal.clone()) == acc_type_name.clone())
+                    (crate::v1_std_core::authored_name_at(si.clone(), terminal.clone())
+                        == acc_type_name.clone())
                 }
                 _ => false,
             }
@@ -1174,31 +1247,32 @@ pub fn analyze_single_fold(
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<FoldAccUnwrapProof> {
     {
-        let args = method_arg_nodes(method_call.clone());
+        let args = crate::v1_std_core::method_arg_nodes(method_call.clone());
         let init_arg_node = match args.clone().first().cloned() {
-            Some(a) => arg_value(a.clone()),
+            Some(a) => crate::v1_std_core::arg_value(a.clone()),
             None => method_call.clone(),
         };
         let fold_lambda_node = match args.clone().iter().cloned().skip(1 as usize).next() {
-            Some(a) => arg_value(a.clone()),
+            Some(a) => crate::v1_std_core::arg_value(a.clone()),
             None => method_call.clone(),
         };
         let acc_param_name = match (*fold_lambda_node.expr_data.clone()).clone() {
-            ExprData::ExprLambda => {
-                match lambda_param_names_at(fold_lambda_node.clone(), si.clone())
-                    .first()
-                    .cloned()
-                {
-                    Some(n) => n.clone(),
-                    None => "".to_string(),
-                }
-            }
+            ExprData::ExprLambda => match crate::v1_std_core::lambda_param_names_at(
+                fold_lambda_node.clone(),
+                si.clone(),
+            )
+            .first()
+            .cloned()
+            {
+                Some(n) => n.clone(),
+                None => "".to_string(),
+            },
             _ => "".to_string(),
         };
         let acc_type_name = match init_arg_node.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved {
                 node: type_node, ..
-            }) => authored_name_at(si.clone(), type_node.clone()),
+            }) => crate::v1_std_core::authored_name_at(si.clone(), type_node.clone()),
             _ => "".to_string(),
         };
         let cond_required = match init_arg_node.inferred.clone().as_deref().cloned() {
@@ -1225,7 +1299,9 @@ pub fn analyze_single_fold(
         let eligible = ((cond_required.clone() && (acc_type_name.clone() != "".to_string()))
             && ((cond_struct.clone() && cond_safe.clone()) || cond_whole_acc.clone()));
         Rc::new(FoldAccUnwrapProof {
-            site_key: (method_call.span.clone().start.clone()).to_string(),
+            site_key: crate::v1_compiler_emit_core_support::to_string(
+                method_call.span.clone().start.clone(),
+            ),
             acc_param_name: acc_param_name.clone(),
             acc_type_name: acc_type_name.clone(),
             body_constructs_acc: cond_struct.clone(),
@@ -1250,7 +1326,7 @@ pub fn analyze_ownership(
                 .fold(empty_usage_accum(), |acc: Rc<UsageAccum>, p: Rc<Node>| {
                     let acc = v1_rt::take_owned(acc);
                     {
-                        let p_name = authored_name_at(si.clone(), p.clone());
+                        let p_name = crate::v1_std_core::authored_name_at(si.clone(), p.clone());
                         Rc::new(UsageAccum {
                             bindings: v1_rt::rc_map_insert(
                                 acc.bindings,

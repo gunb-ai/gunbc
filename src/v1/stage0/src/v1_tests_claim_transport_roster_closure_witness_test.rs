@@ -31,18 +31,21 @@ pub fn transport_roster_closure_witness_note() -> String {
 }
 
 pub fn str_expr(s: String) -> Rc<Node> {
-    make_expr_node(
+    crate::v1_std_core::make_expr_node(
         Rc::new(ExprData::ExprLiteral {
             value: Rc::new(LiteralValue::LitStr { value: s.clone() }),
         }),
         Rc::new(vec![]),
         None,
-        no_span(),
+        crate::v1_std_core::no_span(),
     )
 }
 
 pub fn kind_name(t: Rc<Node>) -> String {
-    match classify_transport(t.clone(), v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>()) {
+    match crate::v1_std_core::classify_transport(
+        t.clone(),
+        panic!("call target identity was not established before Rust emission")(),
+    ) {
         Some(TransportKind::RestTransport) => "rest".to_string(),
         Some(TransportKind::ShellTransport) => "shell".to_string(),
         Some(TransportKind::FileTransport) => "file".to_string(),
@@ -52,7 +55,7 @@ pub fn kind_name(t: Rc<Node>) -> String {
 }
 
 pub fn rest_transport_classifies_as_rest() -> bool {
-    (kind_name(rest_transport_node(
+    (kind_name(crate::v1_std_core::rest_transport_node(
         str_expr("https://example.invalid".to_string()),
         Rc::new(vec![]),
         Rc::new(vec![]),
@@ -61,42 +64,44 @@ pub fn rest_transport_classifies_as_rest() -> bool {
         None,
         None,
         None,
-        no_span(),
+        crate::v1_std_core::no_span(),
     )) == "rest".to_string())
 }
 
 pub fn shell_transport_classifies_as_shell() -> bool {
-    (kind_name(shell_transport_node(
+    (kind_name(crate::v1_std_core::shell_transport_node(
         Rc::new(vec![str_expr("ls".to_string())]),
         Rc::new(vec![]),
         None,
-        no_span(),
+        crate::v1_std_core::no_span(),
     )) == "shell".to_string())
 }
 
 pub fn file_transport_classifies_as_file() -> bool {
-    (kind_name(file_transport_node(
+    (kind_name(crate::v1_std_core::file_transport_node(
         str_expr("/tmp/x".to_string()),
         None,
-        no_span(),
+        crate::v1_std_core::no_span(),
     )) == "file".to_string())
 }
 
 pub fn bare_transport_classifies_as_local() -> bool {
-    (kind_name(local_transport_node(no_span())) == "local".to_string())
+    (kind_name(crate::v1_std_core::local_transport_node(
+        crate::v1_std_core::no_span(),
+    )) == "local".to_string())
 }
 
 pub fn keyless_transport() -> Rc<Node> {
-    make_transport_node(
-        Rc::new(vec![make_field_init_node(
+    crate::v1_std_core::make_transport_node(
+        Rc::new(vec![crate::v1_std_core::make_field_init_node(
             "unrecognized_key".to_string(),
             str_expr("v".to_string()),
-            no_span(),
-            no_span(),
+            crate::v1_std_core::no_span(),
+            crate::v1_std_core::no_span(),
         )]),
         Rc::new(vec![]),
         None,
-        no_span(),
+        crate::v1_std_core::no_span(),
     )
 }
 
@@ -105,37 +110,37 @@ pub fn unrecognized_transport_matches_no_roster_member() -> bool {
 }
 
 pub fn unrecognized_transport_is_not_local() -> bool {
-    (is_local_transport(
+    (crate::v1_std_core::is_local_transport(
         keyless_transport(),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        panic!("call target identity was not established before Rust emission")(),
     ) == false)
 }
 
 pub fn the_bare_node_is_still_local_positive_control() -> bool {
-    (is_local_transport(
-        local_transport_node(no_span()),
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+    (crate::v1_std_core::is_local_transport(
+        crate::v1_std_core::local_transport_node(crate::v1_std_core::no_span()),
+        panic!("call target identity was not established before Rust emission")(),
     ) == true)
 }
 
 pub fn rest_wins_over_a_file_key_on_the_same_transport() -> bool {
-    (kind_name(make_transport_node(
+    (kind_name(crate::v1_std_core::make_transport_node(
         Rc::new(vec![
-            make_field_init_node(
+            crate::v1_std_core::make_field_init_node(
                 "base_url".to_string(),
                 str_expr("https://example.invalid".to_string()),
-                no_span(),
-                no_span(),
+                crate::v1_std_core::no_span(),
+                crate::v1_std_core::no_span(),
             ),
-            make_field_init_node(
+            crate::v1_std_core::make_field_init_node(
                 "base_path".to_string(),
                 str_expr("/tmp/x".to_string()),
-                no_span(),
-                no_span(),
+                crate::v1_std_core::no_span(),
+                crate::v1_std_core::no_span(),
             ),
         ]),
         Rc::new(vec![]),
         None,
-        no_span(),
+        crate::v1_std_core::no_span(),
     )) == "rest".to_string())
 }

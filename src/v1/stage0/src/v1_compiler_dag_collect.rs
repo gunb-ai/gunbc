@@ -23,7 +23,7 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_import_slot_node(n: Rc<Node>) -> bool {
-    (import_is_all(n.clone())
+    (crate::v1_std_core::import_is_all(n.clone())
         || (((((n.params.clone().len() as i64) == 0) && (n.ident_span.clone() != None))
             && (n.body.clone() == None))
             && (n.expr_data.clone() == Rc::new(ExprData::NoExprData))))
@@ -87,7 +87,9 @@ pub fn dag_node_key(node: Rc<Node>) -> String {
         if ((anchor.span.clone().start.clone() == 0) && (anchor.span.clone().end.clone() == 0)) {
             v1_rt::concat(
                 ":0..0:".to_string(),
-                dag_node_surface_fingerprint_memo(anchor.clone()),
+                crate::v1_compiler_dag_collect_support::dag_node_surface_fingerprint_memo(
+                    anchor.clone(),
+                ),
             )
         } else {
             v1_rt::concat(
@@ -95,14 +97,21 @@ pub fn dag_node_key(node: Rc<Node>) -> String {
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(anchor.span.clone().file.clone(), ":".to_string()),
-                            (anchor.span.clone().start.clone()).to_string(),
+                            crate::v1_compiler_emit_core_support::to_string(
+                                anchor.span.clone().start.clone(),
+                            ),
                         ),
                         "..".to_string(),
                     ),
-                    (anchor.span.clone().end.clone()).to_string(),
+                    crate::v1_compiler_emit_core_support::to_string(
+                        anchor.span.clone().end.clone(),
+                    ),
                 ),
                 match anchor.ident.clone() {
-                    Some(id) => v1_rt::concat(":".to_string(), (id.clone()).to_string()),
+                    Some(id) => v1_rt::concat(
+                        ":".to_string(),
+                        crate::v1_compiler_emit_core_support::to_string(id.clone()),
+                    ),
                     None => "".to_string(),
                 },
             )
@@ -111,7 +120,9 @@ pub fn dag_node_key(node: Rc<Node>) -> String {
 }
 
 pub fn dag_node_fingerprint(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint_memo(dag_node_collection_anchor(node.clone()))
+    crate::v1_compiler_dag_collect_support::dag_node_surface_fingerprint_memo(
+        dag_node_collection_anchor(node.clone()),
+    )
 }
 
 pub fn dag_collect_nodes_list(
@@ -238,7 +249,8 @@ pub fn dag_collect_insert_slots(
                 } else {
                     dag_node_fingerprint(anchor.clone())
                 };
-                let seq = dag_collect_slot_seq(slots.clone());
+                let seq =
+                    crate::v1_compiler_dag_collect_support::dag_collect_slot_seq(slots.clone());
                 dag_collect_node_tree(
                     anchor.clone(),
                     v1_rt::rc_map_insert(
@@ -280,7 +292,7 @@ pub fn dag_collect_from_module(
 
 pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
     {
-        let _memo_reset = dag_collect_fp_memo_reset();
+        let _memo_reset = crate::v1_compiler_dag_collect_support::dag_collect_fp_memo_reset();
         let collision_errors = Rc::new(vec![]);
         let slots = typed.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<DagCollectSlot>>(),
@@ -288,6 +300,9 @@ pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
                 dag_collect_from_module(m.clone(), s, collision_errors.clone())
             },
         );
-        dag_collect_pack_slots(slots.clone(), collision_errors.clone())
+        crate::v1_compiler_dag_collect_support::dag_collect_pack_slots(
+            slots.clone(),
+            collision_errors.clone(),
+        )
     }
 }

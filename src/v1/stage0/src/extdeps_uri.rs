@@ -118,7 +118,7 @@ pub fn href_is_relative_reference(s: String) -> bool {
 
 pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
     {
-        let s = v1_rt::trim(url.clone());
+        let s = crate::std_algebra::trim(url.clone());
         if v1_rt::starts_with(s.clone(), "//".to_string()) {
             Rc::new(ParsedHrefScheme::UnknownHref)
         } else {
