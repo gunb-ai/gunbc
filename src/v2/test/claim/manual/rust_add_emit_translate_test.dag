@@ -323,7 +323,7 @@ fn rust_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
 
 data rust_add_inferred_tree: InferredTree = InferredTree {
   root: rust_add_emitted_root,
-  facts: Map {
+  facts: PartialFunction {
     lookup: rust_add_facts_lookup
   }
 }

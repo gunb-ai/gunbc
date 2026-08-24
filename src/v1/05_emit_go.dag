@@ -68,7 +68,7 @@ import v1.compiler.emit {
   lookup_item,
   is_null_coalesce, emit_null_coalesce,
   has_nested_records_node,
-  typed_named_arg_matches, order_typed_call_args,
+  order_typed_call_args,
   is_tco_eligible,
   service_fallback_transport, effective_operation_transport,
   ServiceFieldSet, compute_service_fields, service_field_decls,
