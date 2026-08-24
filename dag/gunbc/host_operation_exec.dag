@@ -1,0 +1,305 @@
+module gunbc.host_operation_exec
+
+import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.systemd.systemctl
+import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
+import extdeps.tools.hostname
+import gunbc.host_effect {
+  HostEffectTransport,
+  LocalShell,
+  SshShell,
+  FleetSsh,
+  EmitArtifactThenThinRun,
+}
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.typed_argv_exec {
+  typed_argv_exec_over_fleet_ssh,
+  typed_argv_exec_over_ssh,
+  TypedArgvExecOutcome,
+  TypedArgvExecConverged,
+  TypedArgvExecRefused,
+}
+import v2.std.operation_argv {
+  ArgvMaterialization,
+  ArgvMaterialized,
+  ArgvMaterializationRefused,
+  BoundOperationInvocation,
+  OperationRef,
+  bind_operation_invocation,
+  operation_argv_bind_text,
+  operation_argv_cause_label,
+  operation_ref_label,
+}
+
+// THE DEFECT THIS MODULE EXISTS TO REMOVE, stated once here rather than repeated at each caller.
+//
+// gunbc.typed_argv_exec exposes typed_argv_exec_over_ssh and typed_argv_exec_over_fleet_ssh and NO
+// TOTAL ENTRY POINT, so every caller that wanted to run one operation somewhere was forced to write
+// the transport match itself. Six one-tool domain reads did exactly that -- four arms each, the same
+// four arms, differing only in an argv row and a decoder. That is the N x M adapter structure DESIGN
+// section 3 forbids at an interface/realization seam, and it was MANUFACTURED BY AN INTERFACE THAT
+// DECLINED TO BE TOTAL: an interface offering only per-realization doors pushes its own dispatch
+// into every caller. Six copies is what that cost.
+//
+// So the direction is the one section 3 fixes: THE DISPATCH THAT SELECTS A REALIZATION IS ITSELF
+// REALIZATION. It sits here, once, peripheral to every domain caller. A caller now says WHERE (a
+// transport it genuinely knows -- which host) and WHAT (a HostOperation). It never says HOW.
+
+// ONE OPERATION, ONE AUTHORITY. `HostOperation` is a coproduct of the semantic operations this
+// executor can carry, and BOTH realizations derive from it: the argv identity by
+// `host_operation_invocation` below, the native call by `host_operation_exec_local`. Nothing pairs
+// two independently-chosen facts, so a cross-transport MISMATCH -- an operation whose ssh leg runs
+// `systemctl status` while its local leg runs `systemctl is-active`, both succeeding and answering
+// different questions -- HAS NO REPRESENTATION. It is not detected; it cannot be written.
+//
+// AN EARLIER REVISION OF THIS FILE GOT THIS WRONG AND IT IS WORTH RECORDING WHY, because the wrong
+// shape looked careful. It carried `HostOperation { invocation, native }` -- a string-discriminated
+// BoundOperationInvocation beside a LocalInvocation, independently chosen -- and then RECONSTRUCTED
+// the missing relationship with a hand-maintained name mapping and a predicate, neither of which
+// `host_operation_exec` ever consulted. That is illegal-states-representable plus a hand-rolled
+// validator standing where construction was available, which DESIGN section 5 names directly:
+// a check that re-states a constraint is a second representation of it, and the fix is a single
+// authority the realization is DERIVED from, not a check that flags the divergence afterwards.
+// Sealing the record with sole_constructor narrowed WHO could author the mismatch; it did not stop
+// the mismatch existing. Deriving both legs removes the second fact entirely, so the mapping, the
+// predicate, the seal, the mint and its admit list are all GONE rather than reduced -- and per
+// section 4b(4) the mispairing witness dissolves with them, because its RED is no longer authorable
+// anywhere, not even in a fixture: there is no second field to disagree with the first.
+//
+// WHY A COPRODUCT AND NOT A CLOSURE. Three of the four transport legs consume argv materialized from
+// an operation's declaration. The LocalShell leg does not: it invokes the modeled operation itself,
+// and the interpreter runs that operation's own declared shell transport. A closure would be the
+// other way to carry that difference and it is wrong on the one axis this program is about -- an
+// opaque closure cannot be inspected, refused, cost-attributed or emitted, so the local leg would
+// become the single realization the substrate cannot see, inside the function built to make
+// realization visible. The real choice is not coproduct-versus-nothing: it is coproduct versus a
+// generic-argv lie (claiming the local leg is an argv execution when it is a modeled operation
+// invocation) or an opaque-function-value lie (claiming it is unknowable). The coproduct is the only
+// one of the three that says something true.
+//
+// 🟡 DECLARED DEBT, NOT A MODELING IMPROVEMENT: `SystemctlIsActive { unit }` is a SECOND NAMING of
+// `systemd.Systemctl.IsActive(unit:)`, which extdeps already declares with its own cited transport.
+// That is the nicknaming violation of section 3, inside a diff whose subject is a section 3
+// violation, and it is admitted only because the thing that dissolves it is named exactly. The
+// interpreter already dispatches local execution BY REIFIED IDENTITY: eval_service_call resolves
+// (service, operation) as a string key against its service_ops index, and
+// shell_materialize_operation_argv takes that same (path, service, operation, bindings) triple. The
+// two legs want ONE description. What is missing is only a .dag-level way to INVOKE by that triple --
+// there is no free-function sibling of shell_materialize_operation_argv, and no generic local
+// process-exec service exists in this corpus either (no `service Process`, no local `Exec`; the only
+// Exec/ExecArgv operations declared anywhere are ssh.Session's).
+//
+// 🟡 dissolve-on: WHEN an invoke-by-triple sibling of shell_materialize_operation_argv exists, this
+// coproduct is DELETED and both derivations below collapse into that one triple. The condition is the
+// builtin's EXISTENCE, not a permission to build it: if the v2 self-host program needs
+// invoke-by-triple for its own reasons, the v1 freeze admits it on the purpose test and this
+// dissolution fires without anyone re-litigating transport ownership.
+//
+// CLOSED OVER MODELED OPERATIONS, DELIBERATELY. Every variant names an operation declared in
+// extdeps. There is no variant carrying a free-form command, argv or script, so this coproduct
+// CANNOT express a local invocation that is not a modeled operation -- the property the corpus
+// currently has (local execution happens only through a declared operation's transport) survives
+// this cut rather than being quietly opened by it. Adding an operation REQUIRES adding a variant,
+// which is what keeps growth reviewable and exhaustive rather than incidental.
+type HostOperation =
+    SystemctlIsActive { unit: NonEmptyStr }
+  | SystemctlStatus { unit: NonEmptyStr }
+  | SystemctlStop { unit: NonEmptyStr }
+  | SystemctlShowProperty { unit: NonEmptyStr, property: SystemdUnitProperty }
+  | HostnameReadShort
+
+// THE OUTCOME IS DELIBERATELY NOT SshSessionExecResult. Three of the four legs produce one, but
+// naming a local process observation after ssh would be a nickname in the return position, and the
+// raw-process-observation confinement cut that follows this one needs a seam it can seal without
+// re-pointing any caller. This type is that seam.
+//
+// stderr is OPTIONAL because it is not universally modeled: systemd.Systemctl.Stop declares a stderr
+// output, while the readonly reads (IsActive, Status, ShowProperty, ReadShort) declare none. `none`
+// means THIS OPERATION DOES NOT MODEL STDERR; it is not the empty string, and filling it with "" to
+// make the record uniform would fabricate an observation nothing produced.
+type HostOperationOutcome =
+    HostOperationObserved { stdout: String, success: Bool, stderr: String? }
+  | HostOperationRefused { operation: String, reason: String }
+
+// THE ARGV IDENTITY, DERIVED. This is the ONE place an operation's declaration is named, and it is
+// a function of the operation rather than a field beside it -- which is what makes the ssh and local
+// legs incapable of disagreeing. `BoundOperationInvocation` is not re-minted here:
+// v2.std.operation_argv already declares it as an OperationRef paired with declaration-owned
+// bindings, and shell_materialize_operation_argv already consumes it.
+fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocation {
+  match operation {
+    SystemctlIsActive { unit: u } => bind_operation_invocation(
+      at: systemctl_operation_ref(operation: "IsActive"),
+      bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
+    )
+    SystemctlStatus { unit: u } => bind_operation_invocation(
+      at: systemctl_operation_ref(operation: "Status"),
+      bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
+    )
+    SystemctlStop { unit: u } => bind_operation_invocation(
+      at: systemctl_operation_ref(operation: "Stop"),
+      bindings: [operation_argv_bind_text(name: "unit", text: u as String)],
+    )
+    SystemctlShowProperty { unit: u, property: p } => bind_operation_invocation(
+      at: systemctl_operation_ref(operation: "ShowProperty"),
+      bindings: [
+        operation_argv_bind_text(name: "unit", text: u as String),
+        operation_argv_bind_text(
+          name: "property",
+          text: systemd_unit_property_wire(property: p) as String,
+        ),
+      ],
+    )
+    HostnameReadShort => bind_operation_invocation(
+      at: OperationRef {
+        path: hostname_operation_path,
+        service: hostname_operation_service,
+        operation: "ReadShort",
+      },
+      bindings: [],
+    )
+  }
+}
+
+fn host_operation_label(operation: HostOperation) -> String {
+  operation_ref_label(at: host_operation_invocation(operation: operation).at)
+}
+
+fn host_operation_materialize_argv(operation: HostOperation) -> ArgvMaterialization {
+  let invocation = host_operation_invocation(operation: operation)
+  shell_materialize_operation_argv(
+    invocation.at.path,
+    invocation.at.service,
+    invocation.at.operation,
+    invocation.bindings,
+  )
+}
+
+fn host_operation_outcome_from_exec(
+  operation: HostOperation,
+  outcome: TypedArgvExecOutcome,
+) -> HostOperationOutcome {
+  match outcome {
+    TypedArgvExecConverged { result: r } =>
+      HostOperationObserved { stdout: r.stdout, success: r.success, stderr: r.stderr }
+    TypedArgvExecRefused { reason: why } =>
+      HostOperationRefused { operation: host_operation_label(operation: operation), reason: why }
+  }
+}
+
+fn host_operation_argv_refusal(operation: HostOperation, m: ArgvMaterialization) -> HostOperationOutcome {
+  match m {
+    ArgvMaterialized { argv: _ } =>
+      HostOperationRefused {
+        operation: host_operation_label(operation: operation),
+        reason: "host_operation_argv_refusal called on a materialized argv",
+      }
+    ArgvMaterializationRefused { at: _, cause: c } =>
+      HostOperationRefused {
+        operation: host_operation_label(operation: operation),
+        reason: operation_argv_cause_label(cause: c),
+      }
+  }
+}
+
+// THE LOCAL LEG. Every arm invokes the modeled operation and projects its declared outputs onto the
+// common observation. The projections differ per operation because the DECLARATIONS differ -- IsActive
+// names its stdout `state`, ShowProperty names it `value` -- and reading each from its own authority
+// is what keeps this a projection rather than a second output schema.
+fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
+  match operation {
+    SystemctlIsActive { unit: u } => {
+      let result = systemd.Systemctl.IsActive(unit: u)
+      HostOperationObserved { stdout: result.state, success: result.active, stderr: none }
+    }
+    SystemctlStatus { unit: u } => {
+      let result = systemd.Systemctl.Status(unit: u)
+      HostOperationObserved { stdout: result.stdout, success: result.success, stderr: none }
+    }
+    SystemctlStop { unit: u } => {
+      let result = systemd.Systemctl.Stop(unit: u)
+      HostOperationObserved { stdout: result.stdout, success: result.success, stderr: result.stderr }
+    }
+    SystemctlShowProperty { unit: u, property: p } => {
+      let result = systemd.Systemctl.ShowProperty(unit: u, property: p)
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
+    HostnameReadShort => {
+      let result = os.Hostname.ReadShort()
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
+  }
+}
+
+// THE SSH LEG. typed_argv_exec_over_ssh applies the shell-safety allowlist; the fleet leg below does
+// NOT, and that asymmetry is preserved rather than tidied. The two legs rest on DIFFERENT walls --
+// this one on typed_argv_shell_safe_refusal_argv at the edge, the fleet one on portable_remote_words,
+// which refuses INTO A TYPE -- so collapsing them into one pre-check would silently change behaviour
+// on both.
+fn host_operation_exec_ssh(operation: HostOperation, host: NonEmptyStr) -> HostOperationOutcome {
+  let m = host_operation_materialize_argv(operation: operation)
+  match m {
+    ArgvMaterialized { argv: argv } =>
+      host_operation_outcome_from_exec(
+        operation: operation,
+        outcome: typed_argv_exec_over_ssh(host: host, argv: argv),
+      )
+    ArgvMaterializationRefused { at: _, cause: _ } =>
+      host_operation_argv_refusal(operation: operation, m: m)
+  }
+}
+
+fn host_operation_exec_fleet_ssh(
+  operation: HostOperation,
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+) -> HostOperationOutcome {
+  let m = host_operation_materialize_argv(operation: operation)
+  match m {
+    ArgvMaterialized { argv: argv } =>
+      host_operation_outcome_from_exec(
+        operation: operation,
+        outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv),
+      )
+    ArgvMaterializationRefused { at: _, cause: _ } =>
+      host_operation_argv_refusal(operation: operation, m: m)
+  }
+}
+
+// THE TOTAL ENTRY POINT. This is the whole point of the module: the four arms exist ONCE.
+//
+// The EmitArtifactThenThinRun refusal NAMES THE OPERATION, which is why HostOperation carries an
+// identity and not merely bindings. A generic "refused" here would have erased which operation was
+// refused -- a correctness distinction the six per-op copies each carried, and losing it would have
+// made this a smaller replacement rather than a complete one.
+fn host_operation_exec(transport: HostEffectTransport, operation: HostOperation) -> HostOperationOutcome {
+  match transport {
+    LocalShell => host_operation_exec_local(operation: operation)
+    SshShell { ssh_host: h } => host_operation_exec_ssh(operation: operation, host: h)
+    FleetSsh { target: t, context: c } =>
+      host_operation_exec_fleet_ssh(operation: operation, target: t, context: c)
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      HostOperationRefused {
+        operation: host_operation_label(operation: operation),
+        reason: concat(
+          host_operation_label(operation: operation),
+          " refused EmitArtifactThenThinRun transport",
+        ),
+      }
+  }
+}
+
+// THE DECLARATION ANCHORS. `systemctl_operation_ref` exists so the path and service are spelled once
+// for the four systemd operations rather than once per arm above.
+data systemctl_operation_path: String = "dag/extdeps/systemd/systemctl.dag"
+data systemctl_operation_service: String = "systemd.Systemctl"
+data hostname_operation_path: String = "dag/extdeps/tools/hostname.dag"
+data hostname_operation_service: String = "os.Hostname"
+
+fn systemctl_operation_ref(operation: String) -> OperationRef {
+  OperationRef {
+    path: systemctl_operation_path,
+    service: systemctl_operation_service,
+    operation: operation,
+  }
+}
