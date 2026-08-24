@@ -3345,14 +3345,35 @@ enforces end to end.
    no type information. DESIGN §5's decidability test is met, so a lens counting occurrences
    would be validation standing exactly where construction was available.
 
-   **Executing evidence, enrolled today.**
+   **The evidence, and the honest statement of where it executes.**
    `dag/test/claim/duplicate_definition_binding_probe.dag` asserts the CORRECT behaviour — the
-   compiler refuses the two-definition module — and is therefore RED today and enrolled in
-   `v2.workflow.floor_expected_red` `floor_expected_red_chunk_19`. Written the other way round
-   ("assert the second definition binds") it would be green today and would become a defender
-   of the defect. Its positive control, the same module with one definition, is NOT enrolled
-   and PASSES; that pair is what establishes the census reached its subject and answered rather
-   than failing to run. When the wall lands the red flips green, comes off the roster, and
+   compiler refuses the two-definition module. Written the other way round ("assert the second
+   definition binds") it would be green today and would become a defender of the defect. Run by
+   hand at the branch head it FAILS, while its positive control — the same module with one
+   definition — PASSES; that pair is what establishes the census reached its subject and
+   answered rather than failing to run (`CensusNotRunnable` maps to `-1`, which reds both and
+   greens neither).
+
+   It is NOT enrolled in `v2.workflow.floor_expected_red`, and the reason is this row's own
+   subject one layer out. The census resolves its synthetic source against
+   `build_module_path_index_from_witness_roots`, which walks the live tree, so the module
+   declares `ReadsLiveTree` — and `v1_compiler.cli_run` `run_required_floor` routes every such
+   site to `DeclinedLiveTree`: discovered, counted, never run. Enrolling asserts that a row
+   reaches its subject and answers; a declined row answers nothing, so the enrolment would have
+   been a false assertion wearing the shape of coverage. This is item 28's population
+   (the guarantee-probe corpus, discovered and declined) gaining one more member, not a new
+   condition.
+
+   An earlier revision of this row WAS enrolled, justified by a sibling census probe that
+   declares no disposition and was inferred to route and pass. That inference was wrong twice
+   over: undeclared is `ReadsLiveTree` by the fail-closed default (`cli_run`
+   `parse_entry_live_tree_disposition`), so the sibling is declined too, and its passing was
+   never measured — a population fit standing where mechanism confirmation was required.
+
+   **EXECUTION TRIGGER** (distinct from the next-rung trigger, which is the ingestion wall): the
+   deletion of the `DeclinedLiveTree` arm, which `v2.workflow.required_floor` already carries as
+   retained and staged for deletion at the root. When that lands, this row executes, reds, and
+   belongs on the expected-red roster the same day. When the WALL lands it flips green and
    converts to a permanent regression control per DESIGN §4b meta-obligation (4).
 
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)

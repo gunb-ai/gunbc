@@ -8,6 +8,9 @@ import gunbc.compile_diagnostic_census {
   census_total_count
 }
 import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // WHAT THIS PROBE MEASURES, and why its RED is the point rather than a defect in the probe.
 // A module that defines one name TWICE is accepted by the source -> .dag acceptance path with
@@ -17,6 +20,23 @@ import std.types { String, Bool, Int }
 // ordering. That is not a rung that slipped -- it is BELOW FLOOR (DESIGN section 4b): a name
 // binding to two definitions with no refusal is silent wrongness, which is outside the ladder,
 // not a weak rung on it.
+//
+// THIS ROW DOES NOT EXECUTE IN THE REQUIRED FLOOR TODAY, AND THAT IS DECLARED HERE RATHER THAN
+// LEFT TO BE DISCOVERED. `compile_dag_diagnostic_census` resolves the synthetic source against
+// `build_module_path_index_from_witness_roots`, which walks the live tree, so the read is real and
+// the declaration below is `ReadsLiveTree`. `v1_compiler.cli_run` `run_required_floor` routes every
+// such site to `DeclinedLiveTree` -- discovered, counted, never run -- so this row is not enrolled
+// in `v2.workflow.floor_expected_red`: enrolling asserts that a row REACHES ITS SUBJECT AND
+// ANSWERS, and a declined row answers nothing. An enrolment here would have been a false assertion
+// wearing the shape of coverage, which is the exact failure this row exists to name.
+// EXECUTION TRIGGER: the deletion of the `DeclinedLiveTree` arm, which
+// `v2.workflow.required_floor` already carries as retained and staged for deletion at the root.
+// When that lands this row executes, reds, and belongs on the expected-red roster the same day.
+// An earlier revision of this module WAS enrolled, justified by a sibling census probe that
+// declares no disposition and was inferred to route and pass. That inference was wrong twice over:
+// undeclared is `ReadsLiveTree` by the fail-closed default (`cli_run`
+// `parse_entry_live_tree_disposition`), so the sibling is declined too, and its passing was never
+// measured -- a population fit standing where mechanism confirmation was required.
 //
 // THE ASSERTION HERE IS THE CORRECT BEHAVIOUR, NOT THE OBSERVED ONE. Written the other way --
 // "assert the second definition binds" -- the row would go GREEN today and become a DEFENDER OF
