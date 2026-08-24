@@ -2,6 +2,10 @@ module test.claim.floor_preparation_shared_build
 
 import v2.std.text { String }
 import v2.workflow.required_floor {
+  ClaimSafetyOutcome,
+  CompletedWithinSafetyLimits,
+  CompletedPastSafetyLimit,
+  CooperativelyPollable,
   FloorPreparationPhase,
   ModulePathIndexBuild,
   SharedModuleIndexBuild,
@@ -11,6 +15,10 @@ import v2.workflow.required_floor {
   FloorPreparationRefused,
   floor_preparation_outcome,
   floor_preparation_outcome_blocks,
+  SharedBuildProvenance,
+  BuiltByPreparation,
+  AlreadyWarmOnEntry,
+  floor_run_blocks,
   required_floor_preparation_cpu_safety_limit_ms,
   required_floor_preparation_wall_safety_limit_ms,
   required_floor_preparation_rss_growth_limit_bytes,
@@ -117,4 +125,76 @@ test fn w_preparation_limit_is_not_the_claim_limit() -> Bool {
       rss_growth_limit_bytes: required_floor_preparation_rss_growth_limit_bytes(),
     )
   ) == false
+}
+
+data independence_note: String = "THE TWO TERMS BLOCK INDEPENDENTLY AND NEITHER SUBSUMES THE OTHER. This is the pair that makes 'independent' an executed fact rather than a word in a comment: a refused shared build blocks while every claim is healthy, and a claim past its deadline blocks while preparation sat well inside its envelope. A derivation that had let either outcome excuse the other -- a precedence rule, or an arm that reads only one -- goes red on exactly one of these two, which is why they are separate rows rather than one conjunction."
+
+test fn w_refused_preparation_blocks_though_every_claim_is_healthy() -> Bool {
+  floor_run_blocks(
+    preparation: FloorPreparationRefused {
+      phase: BareReferenceEdgeIndexBuild,
+      observed_cpu: 1080001,
+      observed_wall: 1,
+      observed_rss_growth: 1,
+    },
+    claim: CompletedWithinSafetyLimits,
+  ) == true
+}
+
+test fn w_over_limit_claim_blocks_though_preparation_was_inside_its_envelope() -> Bool {
+  floor_run_blocks(
+    preparation: PreparationWithinLimits {
+      phase: BareReferenceEdgeIndexBuild,
+      observed_cpu: 28441,
+      observed_wall: 28441,
+      observed_rss_growth: 1073741824,
+    },
+    claim: CompletedPastSafetyLimit {
+      observed_cpu: 57193,
+      observed_wall: 57193,
+      preemption: CooperativelyPollable,
+    },
+  ) == true
+}
+
+test fn w_both_within_their_own_limits_does_not_block() -> Bool {
+  floor_run_blocks(
+    preparation: PreparationWithinLimits {
+      phase: BareReferenceEdgeIndexBuild,
+      observed_cpu: 28441,
+      observed_wall: 28441,
+      observed_rss_growth: 1073741824,
+    },
+    claim: CompletedWithinSafetyLimits,
+  ) == false
+}
+
+data provenance_note: String = "TRIGGERED_BY IS NOT OWNED_BY, and this is the row that keeps the distinction from decaying back into a Bool. The AlreadyWarmOnEntry arm CANNOT be constructed without naming what got there first: a carrier that recorded only 'someone else went first' would discard the one fact an attribution model exists to keep, and this asserts the name survives the round trip rather than that the arm merely exists."
+
+// THE SPECIMENS ARE BUILT BY HELPERS, NOT INLINE, AND THAT IS A GRAMMAR FACT RATHER THAN A STYLE
+// CHOICE. `match BuiltByPreparation {` parses as a RECORD LITERAL whose body then hits `=>`
+// ("expected expression, found FatArrow"), because a bare variant name followed by `{` is exactly
+// the record-construction form. Naming the specimen first removes the ambiguity at the source
+// rather than working around it, and it is why both arms are constructed the same way even though
+// only the record-carrying one strictly needs it.
+fn already_warm_specimen() -> SharedBuildProvenance {
+  AlreadyWarmOnEntry { triggered_by: "a-site-ahead-of-floor-preparation" }
+}
+
+fn built_by_preparation_specimen() -> SharedBuildProvenance {
+  BuiltByPreparation
+}
+
+test fn w_already_warm_arm_carries_its_trigger() -> Bool {
+  match already_warm_specimen() {
+    BuiltByPreparation => false
+    AlreadyWarmOnEntry { triggered_by: who } => (who) == "a-site-ahead-of-floor-preparation"
+  }
+}
+
+test fn w_built_by_preparation_is_the_intended_state() -> Bool {
+  match built_by_preparation_specimen() {
+    BuiltByPreparation => true
+    AlreadyWarmOnEntry { triggered_by: _ } => false
+  }
 }

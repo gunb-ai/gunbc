@@ -3099,6 +3099,24 @@ const COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY: &str = "dag/gunbc/compile_clean_dia
 /// `resolve_virtual_source_with_imports`, whose BFS silently SKIPS an import it cannot resolve;
 /// a silent skip here would narrow the policy closure and answer from a graph missing the very
 /// module the answer depends on.
+/// PRECONDITION, UNCHECKED AND UNTIL NOW UNSTATED: THE ENTRY'S CLOSURE MUST BE IMPORT-COMPLETE.
+///
+/// This walks `extract_import_paths` — EXPLICIT IMPORT EDGES ONLY. This corpus also resolves BARE
+/// references through the tree census (namespace Rule-1), which is what
+/// `extend_sources_to_both_closure_fixpoint` exists to do and what this deliberately does not do.
+/// So an entry whose closure reaches any name it does not import will typecheck to
+/// `function '<name>' not found in scope` here, and the failure is a property of the ENTRY, not of
+/// this function.
+///
+/// MEASURED, and the reason this comment exists: `dag/gunbc/output_policy.dag` was routed through
+/// here and broke on `dag/std/observation.dag` reaching `fold_list` with no import for it. The one
+/// surviving caller, `compile_clean_unlisted_import_use_blocks_from_policy`, is sound BY LUCK —
+/// its closure happens to be import-complete, and import-completeness is not a property this
+/// corpus guarantees. One bare reference authored into that closure and it breaks too.
+///
+/// It breaks LOUDLY there, which is the one thing that makes the luck survivable: that caller
+/// returns `Result<bool, String>` and propagates with `?`. Same fragility, opposite failure mode
+/// from the silent arm this helper's other caller used to have.
 fn policy_entry_closure_sources(
     roots: &[String],
     entry_rel: &str,
@@ -7845,16 +7863,38 @@ fn both_closure_edge_index(index: &MultiEntryIndex) -> Result<Rc<BothClosureEdge
 /// attributed. Reported per phase, never prorated across the claims that consume the
 /// artifact: a per-row fraction would change whenever the roster changes, making a
 /// row's admissibility depend on how many unrelated consumers happen to be enrolled.
+/// TRIGGERED_BY IS NOT OWNED_BY. Mirrors `v2.workflow.required_floor` `SharedBuildProvenance`.
+///
+/// A `bool` was the wrong carrier and this replaces it: "already warm" records that SOMEONE ELSE
+/// went first while discarding WHO, which is the one fact an attribution model exists to keep.
+/// `BuiltByPreparation` is the intended state — trigger and owner coincide, which is what the warm
+/// buys. `AlreadyWarmOnEntry` names the site that got there first, as PROVENANCE and never as an
+/// assignment of cost: a run reporting it is reporting a defect in ordering.
+pub enum SharedBuildProvenance {
+    BuiltByPreparation,
+    AlreadyWarmOnEntry { triggered_by: &'static str },
+}
+
+impl SharedBuildProvenance {
+    /// The report form. Structural rather than prose: a reader (and a grep) sees which arm, and
+    /// the `AlreadyWarmOnEntry` arm cannot be printed without naming its trigger.
+    pub fn render(&self) -> String {
+        match self {
+            SharedBuildProvenance::BuiltByPreparation => "built-by-preparation".to_string(),
+            SharedBuildProvenance::AlreadyWarmOnEntry { triggered_by } => {
+                format!("already-warm-on-entry triggered_by={triggered_by}")
+            }
+        }
+    }
+}
+
 pub struct SharedBuildObservation {
     pub cpu_ms: u64,
     pub wall_ms: u64,
     pub rss_growth_bytes: u64,
     pub source_files: usize,
     pub bare_eligible: usize,
-    /// Provenance only. The first claim to touch a shared artifact is where the build
-    /// was TRIGGERED; it is not what OWNS the cost. After this warm nothing is
-    /// triggered by a claim at all, which is the point.
-    pub already_warm: bool,
+    pub provenance: SharedBuildProvenance,
 }
 
 /// Build the bare-reference edge index (and, through it, the per-root tree bare census)
@@ -7880,7 +7920,18 @@ pub struct SharedBuildObservation {
 pub fn warm_bare_reference_edge_index(
     index: &MultiEntryIndex,
 ) -> Result<SharedBuildObservation, String> {
-    let already_warm = index.both_closure_edges.borrow().is_some();
+    // NAMED, not a bool. If the index is already built when preparation reaches it, some EARLIER
+    // site triggered it — an ordering defect this line must locate rather than merely note. The
+    // trigger is not identified per call site here (the memo records no author), so the arm names
+    // the boundary that is knowable: something ahead of preparation. That is honestly weaker than a
+    // call-site name and is why the string is a fixed label rather than a fabricated attribution.
+    let provenance = if index.both_closure_edges.borrow().is_some() {
+        SharedBuildProvenance::AlreadyWarmOnEntry {
+            triggered_by: "a-site-ahead-of-floor-preparation",
+        }
+    } else {
+        SharedBuildProvenance::BuiltByPreparation
+    };
     let rss_before = current_rss_bytes().unwrap_or(0);
     let cpu_before = v1_interpreter::thread_cpu_nanos();
     let wall_before = std::time::Instant::now();
@@ -7897,7 +7948,7 @@ pub fn warm_bare_reference_edge_index(
         rss_growth_bytes,
         source_files: index.source_files.len(),
         bare_eligible: edges.bare_scan_eligible.len(),
-        already_warm,
+        provenance,
     })
 }
 
@@ -15701,42 +15752,43 @@ pub fn run_dag_parse_sweep(workspace: &Path, roots: &[&str]) -> Result<usize, Ve
 
 /// FAILS CLOSED, and the signature is the reason it can (review 55298).
 ///
-/// This function answered BOTH of its failure modes with `Err(_) => return`: an unreadable or
-/// unresolvable policy was indistinguishable from a valid policy decision, and the process
-/// continued under whatever output behaviour happened to be in force. That is the §5 silent widen
-/// — the deficit's frequency is zero by construction, so it never ranks for fixing — and one of the
-/// two arms was ADDED by the closure-scoping change this PR folds, which makes it new debt rather
-/// than inherited debt.
+/// This function answered its failure modes with `Err(_) => return`: an unreadable or unresolvable
+/// policy was indistinguishable from a valid policy decision, and the process continued under
+/// whatever output behaviour was in force. That is the §5 silent widen — the deficit's frequency is
+/// zero by construction, so it never ranks for fixing. The repair is the signature, not a check: a
+/// typed located refusal nobody can receive is not a refusal, and while this returned `()` there
+/// was no arm a caller could take. Both callers now stop the line.
 ///
-/// The repair is the signature, not a check: a typed located refusal nobody can receive is not a
-/// refusal, and while this returned `()` there was no arm a caller could take. Both callers now
-/// stop the line.
+/// THE SILENT ARM WAS HIDING A LIVE DEFECT, WHICH IS THE WHOLE ARGUMENT FOR §5 IN ONE RECEIPT.
+/// A change landed here that resolved the policy through its own IMPORT closure
+/// (`policy_entry_closure_sources`) instead of `resolve_entry_graph_shared`, to stop this
+/// five-decision read from being the accidental first toucher of the bare-reference edge index.
+/// The intent was right and the mechanism cannot work: that helper walks `extract_import_paths`,
+/// i.e. explicit import edges only, while this corpus resolves BARE references through the tree
+/// census (namespace Rule-1) — which is exactly what `extend_sources_to_both_closure_fixpoint`
+/// exists to do. `dag/std/observation.dag` reaches `fold_list` with no import for it, so the narrow
+/// closure typechecked to `function 'fold_list' not found in scope` and this function returned
+/// silently. Measured: `OUTPUT-POLICY REFUSAL cause=PolicyResolveFailed ... observation.dag:1231:3`,
+/// surfaced the moment the arm was made to refuse, having been invisible before it.
+/// `compile_clean_diagnostic_policy` survives that helper only because its closure happens to be
+/// import-complete; import-completeness is not a property this corpus guarantees.
+///
+/// So the resolve is back on `resolve_entry_graph_shared`, which runs the both-closure fixpoint and
+/// resolves bare references. The first-toucher concern it was trying to answer is answered instead
+/// by `warm_bare_reference_edge_index` running ahead of this call — attribution fixed at the owner
+/// rather than by narrowing a closure that cannot be narrowed.
 ///
 /// SCOPE, DECLARED: this fixes the STANDALONE form only. `install_output_policy_in` below carries
-/// the same pattern in further arms and reaches the required floor's path — a different blast
-/// radius, tracked separately as `node://adhoc-4456c93f-bf3`. A partial fix stated as partial is
-/// fine; one that reads as complete is not.
+/// the same silent pattern in further arms and reaches the required floor's path — a different
+/// blast radius, tracked separately as `node://adhoc-4456c93f-bf3`.
 pub fn install_output_policy(source_roots: &[String]) -> Result<(), String> {
     let entry = "dag/gunbc/output_policy.dag";
-    // This standalone installer runs before `claim_batch` and `claim_executor` have a prepared
-    // subject. Resolve only the policy's own import closure: entering the process-shared,
-    // corpus-wide index here made this five-decision read the accidental first toucher of the
-    // bare-reference edge index. That ~31.7s charge described the harness ordering, not work a
-    // witness or the floor had demonstrated it needed.
-    let sources = policy_entry_closure_sources(source_roots, entry, "gunbc.output_policy")
-        .map_err(|why| {
-            format!(
-                "OUTPUT-POLICY REFUSAL cause=PolicyClosureUnreadable entry={entry} — {why}; \
-                 refusing rather than continuing under an unstated output policy"
-            )
-        })?;
-    let (graph, indices) = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
-        .map_err(|why| {
-            format!(
-                "OUTPUT-POLICY REFUSAL cause=PolicyResolveFailed entry={entry} — {why}; \
-                 refusing rather than continuing under an unstated output policy"
-            )
-        })?;
+    let (graph, indices) = resolve_entry_graph_shared(source_roots, entry).map_err(|why| {
+        format!(
+            "OUTPUT-POLICY REFUSAL cause=PolicyResolveFailed entry={entry} — {why}; \
+             refusing rather than continuing under an unstated output policy"
+        )
+    })?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     install_output_policy_in(&ctx, source_roots);
     Ok(())
@@ -42180,7 +42232,7 @@ pub fn run_required_floor(
     // build happens HERE, as early as any consumer could reach it and ahead of the published-mock
     // projection and the output-policy install, so no earlier phase can become an accidental
     // first toucher (measured in `claim_batch`, where exactly that happened on the PRE-FIX
-    // installer: the warm placed after `install_output_policy` reported `already_warm=true
+    // installer: the warm placed after `install_output_policy` reported `already-warm-on-entry
     // cpu_ms=0` while a ~30.8s span sat billed to an output-policy read. That installer has since
     // been scoped to the policy's own import closure and no longer enters the shared index, so
     // that specific toucher is gone — the placement rule is not, because the next one will not
@@ -42194,8 +42246,8 @@ pub fn run_required_floor(
     //
     // Both index identities the floor's own resolves can reach. `canonical_shared_index_roots`
     // normalizes the two spellings, so when the roots coincide the second call is a memo hit and
-    // reports `already_warm=true` — which is PROVENANCE (where the build was triggered), never
-    // ownership (what is charged for it).
+    // reports `provenance=already-warm-on-entry` — which is PROVENANCE (where the build was
+    // triggered), never ownership (what is charged for it).
     let mut edge_index_warms: Vec<(&'static str, SharedBuildObservation)> = Vec::new();
     edge_index_warms.push((
         "source-roots",
@@ -42209,13 +42261,13 @@ pub fn run_required_floor(
         eprintln!(
             "[floor-phase] phase=bare-reference-edge-index-warm state=completed roots={which} \
              cpu_ms={} wall_ms={} rss_growth_bytes={} source_files={} bare_eligible={} \
-             already_warm={}",
+             provenance={}",
             warm.cpu_ms,
             warm.wall_ms,
             warm.rss_growth_bytes,
             warm.source_files,
             warm.bare_eligible,
-            warm.already_warm,
+            warm.provenance.render(),
         );
     }
     let prepare_ms = prepare_started.elapsed().as_millis();

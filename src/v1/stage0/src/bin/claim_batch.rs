@@ -582,7 +582,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // longer one of them, and the history is worth keeping because it is how the seam was found.
     //
     // WHAT WAS MEASURED HERE, ON THE PRE-FIX INSTALLER: with the warm sitting AFTER
-    // `install_output_policy`, the phase line reported `already_warm=true cpu_ms=0` while a ~30.8s
+    // `install_output_policy`, the phase line reported `provenance=already-warm-on-entry cpu_ms=0` while a ~30.8s
     // span sat billed to an output-policy read. That installer resolved
     // `dag/gunbc/output_policy.dag` through `resolve_entry_graph_shared` -> `process_shared_index`,
     // so a five-decision policy read was this harness's ACCIDENTAL FIRST TOUCHER of the corpus
@@ -603,13 +603,13 @@ fn run() -> Result<ExitCode, ExitCode> {
             })?;
     eprintln!(
         "[floor-phase] phase=bare-reference-edge-index-warm state=completed cpu_ms={} wall_ms={} \
-         rss_growth_bytes={} source_files={} bare_eligible={} already_warm={}",
+         rss_growth_bytes={} source_files={} bare_eligible={} provenance={}",
         edge_index_warm.cpu_ms,
         edge_index_warm.wall_ms,
         edge_index_warm.rss_growth_bytes,
         edge_index_warm.source_files,
         edge_index_warm.bare_eligible,
-        edge_index_warm.already_warm,
+        edge_index_warm.provenance.render(),
     );
 
     // Funnel host-effect traces per the .dag output policy (see claim_executor).

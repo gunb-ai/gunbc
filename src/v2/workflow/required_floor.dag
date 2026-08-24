@@ -783,6 +783,49 @@ fn floor_preparation_outcome_blocks(outcome: FloorPreparationOutcome) -> Bool {
   }
 }
 
+// TRIGGERED_BY IS NOT OWNED_BY, AND THE DISTINCTION IS STRUCTURAL HERE RATHER THAN PROSE.
+//
+// This is the law of the whole change stated as a type. The computation that first TRIGGERS a
+// shared artifact is not the computation that OWNS its cost; the artifact's reuse boundary decides
+// ownership. A `Bool` saying "it was already warm" cannot carry that: it records that someone else
+// went first while discarding WHO, which is exactly the fact an attribution model exists to keep.
+//
+// `BuiltByPreparation` is the intended state -- trigger and owner COINCIDE, which is what the warm
+// buys. `AlreadyWarmOnEntry` says preparation found the artifact built and names the phase or call
+// site that got there first; that name is PROVENANCE and never an assignment of cost. A run
+// reporting it is reporting a defect in ordering, not a claim about who should pay.
+type SharedBuildProvenance =
+    BuiltByPreparation
+  | AlreadyWarmOnEntry { triggered_by: String }
+
+// THE TWO TERMS, AND THEY ARE SUMMED FOR REPORTING ONLY, NEVER FOR ADMISSION. A floor run's cost is
+// `preparation_or_shared_build + claim_marginal` -- one term per UNIT OF ATTRIBUTION, not per phase
+// of execution. The split exists so neither term can be judged by the other's limits: the per-claim
+// safety deadlines answer a claim-level question and a whole-corpus shared build is a different
+// unit with its own resource-derived ceilings.
+//
+// NO PRORATION IS EXPRESSIBLE HERE, and that is structural rather than a rule someone must follow:
+// there is no per-claim share of the preparation term to compute, because the term is not indexed
+// by claim. A per-row fraction would change whenever the roster changes, making a row's
+// admissibility depend on how many unrelated consumers happen to be enrolled.
+type FloorRunCost {
+  preparation_or_shared_build: Int
+  claim_marginal: Int
+}
+
+// INDEPENDENT BLOCKING OUTCOMES, ASSERTED IN ONE PLACE SO NO CALLER RE-DERIVES IT. Either term can
+// block on its own and neither subsumes the other: a shared build past its ceiling refuses even
+// when every claim is healthy, and a claim past its deadline refuses even when preparation was
+// well inside its envelope. The disjunction is what "independent" means operationally -- this is
+// NOT a precedence rule, and there is deliberately no arm in which one outcome excuses the other.
+fn floor_run_blocks(
+  preparation: FloorPreparationOutcome,
+  claim: ClaimSafetyOutcome,
+) -> Bool {
+  floor_preparation_outcome_blocks(outcome: preparation)
+    || claim_safety_outcome_blocks(outcome: claim)
+}
+
 // §4b RUNG, DECLARED AT THE HONEST GRAIN. The model above is *mechanically preventable* only
 // where a caller actually consults it. The host (`v1_compiler.cli_run` `run_required_floor`)
 // reads the three limits from this module -- so the NUMBERS have a single authority and cannot
