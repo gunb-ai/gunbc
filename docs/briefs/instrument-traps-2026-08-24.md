@@ -160,9 +160,22 @@ complete*. Those differ exactly when a timeout kills the thing you care about.
 
 **The remedy is a planted completion marker, and it is better than vigilance** — the payload's
 last statement echoes a sentinel, and its ABSENCE is what you read. That is positive evidence
-you cannot fail to notice, rather than an omission you have to spot. *(Found independently by
-silent-gull-867, who caught a real truncated dispatch with it while a bare exit code read as
-success. Credit theirs.)*
+you cannot fail to notice, rather than an omission you have to spot.
+
+> **THIS CLASS HAS A CANONICAL HOME AND THIS ENTRY DEFERS TO IT: gunbc#9066**, authored by
+> silent-gull-867, who hit it independently — a dispatch returning exit 0 with the payload
+> never executed, the streamed log ending after `git apply`. Their write-up carries the
+> distinguishing table (`EMITTED=0` means it ran and produced nothing; *no* `EMITTED=` line
+> means it never ran, so the dispatch is **void, not negative**), places the class beside its
+> neighbours (`cargo` exiting 0 without compiling, a pipe to `tail` masking a status, `grep -c`
+> returning 0 for a missing file), and names how it differs from all of them: those are
+> *corrupted* or *absent* statuses, this is an **honest** status answering a narrower question
+> than the reader asks of it.
+>
+> That last formulation is the same one this document arrives at in "The shape they share",
+> reached independently the same night from a different specimen. If #9066 lands, this entry
+> should shrink to a pointer rather than restate it — two documents for one class is the §3
+> violation these notes exist to catch.
 
 ## 10. ctrl-build cleans `target/` on every dispatch — so splitting an overrunning job is worse
 
