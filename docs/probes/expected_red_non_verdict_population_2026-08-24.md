@@ -81,7 +81,8 @@ carries both.
 
 ## 4. The population, measured
 
-From run `32681700364` (`5482863b4e8`), 142 identities across 65 distinct error signatures:
+From run `32681700364` (`5482863b4e8`), 142 identities. The four-way partition below is derived
+from the **142 per-identity `KNOWN-RED-RUNTIME-ERRORED` lines** and sums exactly to 142:
 
 | cause | identities |
 |---|---|
@@ -93,7 +94,30 @@ From run `32681700364` (`5482863b4e8`), 142 identities across 65 distinct error 
 `known_red_observation_unreadable` was 0 on the same run, so every non-verdict identity in this
 population threw rather than answering a non-`Bool`.
 
-The largest signatures:
+**A number this document used to carry and no longer does: "65 distinct error signatures".** That
+figure came from the floor's own `[floor-known-red-causes]` line, and it is an artifact of that
+census's key rather than a fact about the corpus. The census keys on the **first twelve words of
+the message prose**, and that prose embeds the *missing name* — so `no declaration named
+'srv3_install_hang_no_router_lease_ms'` and `no declaration named 'extdeps_cargo_build_module'`
+count as two distinct causes. It reports ~65 for a population with roughly four actual causes, and
+it reads as *many roots* when the truth is *one root, many names*. Any plan sized off it is sized
+wrong, toward believing this population is heterogeneous when it is mostly one repair.
+
+The same line is **silently truncated at 20 rows** — the printed rows sum to 93 of 142 identities,
+with 49 identities and 45 signatures dropped and nothing saying so. A reader tallying what they can
+see gets 93 and no indication the figure is short.
+
+Neither defect reaches the partition above, and the reason is the derivation rather than luck: it
+was folded over the per-identity lines, which are neither keyed on prose nor truncated. The
+population count (142) and the identity set are likewise unaffected — the executed set match in §7
+settles both. What did not survive is any **distinctness or heterogeneity** claim, which is why the
+"65" is gone rather than annotated. (Found by valiant-lynx-227 and relayed 2026-08-24; the root —
+`ClaimOutcome::RuntimeError` carrying `message: String` built by `format!` over an already-closed
+27-arm `InterpError`, so a typed cause is destroyed at the witness boundary and guessed back by
+word-slicing at the reporting site — is being repaired under its own item.)
+
+The largest signatures, quoted from that truncated and prose-keyed line and therefore illustrative
+rather than a census:
 
 ```
 18 × no declaration named 'srv3_install_hang_no_router_lease_ms' in this execution's loaded index
