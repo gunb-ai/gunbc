@@ -144,6 +144,7 @@ pub struct ParseContext {
     pub occurrence_index: Option<Rc<OccurrenceIndex>>,
     pub declaration_occurrences: Option<Rc<Vec<Rc<DeclarationOccurrence>>>>,
     pub reference_occurrences: Option<Rc<Vec<Rc<ReferenceOccurrence>>>>,
+    pub heads_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -255,6 +256,7 @@ pub fn parse_context_with_occurrence_state(
         occurrence_index: occurrence_index.clone(),
         declaration_occurrences: declaration_occurrences.clone(),
         reference_occurrences: reference_occurrences.clone(),
+        heads_only: ctx.heads_only.clone(),
     })
 }
 
@@ -269,6 +271,7 @@ pub fn parse_context_with_intern_table(
         occurrence_index: ctx.occurrence_index.clone(),
         declaration_occurrences: ctx.declaration_occurrences.clone(),
         reference_occurrences: ctx.reference_occurrences.clone(),
+        heads_only: ctx.heads_only.clone(),
     })
 }
 
@@ -2788,6 +2791,7 @@ pub fn parse_with_table_at(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     occurrence_base: Rc<AuthoredTokenOrdinalSpace>,
+    heads_only: bool,
 ) -> Rc<ParseWithTableResult> {
     {
         let occurrence_allocator = occurrence_id_allocator_advance_to(
@@ -2804,6 +2808,7 @@ pub fn parse_with_table_at(
             })),
             declaration_occurrences: Some(Rc::new(vec![])),
             reference_occurrences: Some(Rc::new(vec![])),
+            heads_only: heads_only.clone(),
         });
         let r = parse_module(token_stream_new(tokens.clone()), ctx.clone());
         if has_err(r.err.clone()) {
@@ -2864,6 +2869,7 @@ pub fn parse_with_table_in_occurrence_scope(
         source_indices.clone(),
         intern_table.clone(),
         authored_token_ordinal_space_from_allocator(occurrence_allocator.clone()),
+        false,
     )
 }
 
@@ -2877,6 +2883,21 @@ pub fn parse_with_table(
         source_indices.clone(),
         intern_table.clone(),
         intern_table.authored_token_ordinals.clone(),
+        false,
+    )
+}
+
+pub fn parse_heads_with_table(
+    tokens: Rc<Vec<Rc<Token>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+) -> Rc<ParseWithTableResult> {
+    parse_with_table_at(
+        tokens.clone(),
+        source_indices.clone(),
+        intern_table.clone(),
+        intern_table.authored_token_ordinals.clone(),
+        true,
     )
 }
 
@@ -6201,7 +6222,7 @@ pub fn parse_fn_after_kw(
         let inferred = ret.inferred.clone();
         let tokens = ret.tokens.clone();
         let ctx = ret.ctx.clone();
-        let r = parse_block(skip_newlines(tokens.clone()), ctx.clone());
+        let r = parse_item_block_body(skip_newlines(tokens.clone()), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -6360,7 +6381,7 @@ pub fn parse_fn_body_from_prefix(
             }
         } else {
             if tok_is_lbrace(token_stream_first(tokens.clone())) {
-                parse_block(tokens.clone(), ctx.clone())
+                parse_item_block_body(tokens.clone(), ctx.clone())
             } else {
                 {
                     let span = token_span(token_stream_first(tokens.clone()));
@@ -6607,7 +6628,7 @@ pub fn parse_block_item_after_kw(
         let uses = uses_r.uses.clone();
         let tokens = uses_r.tokens.clone();
         let ctx = uses_r.ctx.clone();
-        let r = parse_block(skip_newlines(tokens.clone()), ctx.clone());
+        let r = parse_item_block_body(skip_newlines(tokens.clone()), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -6677,7 +6698,7 @@ pub fn parse_block_body_from_prefix(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r = parse_block(skip_newlines(prefix.tokens.clone()), ctx.clone());
+        let r = parse_item_block_body(skip_newlines(prefix.tokens.clone()), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -10861,6 +10882,130 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
                 })
             }
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HeadsBlockSkipResult {
+    pub tokens: Rc<TokenStream>,
+    pub err: Option<Rc<ErrorNode>>,
+}
+
+pub fn heads_skip_block_tokens(
+    mut tokens: Rc<TokenStream>,
+    mut depth: i64,
+) -> Rc<HeadsBlockSkipResult> {
+    loop {
+        if (depth.clone() == 0) {
+            return Rc::new(HeadsBlockSkipResult {
+                tokens: tokens.clone(),
+                err: None,
+            });
+        }
+        let tok = token_stream_first(tokens.clone());
+        if tok_is_eof(tok.clone()) {
+            break Rc::new(HeadsBlockSkipResult {
+                tokens: tokens.clone(),
+                err: Some(parse_error(
+                    "heads-only parse: unterminated function body".to_string(),
+                    token_span(tok.clone()),
+                )),
+            });
+        } else {
+            match tok.clone() {
+                None => {
+                    break Rc::new(HeadsBlockSkipResult {
+                        tokens: tokens.clone(),
+                        err: Some(parse_error(
+                            "heads-only parse: unterminated function body".to_string(),
+                            no_span(),
+                        )),
+                    });
+                }
+                Some(t) => {
+                    if is_lbrace_shape(t.shape.clone()) {
+                        {
+                            let __tco_0 = token_stream_advance(tokens, 1);
+                            let __tco_1 = (depth + 1);
+                            tokens = __tco_0;
+                            depth = __tco_1;
+                            continue;
+                        }
+                    } else {
+                        if is_rbrace_shape(t.shape.clone()) {
+                            {
+                                let __tco_0 = token_stream_advance(tokens, 1);
+                                let __tco_1 = (depth - 1);
+                                tokens = __tco_0;
+                                depth = __tco_1;
+                                continue;
+                            }
+                        } else {
+                            {
+                                let __tco_0 = token_stream_advance(tokens, 1);
+                                tokens = __tco_0;
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn census_heads_body_stand_in_message() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "pool census heads-only: function body stripped -- refuse to interpret".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn census_heads_body_stand_in() -> Rc<Node> {
+    make_expr_error_node(
+        ExprErrorKind::CensusHeadsBodyStripped,
+        census_heads_body_stand_in_message(),
+        no_span(),
+    )
+}
+
+pub fn parse_block_heads_only(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+    {
+        let dummy_expr = parse_recovery_placeholder();
+        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
+        if has_err(r.err.clone()) {
+            return Rc::new(ExprResult {
+                expr: dummy_expr.clone(),
+                tokens: r.tokens.clone(),
+                ctx: ctx.clone(),
+                err: r.err.clone(),
+            });
+        }
+        let skipped = heads_skip_block_tokens(r.tokens.clone(), 1);
+        if has_err(skipped.err.clone()) {
+            return Rc::new(ExprResult {
+                expr: dummy_expr.clone(),
+                tokens: skipped.tokens.clone(),
+                ctx: ctx.clone(),
+                err: skipped.err.clone(),
+            });
+        }
+        Rc::new(ExprResult {
+            expr: census_heads_body_stand_in(),
+            tokens: skipped.tokens.clone(),
+            ctx: ctx.clone(),
+            err: None,
+        })
+    }
+}
+
+pub fn parse_item_block_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+    if ctx.heads_only.clone() {
+        parse_block_heads_only(tokens.clone(), ctx.clone())
+    } else {
+        parse_block(tokens.clone(), ctx.clone())
     }
 }
 
