@@ -233,10 +233,10 @@ test fn witness_transport_reads_use_show_property_authority() -> Bool {
 
 test fn witness_show_property_injection_metachar_refused() -> Bool {
   match host_operation_materialize_argv(
-    operation: systemctl_show_property_host_operation(
+    operation: SystemctlShowProperty {
       unit: "foo\"; rm -rf /" as NonEmptyStr,
       property: MemoryMax,
-    ),
+    },
   ) {
     ArgvMaterialized { argv: argv } =>
       match typed_argv_shell_safe_refusal_argv(argv: argv) {

@@ -11,7 +11,7 @@ import gunbc.host_operation_exec {
   HostOperationRefused,
   host_operation_exec,
   host_operation_materialize_argv,
-  hostname_read_short_host_operation,
+  HostnameReadShort,
 }
 
 data hostname_short_capture_note: String = "The read answers a two-armed capture, never a bare String?: an argv materialization that REFUSES is a typed, located fact about the declaration, and collapsing it into the same `none` that means empty stdout, a failed exec, or an unsupported transport is the state-space conflation DESIGN 5 names (review 42946). Every non-value arm carries WHY, mirroring gunbc.systemctl_status_read's UnitStatusCapture."
@@ -36,7 +36,7 @@ fn hostname_short_value_from_stdout(success: Bool, stdout: String) -> HostnameSh
 // One dispatch, in the realization layer. See gunbc.systemctl_is_active_read for the same shape
 // commented in full.
 fn hostname_short_read(transport: HostEffectTransport) -> HostnameShortCapture {
-  match host_operation_exec(transport: transport, operation: hostname_read_short_host_operation()) {
+  match host_operation_exec(transport: transport, operation: HostnameReadShort) {
     HostOperationObserved { stdout: out, success: ok, stderr: _ } =>
       hostname_short_value_from_stdout(success: ok, stdout: out)
     HostOperationRefused { operation: _, reason: why } =>
@@ -46,7 +46,7 @@ fn hostname_short_read(transport: HostEffectTransport) -> HostnameShortCapture {
 
 fn hostname_short_read_operation_argv_matches_authority() -> Bool {
   let authority = hostname_short_read_argv()
-  match host_operation_materialize_argv(operation: hostname_read_short_host_operation()) {
+  match host_operation_materialize_argv(operation: HostnameReadShort) {
     ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
     ArgvMaterializationRefused { at: _, cause: _ } => false
   }

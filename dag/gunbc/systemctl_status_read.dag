@@ -10,7 +10,7 @@ import gunbc.host_operation_exec {
   HostOperationRefused,
   host_operation_exec,
   host_operation_materialize_argv,
-  systemctl_status_host_operation,
+  SystemctlStatus,
 }
 
 type UnitStatusCapture =
@@ -33,7 +33,7 @@ fn unit_status_capture_from_stdout(stdout: String, refusal: String) -> UnitStatu
 // One dispatch, in the realization layer. See gunbc.systemctl_is_active_read for the same shape
 // commented in full; this file carries only its operation row and its decoder.
 fn systemctl_status_read(transport: HostEffectTransport, unit: NonEmptyStr) -> UnitStatusCapture {
-  match host_operation_exec(transport: transport, operation: systemctl_status_host_operation(unit: unit)) {
+  match host_operation_exec(transport: transport, operation: SystemctlStatus { unit: unit }) {
     HostOperationObserved { stdout: out, success: _, stderr: _ } =>
       unit_status_capture_from_stdout(stdout: out, refusal: "")
     HostOperationRefused { operation: _, reason: why } =>
@@ -51,7 +51,7 @@ fn unit_status_capture_text(capture: UnitStatusCapture) -> String {
 
 fn systemctl_status_operation_argv_matches_authority(unit: NonEmptyStr) -> Bool {
   let authority = ["systemctl", "status", "--no-pager", "--full", unit as String]
-  match host_operation_materialize_argv(operation: systemctl_status_host_operation(unit: unit)) {
+  match host_operation_materialize_argv(operation: SystemctlStatus { unit: unit }) {
     ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
     ArgvMaterializationRefused { at: _, cause: _ } => false
   }

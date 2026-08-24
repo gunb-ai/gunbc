@@ -8,7 +8,7 @@ import gunbc.host_operation_exec {
   HostOperationRefused,
   host_operation_exec,
   host_operation_materialize_argv,
-  systemctl_stop_host_operation,
+  SystemctlStop,
 }
 
 type SystemctlStopOutcome =
@@ -24,7 +24,7 @@ type SystemctlStopOutcome =
 // the process wrote nothing -- so the arm below refuses with that distinction stated instead of
 // rendering `none` as an empty reason.
 fn systemctl_stop_run(transport: HostEffectTransport, unit: NonEmptyStr) -> SystemctlStopOutcome {
-  match host_operation_exec(transport: transport, operation: systemctl_stop_host_operation(unit: unit)) {
+  match host_operation_exec(transport: transport, operation: SystemctlStop { unit: unit }) {
     HostOperationObserved { stdout: out, success: ok, stderr: err } =>
       if ok {
         SystemctlStopped { stdout: out }
@@ -43,7 +43,7 @@ fn systemctl_stop_run(transport: HostEffectTransport, unit: NonEmptyStr) -> Syst
 
 fn systemctl_stop_operation_argv_matches_authority(unit: NonEmptyStr) -> Bool {
   let authority = ["systemctl", "stop", unit as String]
-  match host_operation_materialize_argv(operation: systemctl_stop_host_operation(unit: unit)) {
+  match host_operation_materialize_argv(operation: SystemctlStop { unit: unit }) {
     ArgvMaterialized { argv: materialized } => join(materialized, " ") == join(authority, " ")
     ArgvMaterializationRefused { at: _, cause: _ } => false
   }
