@@ -20713,22 +20713,36 @@ fn frozen_path_deferral_qualified_identities_from_source(
 }
 
 /// The contradictory-intersection wall's pure decision: which frozen (entry, qualified-name)
-/// rows also name an identity enrolled in `floor_expected_red_roster`. Pure and side-effect-free
+/// rows also name an identity enrolled in an executing witness roster. Pure and side-effect-free
 /// so it is testable without a corpus checkout or a git repository — the file-reading half
 /// (`frozen_path_deferral_qualified_identities_from_source`) and the git-head half
 /// (`current_git_head_or_unresolved`) are kept out of it deliberately.
-fn expected_red_freeze_intersection(
+fn executing_roster_freeze_intersection(
     frozen_qualified: &[(String, String)],
-    expected_red_roster: &HashSet<String>,
+    executing_roster: &HashSet<String>,
 ) -> Vec<(String, String)> {
     let mut colliding: Vec<(String, String)> = frozen_qualified
         .iter()
-        .filter(|(_, qualified)| expected_red_roster.contains(qualified))
+        .filter(|(_, qualified)| executing_roster.contains(qualified))
         .cloned()
         .collect();
     colliding.sort();
     colliding.dedup();
     colliding
+}
+
+fn expected_red_freeze_intersection(
+    frozen_qualified: &[(String, String)],
+    expected_red_roster: &HashSet<String>,
+) -> Vec<(String, String)> {
+    executing_roster_freeze_intersection(frozen_qualified, expected_red_roster)
+}
+
+fn route_gap_freeze_intersection(
+    frozen_qualified: &[(String, String)],
+    route_gap_roster: &HashSet<String>,
+) -> Vec<(String, String)> {
+    executing_roster_freeze_intersection(frozen_qualified, route_gap_roster)
 }
 
 fn current_git_head_or_unresolved() -> String {
@@ -20763,6 +20777,33 @@ fn format_expected_red_freeze_intersection_refusal(
          witness_deferral_freeze.dag's shrink log, or if the identity is not genuinely \
          executing, fix floor_expected_red_roster/required_floor's admission instead of leaving \
          the contradiction standing. Colliding identities:{detail}",
+        colliding.len(),
+        colliding.len()
+    )
+}
+
+fn format_route_gap_freeze_intersection_refusal(
+    colliding: &[(String, String)],
+    head: &str,
+) -> String {
+    let mut detail = String::new();
+    for (entry, qualified) in colliding {
+        detail.push_str(&format!("\n  - {qualified} (frozen via entry \"{entry}\")"));
+    }
+    format!(
+        "REQUIRED-FLOOR REFUSAL cause=RouteGapFreezeIntersection count={} head={head} — {} \
+         identity(ies) are simultaneously enrolled in \
+         v2.workflow.floor_route_gap.floor_route_gap_roster (a typed witness that this required \
+         floor attempts to execute but cannot route to its subject) AND path-deferred in \
+         dag/gunbc/witness_deferral_freeze.dag frozen_path_deferrals \
+         (LegacyFrozenPathDeferral, admitted as having no executing consumer). Both claims cannot \
+         hold of one identity: the typed route-gap receipt exists only because this required \
+         floor consumed the row, so the freeze classification is stale evidence, not a live \
+         exemption. This count is bound to the head above — measure again at merge time, never \
+         cite it bare. Disposition: retire the frozen_path_deferrals row with a receipt in \
+         witness_deferral_freeze.dag's shrink log, or if the floor does not genuinely consume \
+         the identity, remove it from floor_route_gap_roster instead of leaving the contradiction \
+         standing. Colliding identities:{detail}",
         colliding.len(),
         colliding.len()
     )
@@ -27603,6 +27644,52 @@ mod node_frontier_plumbing_controls {
         roster.insert("test.claim.some_third_thing.holds".to_string());
 
         let colliding = super::expected_red_freeze_intersection(&frozen, &roster);
+        assert!(colliding.is_empty(), "{colliding:?}");
+    }
+
+    // The third pair in the pairwise-disjoint roster contract. A typed route gap proves the
+    // required floor consumed the identity far enough to produce a route receipt; it therefore
+    // cannot simultaneously be frozen as a witness with no executing consumer.
+    #[test]
+    fn route_gap_freeze_intersection_catches_only_the_planted_collision() {
+        let frozen = vec![
+            (
+                "test/claim/route_gap_test.dag".to_string(),
+                "test.claim.route_gap.host_refused_holds".to_string(),
+            ),
+            (
+                "test/claim/other_test.dag".to_string(),
+                "test.claim.other.unrelated_holds".to_string(),
+            ),
+        ];
+        let route_gap_roster = std::collections::HashSet::from([
+            "test.claim.route_gap.host_refused_holds".to_string(),
+            "test.claim.third.unrelated_holds".to_string(),
+        ]);
+
+        let colliding = super::route_gap_freeze_intersection(&frozen, &route_gap_roster);
+        assert_eq!(colliding, vec![frozen[0].clone()]);
+
+        let refusal = super::format_route_gap_freeze_intersection_refusal(&colliding, "deadbeef");
+        assert!(refusal.contains("cause=RouteGapFreezeIntersection"));
+        assert!(refusal.contains("count=1"));
+        assert!(refusal.contains("head=deadbeef"));
+        assert!(refusal.contains("test.claim.route_gap.host_refused_holds"));
+        assert!(!refusal.contains("test.claim.other.unrelated_holds"));
+    }
+
+    #[test]
+    fn route_gap_freeze_intersection_is_empty_when_rosters_are_disjoint() {
+        let frozen = vec![(
+            "test/claim/other_test.dag".to_string(),
+            "test.claim.other.unrelated_holds".to_string(),
+        )];
+        let route_gap_roster =
+            std::collections::HashSet::from(
+                ["test.claim.route_gap.host_refused_holds".to_string()],
+            );
+
+        let colliding = super::route_gap_freeze_intersection(&frozen, &route_gap_roster);
         assert!(colliding.is_empty(), "{colliding:?}");
     }
 
@@ -42713,14 +42800,13 @@ pub fn run_required_floor(
         }
     }
 
-    // CONTRADICTORY-INTERSECTION WALL: `floor_expected_red_roster` (this roster — removable
-    // only by an OBSERVED PASS, per its own header) and `witness_deferral_freeze`'s
+    // CONTRADICTORY-INTERSECTION WALL: both executing-roster classifications and
+    // `witness_deferral_freeze`'s
     // `frozen_path_deferrals` (`LegacyFrozenPathDeferral` — admitted as NEVER EXECUTED) make
-    // opposite claims about the same identity. Both cannot be true of one row: an identity that
-    // executes here (as every enrolled row must, on pain of `ExpectedRedIdentityDidNotExecute`
-    // below) is proof the freeze's classification for it is stale, and an identity that is
-    // genuinely never executed cannot legitimately be "known red, awaiting an observed pass" —
-    // there is no pass to observe. Construction, not validation (DESIGN.md §5): the two rosters
+    // opposite claims about the same identity. Neither can coexist with the freeze: expected-red
+    // requires a verdict, while a typed route-gap requires an attempted execution that produced
+    // a pre-verdict route receipt. Either proves the freeze's no-executing-consumer classification
+    // stale. Construction, not validation (DESIGN.md §5): all three rosters
     // are cross-referenced from their own source authorities on every required-floor run, so the
     // contradiction cannot re-accumulate silently the way it did before this wall existed.
     {
@@ -42738,6 +42824,13 @@ pub fn run_required_floor(
         if !colliding.is_empty() {
             let head = current_git_head_or_unresolved();
             return Err(format_expected_red_freeze_intersection_refusal(
+                &colliding, &head,
+            ));
+        }
+        let colliding = route_gap_freeze_intersection(&frozen_qualified, &route_gap_roster);
+        if !colliding.is_empty() {
+            let head = current_git_head_or_unresolved();
+            return Err(format_route_gap_freeze_intersection_refusal(
                 &colliding, &head,
             ));
         }
