@@ -8820,6 +8820,22 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
   }
 }
 
+// FOLD'S UNUSED-ELEMENT OPTIMIZATION CHANGES THE ITEM TYPE, AND THE CLOSURE SIGNATURE WAS NOT TOLD.
+// Dropping `.cloned()` when the fold lambda's element parameter is `_` is a real saving -- the clone is
+// paid per element for a value the body never names. But it also changes the ITEM TYPE the iterator
+// yields, from `T` to `&T`, while the lambda's element parameter kept its by-value annotation: rustc
+// E0631, `expected fn(Rc<_>, &Rc<_>)`, `found fn(Rc<_>, Rc<_>)`, with rustc's own help line reading
+// "consider adjusting the signature so it borrows its argument". One fact, derived in two places, and
+// the second place did not know about the first.
+//
+// fold_elem_type_str_final emits `_` for that parameter's type. The element is `_` BY CONSTRUCTION --
+// fold_lambda_element_unused is exactly the test that the parameter is named `_` -- so the annotation
+// carries no information for a reader and only has to be ACCEPTED by rustc. Emitting `_` lets inference
+// supply whichever of `T` / `&T` the iterator actually yields, which keeps the two consequences in
+// agreement without the emitter restating the item type at the second site. Emitting `&{elem_type}`
+// instead would restate it, and would then have to be kept in step with any future change to the strip
+// -- reintroducing the shape of this defect while fixing this instance of it. `_` is also the device
+// already used for elem_render_has_spurious_generic a few bindings earlier.
 fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Node?, result_type: InferredNode?, receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_iter_owned_receiver(receiver: receiver, downstream: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let elem_type_str = collection_element_type(receiver_type: receiver.inferred, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info, type_env: scope.type_env)
@@ -8973,19 +8989,6 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
     Present { value: a } => fold_lambda_element_unused(lambda_expr: arg_value(n: a), source_indices: scope.type_env.source_indices)
     Absent => false
   }
-  // ONE CONDITION, TWO CONSEQUENCES, AND ONLY ONE OF THEM WAS APPLIED. Dropping `.cloned()` for an
-  // unused element is a real saving -- the clone is paid per element for a value the body never names.
-  // But it also changes the ITEM TYPE the iterator yields, from `T` to `&T`, and the lambda's element
-  // parameter kept its by-value annotation: rustc E0631, `expected fn(Rc<_>, &Rc<_>)`, `found
-  // fn(Rc<_>, Rc<_>)`, with the emitter's own help line reading "consider adjusting the signature so
-  // it borrows its argument". The optimization and the signature were derived from the same fact in
-  // two places, and the second place did not know.
-  //
-  // The element is `_` by construction here -- fold_lambda_element_unused is exactly the test that the
-  // parameter is named `_` -- so the annotation carries no information for a reader and only has to be
-  // ACCEPTED by rustc. Emitting `_` lets inference supply whichever of `T` / `&T` the iterator yields,
-  // which keeps the two consequences in agreement without the emitter having to restate the item type.
-  // This is the same device already used one binding up for elem_render_has_spurious_generic.
   let fold_elem_type_str_final = if elem_unused { "_" } else { fold_elem_type_str }
   let fold_fn = match args |> skip(1) |> first {
     Present { value: a } =>
