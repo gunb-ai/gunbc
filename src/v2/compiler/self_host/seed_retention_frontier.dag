@@ -4,6 +4,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.algebra { any, length }
 import v2.std.collection { List }
+import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -224,19 +225,22 @@ fn path_in(path: String, paths: List<String>) -> Bool {
   any(xs: paths, predicate: fn(candidate) { candidate == path })
 }
 
-fn roster_paths() -> List<String> {
+fn roster_paths(roster: List<SeedRetentionFrontierRow>) -> List<String> {
   fold(
-    seed_retention_frontier_roster,
+    roster,
     init: [],
     f: fn(acc, row) { concat(acc, [row.crate_relative_path]) }
   )
 }
 
+data census_takes_its_roster_note: String = "THE ROSTER IS A PARAMETER, and that is what makes the three refusals executable rather than specified. A census closed over seed_retention_frontier_roster could only be probed with a fixture that enumerates all 92 live paths — a measurement copied from the current tree, which DESIGN section 5 rejects as an oracle, and which would go red on every unrelated seed edit. Parameterized, the discriminating REDs are authored over a four-row synthetic roster: the probe supplies the world AND the roster, plants exactly one defect, and the assertion has a reachable opposite answer. seed_retention_frontier_census binds the live roster for consumers; nothing about the mechanism differs between the two."
+
 fn seed_retention_census(
+  roster: List<SeedRetentionFrontierRow>,
   observed_crate_rust_paths: List<String>,
   compared_crate_rust_paths: List<String>
 ) -> SeedRetentionCensus {
-  let rostered_paths = roster_paths()
+  let rostered_paths = roster_paths(roster: roster)
   let retained_rows = fold(
     observed_crate_rust_paths,
     init: SeedRetentionCensus { rostered: [], unrostered: [], stale_rows: [], compared_collisions: [] },
@@ -298,16 +302,47 @@ fn seed_retention_census(
 data seed_retention_total_holds_note: String = "The conjunct is the three refusal populations being EMPTY, never a count of the rostered ones. A count equality would be satisfied by two errors cancelling — a path dropped from the tree and a path added to it — and DESIGN section 5 rules that completeness is an identity join, not a count equality. Every disagreement here is at path identity."
 
 fn seed_retention_frontier_total_holds(
+  roster: List<SeedRetentionFrontierRow>,
   observed_crate_rust_paths: List<String>,
   compared_crate_rust_paths: List<String>
 ) -> Bool {
   let census = seed_retention_census(
+    roster: roster,
     observed_crate_rust_paths: observed_crate_rust_paths,
     compared_crate_rust_paths: compared_crate_rust_paths
   )
   (length(xs: census.unrostered) == 0)
     && (length(xs: census.stale_rows) == 0)
     && (length(xs: census.compared_collisions) == 0)
+}
+
+fn seed_retention_frontier_census(
+  observed_crate_rust_paths: List<String>,
+  compared_crate_rust_paths: List<String>
+) -> SeedRetentionCensus {
+  seed_retention_census(
+    roster: seed_retention_frontier_roster,
+    observed_crate_rust_paths: observed_crate_rust_paths,
+    compared_crate_rust_paths: compared_crate_rust_paths
+  )
+}
+
+data roster_path_uniqueness_note: String = "A duplicate path would make the roster answer twice for one file with possibly different causes — the fork DESIGN section 3 forbids — and every join above keys on path, so a duplicate is invisible to all three refusals: the path is observed, it is in the roster, and both rows resolve. This is the one property of the LIVE roster a fixture cannot reach, so it is asserted directly over it."
+
+fn roster_path_occurrences(path: String) -> Int {
+  fold(
+    seed_retention_frontier_roster,
+    init: 0,
+    f: fn(acc, row) { if row.crate_relative_path == path { acc + 1 } else { acc } }
+  )
+}
+
+fn seed_retention_roster_paths_unique() -> Bool {
+  fold(
+    seed_retention_frontier_roster,
+    init: true,
+    f: fn(acc, row) { acc && (roster_path_occurrences(path: row.crate_relative_path) == 1) }
+  )
 }
 
 fn row_reason_is_undeclared(row: SeedRetentionFrontierRow) -> Bool {
