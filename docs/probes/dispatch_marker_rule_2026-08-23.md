@@ -146,7 +146,61 @@ second operand.
 whose two arms share a process shares whatever went wrong in it, and the failure mode is silence: a
 lost operand does not report as a lost operand, it reports as agreement.
 
-## The three clauses
+## Fifth clause: is this defect MINE? — the reverse-patch control
+
+*Contributed by `quiet-pike-368`, who was one night from rewriting a correct change to fix a defect
+they did not cause.*
+
+The clauses above all guard the run. This one guards the **attribution**. When your change is in the
+compiler and the measurement is downstream of it, a red tells you nothing on its own: the tree you
+measured contains your change **and** everything else that landed since your baseline. The failure
+is not a wrong number — it is a **correct number attributed to the wrong cause**, with the author's
+own plausible mechanism supplying the false explanation.
+
+The control is both arms **inside one dispatch at one ref**, where the *before* arm is produced by
+reverse-patching your own commit out of the worktree:
+
+```bash
+# locally: carry the patch in the script text
+git show <your-commit> -- <files> | gzip -9 | base64 -w0
+
+# in the dispatch, AFTER arm first, then:
+echo "$REV_B64" | base64 -d | gunzip > /tmp/rev.patch
+git apply -R /tmp/rev.patch && echo REVERT_APPLIED_OK || echo REVERT_FAILED
+git status --porcelain          # PRINT THIS
+# rebuild, then BEFORE arm
+```
+
+**Reverse-patch rather than `git checkout`**, because ctrl-build's remote does its own
+`git checkout --force` before your script runs and the clone is grafted at your commit with a
+depth-1 fetch — so a checkout-between-arms is either defeated or cannot reach the parent commit at
+all. A patch carried in the script text survives whatever the runner did to the worktree.
+
+Three things make it an instrument rather than a gesture, each learned by being burned:
+
+1. **Print `git status` after the revert.** A silently-failed revert gives you two *after* arms
+   reporting identical numbers, which reads exactly like "my change had no effect" — a false null
+   with no failure arm. The `REVERT_APPLIED_OK` / `REVERT_FAILED` echo plus the porcelain listing is
+   what makes the before arm provably *before*.
+2. **Rebuild the binary between arms, and delete any binary-identity stamp.** The curated probe keys
+   `gunbc` on `git rev-parse HEAD`; both arms are at the *same* HEAD by construction, so the stamp
+   says "already built" and arm two silently reuses arm one's compiler — a false identical. This is
+   the stale-binary class the probe's own header documents, arriving from a direction that header
+   does not cover: the arms differ by a **worktree patch**, not by a commit.
+3. **Read the rows that did NOT move.** A delta on your target row is equally consistent with
+   "fixed 8" and with "fixed 12, broke 4 elsewhere". Only the unchanged remainder discriminates.
+   Receipt: `E0425` 24 → 16 while all seventeen other histogram rows stayed byte-identical.
+
+**What it bought.** A board came back `EMIT_REFUSE`, 0 files, no cargo log. The obvious reading was
+that the change had broken emit, and a plausible mechanism was ready to blame. The control returned
+**identical refusals in both arms** — so it was not the author's. It was a trailing `//` block in a
+file not even in the compiled closure, since fixed on main as #9027.
+
+Note the two failures this clause names are ones that *pass* clauses 1–4 completely: the run
+executed, on the right tree, the subject stood alone, and the arms were genuinely two arms. What is
+missing is any evidence about **whose** the difference is.
+
+## The five clauses
 
 | | assert | catches | missed by the others |
 |---|---|---|---|
@@ -154,10 +208,11 @@ lost operand does not report as a lost operand, it reports as agreement.
 | 2 | **what** you measured | ran against the wrong tree | 1 sees every marker present |
 | 3 | the subject **stands alone** | subject was never viable | 1 and 2 both pass — #8282 passed both for two days |
 | 4 | the two arms are **two dispatches** | a comparison that lost an operand | 1–3 all pass per arm; the arms are simply the same arm |
+| 5 | the difference is **yours** | a correct number blamed on the wrong change | 1–4 all pass; nothing about the run is wrong |
 
 Each catches what the others cannot, and none implies another.
 
-**They are not four independent lessons.** They are four faces of one thing: *an instrument
+**They are not five independent lessons.** The first four are faces of one thing: *an instrument
 reporting an answer to a question it did not ask.* Clause 1's wrapper answers "did the dispatch
 succeed" when asked "did the payload run". Clause 2's ancestry check answers "can I see this in my
 history" when asked "is this in my tree". Clause 3's comparison answers "do these differ" when asked
@@ -165,6 +220,11 @@ history" when asked "is this in my tree". Clause 3's comparison answers "do thes
 In every case nothing lied and nothing errored — the artifact was simply answering something
 narrower than the reader was asking, which is why none of them has a failure arm and why each has to
 be guarded by asserting the missing question rather than by checking for an error.
+
+Clause 5 is the same shape pointed at the *reader* rather than the instrument: the run answers "what
+is true of this tree" when asked "what did I do", and the gap is filled by the author's own guess.
+That is why its guard is a second arm rather than a better marker — no property of a single
+measurement can say whose the difference is.
 
 ## Neighbours already recorded, and how this differs
 
