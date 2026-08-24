@@ -9,6 +9,9 @@ data primitive_identity_slug_prefix: String = "primitive."
 
 type PrimitiveIdentity sole_constructor { slug: NonEmptyStr }
 
+// The seal governs .dag construction; generated Rust mirrors remain ordinary
+// structs and therefore are not an end-to-end construction wall.
+
 fn primitive_identity_slug(name: String) -> PrimitiveIdentity {
   PrimitiveIdentity { slug: concat(primitive_identity_slug_prefix, name) as NonEmptyStr }
 }
