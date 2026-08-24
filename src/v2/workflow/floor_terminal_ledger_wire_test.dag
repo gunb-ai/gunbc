@@ -91,6 +91,12 @@ fn rendered_text(rows: List<ClaimTerminalRow>) -> String {
 
 // EVERY TERMINAL SHAPE, NOT A SAMPLE. A tag collision shows up in exactly one arm and nowhere
 // else, so a test over three representative shapes would pass while two dispositions were fused.
+// THE POPULATION IS TWELVE, NOT NINE, AND THE THREE ADDED SHAPES ARE THE ONES A WILDCARDED
+// `safety` COULD NOT DISTINGUISH. Before the split every one of them rendered as `budget-refused`
+// and projected to `BudgetRefusedBeforeVerdict`, so a round trip over them agreed with a mapping
+// that was wrong on both sides identically -- the failure a same-instrument comparison cannot
+// see. Each now carries its own tag and its own disposition, and that is the RED: collapse either
+// mapping back to one arm and the agreement assertion below fails.
 fn every_shape() -> List<ClaimTerminalRow> {
   [
     ClaimTerminalRow {
@@ -134,13 +140,6 @@ fn every_shape() -> List<ClaimTerminalRow> {
         }
       }
     },
-    // THE THREE SHAPES A WILDCARDED `safety` COULD NOT DISTINGUISH, and the reason the count
-    // below moved from 9 to 12. Before the split every one of these rendered as
-    // `budget-refused` and projected to `BudgetRefusedBeforeVerdict`, so a round trip over them
-    // agreed with a mapping that was wrong on both sides identically -- the failure a
-    // same-instrument comparison cannot see. Each now carries its own tag and its own
-    // disposition, and this is the RED: collapse either mapping back to one arm and the
-    // agreement assertion below fails.
     ClaimTerminalRow {
       identity: ident(f: "passed_over_budget"),
       expectation: ExpectedToHold,

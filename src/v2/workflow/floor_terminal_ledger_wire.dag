@@ -205,6 +205,17 @@ fn parse_expectation(wire: String) -> ClaimExpectation? {
 // and `HostToolUnresolved { name: "shell" }` render alike, and the reader would have to guess --
 // which is the state-space conflation the disposition projection was built to avoid, arriving one
 // layer down at the wire.
+// THE TAG DESCENDS INTO THE SAFETY OUTCOME, and the `BudgetRefused` arm below is where that was
+// missing. Wildcarding `safety` gave ONE tag to an interruption (no verdict, elapsed is a LOWER
+// BOUND) and to a claim that reached its verdict and was reclassified on an EXACT cost -- two
+// facts with opposite remedies, told apart by the model that arm already carries and then thrown
+// away on the way to the wire. This is the erasure that outlasts the others: the tag is what a
+// reader of the PUBLISHED LEDGER FILE joins on, so it was durable in the artifact rather than
+// transient in a log line.
+//
+// A BUDGET TERMINAL CARRYING "WITHIN LIMITS" IS A CONTRADICTORY PAIRING, not a third reading of
+// the cost. It gets its own tag rather than being folded into either real arm: folding it would
+// publish a refusal or a completion that no measurement supports.
 fn render_terminal_tag(terminal: ClaimAttemptTerminal) -> String {
   match terminal {
     Returned { observation: o } =>
@@ -213,19 +224,12 @@ fn render_terminal_tag(terminal: ClaimAttemptTerminal) -> String {
         ObservationUnrepresentable { reason: _ } => "returned-unreadable"
       }
     RuntimeErrored { message: _ } => "runtime-errored"
-    // THE TAG DESCENDS INTO THE SAFETY OUTCOME. Wildcarding it here gave one tag to an
-    // interruption (no verdict, elapsed is a LOWER BOUND) and to a claim that reached its
-    // verdict and was reclassified on an EXACT cost -- two facts with opposite remedies, told
-    // apart by the model this arm already carries and then thrown away on the way to the wire.
     BudgetRefused { safety: s } =>
       match s {
         SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } =>
           "budget-refused"
         CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } =>
           "passed-over-budget"
-        // A BUDGET TERMINAL CARRYING "WITHIN LIMITS" IS A CONTRADICTORY PAIRING, not a third
-        // reading of the cost. It gets its own tag rather than being folded into either real
-        // arm: folding it would publish a refusal or a completion that no measurement supports.
         CompletedWithinSafetyLimits => "budget-terminal-without-safety-cause"
       }
     HostToolUnresolved { name: _, probed: _ } => "host-tool-unresolved"
