@@ -80,6 +80,11 @@ multiply undeclared bindings; it would multiply **unfalsifiable** ones, and woul
 appearance of extending a working pattern. The five are not a working pattern. They are five rows
 that cannot report.
 
+> **SUPERSEDED — DO NOT APPLY THE REPAIR IN THIS SECTION.** The import retrofit recommended
+> below is refuted by operator ruling (2026-08-24) and would have broken the file. It is kept
+> unedited because the reasoning that produced it is instructive and because deleting a wrong
+> recommendation hides that it was made. See **The repair, corrected** at the end.
+
 **The repair is unchanged in shape and now has a stronger reason:** author wrappers *with* imports
 naming the assertion module, and retrofit the existing five. Two properties make this the right move
 rather than hygiene:
@@ -160,3 +165,81 @@ the honest one**, against the population they said would decide it. The five unf
 are then not a separate finding but a demonstration of why the counter alone is insufficient: a
 mechanism that silently picks, feeding evidence that cannot report, is two layers of the same
 failure to make a resolution answerable to something an author wrote.
+
+---
+
+## The repair, corrected — and the cliff that makes the obvious one dangerous
+
+*Operator ruling relayed 2026-08-24 via deep-ant-102. It withdraws the idiom as a model, corrects
+the import proposal twice, and the second correction would have broken the file.*
+
+### The ruling
+
+**The five wrappers are withdrawn as the working model for the other thirty-five** — the operator's
+words: *apparently working consumers whose visibility authority is absent*. What survives of the
+idiom is only the **relation**: a `Bool` `test data` assertion, and a `test fn` verdict-bearing
+consumer of it. The cross-module binding implementation is defective and is not to be copied.
+
+### Correction 1 — an import establishes visibility authority, not declaration identity
+
+These are two facts, not one. A module may import through a re-exporting access module while the
+declaration lives elsewhere; the import authorizes *visibility*, and says nothing about *which
+declaration* is bound. For the direct assertion modules here the two may coincide, but they remain
+structurally different fields, and an import retrofit therefore does not by itself establish that a
+wrapper reads the row its author intended. That is the same seam crisp-crab-430's re-export finding
+reaches from the other direction.
+
+### Correction 2 — a partial import retrofit disables the rest of the file
+
+This is the one that matters operationally, and it is confirmed in one line of `cli_run.rs`:
+
+```rust
+for sf in index.source_files.values() {
+    ...
+    if source_declares_import_lines(&sf.content) {
+        continue;                       // <-- whole file skipped for bare scan
+    }
+    bare_scan_eligible.insert(file_rel.clone());
+```
+
+**Bare-reference scanning is all-or-nothing per file.** Zero import lines → eligible. One or more →
+the file is skipped entirely.
+
+`generated_conformance_floor_test.dag` resolves **82 distinct bare names**, among them
+`LiveTreeDisposition`, `SubstrateInputsOnly`, `Outcome`, `TestClaim`, `Accepted` and `Rejected`.
+So adding five assertion imports does **not** add five edges. It flips the entire file off ambient
+resolution, and every one of the remaining names must then have a legitimate authored path or the
+file goes from ambient success to missing-provider failure. The obvious, careful-looking repair —
+*declare the five bindings you depend on* — is the one that breaks it.
+
+The safe version of the central-file repair is therefore to explicitize the **entire** dependency
+surface, measured rather than assumed. That is a much larger change than it appears.
+
+### The better repair: co-locate, don't import
+
+Move each wrapper **beside the assertion it consumes**, in the assertion-owning file. This dodges
+both corrections at once:
+
+- the reference becomes **module-local**, so no import is required and the cliff is never approached;
+- the assertion file **already carries its own external dependencies**, properly declared (14 imports,
+  11, 8, 8, 3–7);
+- the wrapper is **automatically discoverable** by the floor's ordinary `test fn` scan;
+- and it **survives the namespace cut** — #8282's terminal state deletes imports, so an import
+  retrofit is a correct repair against current main that *cannot* be the final representation.
+  Co-location can be both.
+
+### The caution on the existing five: identity is not free
+
+Moving a wrapper changes the module component of its witness identity, and these five carry
+historical receipts — they are enrolled in `floor_expected_red.dag` under their current identities.
+So either **keep them central and fully explicitize**, preserving identities, or **move them with a
+typed identity-migration receipt** that deliberately retires the old ones. What is not available is
+moving them while calling it an import cleanup: that is an identity change wearing the label of a
+hygiene change.
+
+### One qualification, against my own framing above
+
+Zero imports establishes the **absence of authored visibility**. It does *not* prove that every one
+of the 82 names went through the whole-pool fallback — local, prelude, or scoped authorities may
+legitimately serve some of them. The **five assertion references** are the load-bearing population
+to trace. The other 77 are context, not findings.
