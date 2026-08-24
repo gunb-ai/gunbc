@@ -7,6 +7,7 @@ import product.fabric.identity {
 import product.fabric.demand {
   Demand, DemandCommand, SubmitDemand, WithdrawDemand, SupersedeDemand,
   DemandRefusal, DemandRegistration, RegistrationAdvanced, RegistrationRefused,
+  CommandAttestation, ObservationReceiptRef,
   WorkRequirement, WorkStillRequired, WorkNoLongerRequired,
   SatisfactionDirective, TerminalReceiptAvailability,
   ExecutionPresence, ExecutionInFlight, NoExecutionInFlight,
@@ -39,13 +40,34 @@ import product.fabric.execution { ExecutionGrant, ReservationRef, LeaseIdentity 
 // identity is carried rather than the generation alone, for the reason
 // execution.dag already gives about receipt admission - a small integer that
 // every lease starts at names nothing on its own.
+//
+// authorized_by is the withdrawal's own evidence. A release that could not name
+// the observation that caused it is a capacity and budget movement with no
+// provenance, and the command was already carrying the answer.
 type ReleaseDirective<P> {
   attempt: FabricIdentity<P, ExecutionAttemptKey>
   lease: LeaseIdentity
   money_reservation: ReservationRef
   resource_reservations: List<ReservationRef>
   reason: NonEmptyStr
+  authorized_by: ObservationReceiptRef
 }
+
+// Both execution-bearing arms carry a LIST, and the plural is load-bearing
+// rather than defensive. More than one grant per Work is not a hypothetical:
+// new_attempt_required explicitly admits a fresh attempt while one is already
+// running, so a Work under re-execution holds two grants and two sets of
+// reservations at once. An arm naming a single attempt made the caller's
+// correct move unrepresentable - it would release the first grant's capacity
+// and budget and silently strand every other one under a Work that nothing
+// requires any more, which is the leak this model exists to close, arriving
+// through the shape of the answer rather than through the decision.
+//
+// The empty case keeps its own arm rather than becoming an empty list, because
+// nothing running and a release plan that happens to be empty are different
+// facts: the first is a Work that lost its last demand before any grant issued,
+// and the second would be an actuator being handed nothing to do with no way to
+// tell whether that was the answer or an omission.
 
 // The arms are the answers a binding is not allowed to reach on its own. Every
 // combination that differs in what the caller must DO is its own arm, and none
@@ -61,7 +83,7 @@ type DemandCommandEffect<P>
   | WorkStillRequiredAttemptContinues {
       population: List<Demand<P>>,
       remaining: List<Demand<P>>,
-      attempt: FabricIdentity<P, ExecutionAttemptKey>,
+      attempts: List<FabricIdentity<P, ExecutionAttemptKey>>,
     }
   | WorkStillRequiredNothingRunning {
       population: List<Demand<P>>,
@@ -70,7 +92,7 @@ type DemandCommandEffect<P>
   | WorkReleasedAttemptStops {
       population: List<Demand<P>>,
       work: FabricIdentity<P, WorkKey>,
-      release_plan: ReleaseDirective<P>,
+      release_plan: List<ReleaseDirective<P>>,
     }
   | WorkReleasedNothingRunning {
       population: List<Demand<P>>,
@@ -97,13 +119,17 @@ fn execution_presence<P>(
 // The reason is fixed by this module rather than supplied. A caller-chosen
 // release reason is a second account of why the release happened, free to
 // disagree with the transition that produced it.
-fn release_directive_for<P>(g: ExecutionGrant<P>) -> ReleaseDirective<P> {
+fn release_directive_for<P>(
+  g: ExecutionGrant<P>,
+  authorized_by: ObservationReceiptRef,
+) -> ReleaseDirective<P> {
   ReleaseDirective {
     attempt: g.context.attempt,
     lease: g.context.lease,
     money_reservation: g.money_reservation,
     resource_reservations: g.resource_reservations,
     reason: "no remaining demand requires this work",
+    authorized_by: authorized_by,
   }
 }
 
@@ -116,28 +142,29 @@ fn withdrawal_effect<P>(
   population: List<Demand<P>>,
   grants: List<ExecutionGrant<P>>,
   work: FabricIdentity<P, WorkKey>,
+  authorized_by: ObservationReceiptRef,
 ) -> DemandCommandEffect<P> {
+  let live = grants_for_work(grants: grants, work: work)
   match work_requirement(population: population, work: work) {
     WorkStillRequired { remaining: rem } =>
-      match grants_for_work(grants: grants, work: work) {
-        Empty {} =>
-          WorkStillRequiredNothingRunning { population: population, remaining: rem }
-        Cons { head: g, tail: _ } =>
-          WorkStillRequiredAttemptContinues {
-            population: population,
-            remaining: rem,
-            attempt: g.context.attempt,
-          }
+      if live.length() == 0 {
+        WorkStillRequiredNothingRunning { population: population, remaining: rem }
+      } else {
+        WorkStillRequiredAttemptContinues {
+          population: population,
+          remaining: rem,
+          attempts: live |> map(g => g.context.attempt),
+        }
       }
     WorkNoLongerRequired { work: w } =>
-      match grants_for_work(grants: grants, work: work) {
-        Empty {} => WorkReleasedNothingRunning { population: population, work: w }
-        Cons { head: g, tail: _ } =>
-          WorkReleasedAttemptStops {
-            population: population,
-            work: w,
-            release_plan: release_directive_for(g: g),
-          }
+      if live.length() == 0 {
+        WorkReleasedNothingRunning { population: population, work: w }
+      } else {
+        WorkReleasedAttemptStops {
+          population: population,
+          work: w,
+          release_plan: live |> map(g => release_directive_for(g: g, authorized_by: authorized_by)),
+        }
       }
   }
 }
@@ -146,9 +173,14 @@ fn decide_demand_command<P>(
   population: List<Demand<P>>,
   grants: List<ExecutionGrant<P>>,
   terminal: TerminalReceiptAvailability,
+  attestation: CommandAttestation<P>,
   command: DemandCommand<P>,
 ) -> DemandCommandEffect<P> {
-  match apply_demand_command(population: population, command: command) {
+  match apply_demand_command(
+    population: population,
+    attestation: attestation,
+    command: command,
+  ) {
     RegistrationRefused { refusal: r } => CommandRefused { refusal: r }
     RegistrationAdvanced { population: next, subject_work: w } =>
       match command {
@@ -170,8 +202,13 @@ fn decide_demand_command<P>(
               execution: execution_presence(grants: grants, work: w),
             ),
           }
-        WithdrawDemand { demand: _, evidence: _ } =>
-          withdrawal_effect(population: next, grants: grants, work: w)
+        WithdrawDemand { demand: _, evidence: ev } =>
+          withdrawal_effect(
+            population: next,
+            grants: grants,
+            work: w,
+            authorized_by: ev,
+          )
       }
   }
 }

@@ -151,8 +151,35 @@ fn demand_maximum_buy_order<P>(d: Demand<P>) -> MoneyAmountMicro {
 // branded over NonEmptyStr, so a command carrying no evidence has no spelling,
 // and an arm for it would be permanently green by construction - cited as
 // coverage while carrying no information.
+// The core cannot authenticate. Evidence is an opaque provenance reference that
+// this module states it never interprets, and inventing a verification of it
+// here would fabricate exactly the external fact a boundary is supposed to
+// refuse on. What the core CAN decide, and did not, is that a caller may only
+// act as the principal it attested to being.
+//
+// That gap was real and it was cross-tenant. The principal-mismatch arm below
+// catches a FALSELY presented principal - a key registered to someone else -
+// and stops there. It says nothing about a CORRECTLY presented one, so a
+// binding holding another requester's full FabricIdentity could withdraw that
+// requester's demand and every check passed, because the pair genuinely
+// matched. Possession of an identity was authorization to mutate it.
+//
+// The attestation is what the caller claims to have authenticated, carried with
+// the receipt that established it. The core refuses any command acting outside
+// it. What remains outside the modeled guarantee is whether the attestation is
+// itself true, which is the binding's obligation at its own boundary and is
+// declared here rather than silently assumed.
+type CommandAttestation<P> {
+  principal: P
+  evidence: ObservationReceiptRef
+}
+
 type DemandRefusal<P>
   = UnknownDemand { demand: FabricIdentity<P, DemandKey> }
+  | AttestationDoesNotCoverPrincipal {
+      attested: P,
+      acting: P,
+    }
   | DemandPrincipalMismatch { demand: FabricIdentity<P, DemandKey> }
   | DuplicateDemand { demand: FabricIdentity<P, DemandKey> }
   | ReplacementAlreadyRegistered { demand: FabricIdentity<P, DemandKey> }
@@ -296,7 +323,43 @@ fn supersede_demand_in<P>(
   }
 }
 
+// The principal a command ACTS AS. For a submission it is the principal the new
+// demand is registered under; for a withdrawal or a supersede it is the
+// principal of the demand being removed. A supersede's replacement is checked
+// separately against the superseded demand, so a command cannot act as one
+// principal and land as another.
+fn acting_principal<P>(command: DemandCommand<P>) -> P {
+  match command {
+    SubmitDemand { demand: d } => d.id.principal
+    WithdrawDemand { demand: id, evidence: _ } => id.principal
+    SupersedeDemand { superseded: s, replacement: _, evidence: _ } => s.principal
+  }
+}
+
+// The attestation gate runs before any lookup, and that ordering is the point.
+// Checking it after the lookup would let an unattested caller learn whether a
+// key exists under another principal from the difference between the two
+// refusals, which is a smaller leak than the mutation but a leak with the same
+// owner.
 fn apply_demand_command<P>(
+  population: List<Demand<P>>,
+  attestation: CommandAttestation<P>,
+  command: DemandCommand<P>,
+) -> DemandRegistration<P> {
+  let acting = acting_principal(command: command)
+  if attestation.principal != acting {
+    RegistrationRefused {
+      refusal: AttestationDoesNotCoverPrincipal {
+        attested: attestation.principal,
+        acting: acting,
+      }
+    }
+  } else {
+    admitted_command_transition(population: population, command: command)
+  }
+}
+
+fn admitted_command_transition<P>(
   population: List<Demand<P>>,
   command: DemandCommand<P>,
 ) -> DemandRegistration<P> {

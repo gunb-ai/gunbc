@@ -4,14 +4,16 @@ import std.types { NonEmptyStr, Bool, List }
 import std.currency { Usd }
 import std.measure { money_amount_micro, MoneyOnce }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import product.fabric.identity { FabricIdentity, DemandKey, WorkKey }
+import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, ExecutionAttemptKey }
 import product.fabric.demand {
   Demand, SatisfactionRequirement, AdmissionTerms, BuyTerms,
   DemandCommand, SubmitDemand, WithdrawDemand, SupersedeDemand,
   UnknownDemand, DemandPrincipalMismatch, DuplicateDemand,
   ReplacementAlreadyRegistered, SupersedeCrossesPrincipal, ReplacementWorkMismatch,
-  DemandRefusal, SatisfactionDirective,
+  DemandRefusal, SatisfactionDirective, CommandAttestation,
+  AttestationDoesNotCoverPrincipal,
   TerminalReceiptAvailability, TerminalReceiptPresent, NoTerminalReceipt,
+  acting_principal,
   SatisfiedByTerminalReceipt, AttachToExistingExecution, RequireNewAttempt, AwaitAdmission,
   ReuseAcceptedStepReceipts, RefuseStepReuseAtDeclaredFrame,
 }
@@ -152,10 +154,10 @@ fn effect_label(e: DemandCommandEffect<NonEmptyStr>) -> NonEmptyStr {
   match e {
     CommandRefused { refusal: r } => refusal_label(r: r)
     DemandAdmitted { population: _, directive: d } => directive_label(d: d)
-    WorkStillRequiredAttemptContinues { population: _, remaining: _, attempt: _ } =>
-      "still-required-attempt-continues"
     WorkStillRequiredNothingRunning { population: _, remaining: _ } =>
       "still-required-nothing-running"
+    WorkStillRequiredAttemptContinues { population: _, remaining: _, attempts: _ } =>
+      "still-required-attempt-continues"
     WorkReleasedAttemptStops { population: _, work: _, release_plan: _ } =>
       "released-attempt-stops"
     WorkReleasedNothingRunning { population: _, work: _ } => "released-nothing-running"
@@ -165,6 +167,7 @@ fn effect_label(e: DemandCommandEffect<NonEmptyStr>) -> NonEmptyStr {
 fn refusal_label(r: DemandRefusal<NonEmptyStr>) -> NonEmptyStr {
   match r {
     UnknownDemand { demand: _ } => "unknown-demand"
+    AttestationDoesNotCoverPrincipal { attested: _, acting: _ } => "attestation-does-not-cover-principal"
     DemandPrincipalMismatch { demand: _ } => "principal-mismatch"
     DuplicateDemand { demand: _ } => "duplicate-demand"
     ReplacementAlreadyRegistered { demand: _ } => "replacement-already-registered"
@@ -190,7 +193,7 @@ fn effect_population(e: DemandCommandEffect<NonEmptyStr>) -> List<Demand<NonEmpt
   match e {
     CommandRefused { refusal: _ } => []
     DemandAdmitted { population: p, directive: _ } => p
-    WorkStillRequiredAttemptContinues { population: p, remaining: _, attempt: _ } => p
+    WorkStillRequiredAttemptContinues { population: p, remaining: _, attempts: _ } => p
     WorkStillRequiredNothingRunning { population: p, remaining: _ } => p
     WorkReleasedAttemptStops { population: p, work: _, release_plan: _ } => p
     WorkReleasedNothingRunning { population: p, work: _ } => p
@@ -201,11 +204,11 @@ fn released_reservations(e: DemandCommandEffect<NonEmptyStr>) -> List<Reservatio
   match e {
     CommandRefused { refusal: _ } => []
     DemandAdmitted { population: _, directive: _ } => []
-    WorkStillRequiredAttemptContinues { population: _, remaining: _, attempt: _ } => []
+    WorkStillRequiredAttemptContinues { population: _, remaining: _, attempts: _ } => []
     WorkStillRequiredNothingRunning { population: _, remaining: _ } => []
     WorkReleasedNothingRunning { population: _, work: _ } => []
-    WorkReleasedAttemptStops { population: _, work: _, release_plan: rel } =>
-      concat([rel.money_reservation], rel.resource_reservations)
+    WorkReleasedAttemptStops { population: _, work: _, release_plan: plan } =>
+      plan |> flat_map(rel => concat([rel.money_reservation], rel.resource_reservations))
   }
 }
 
@@ -217,7 +220,16 @@ fn both_demands() -> List<Demand<NonEmptyStr>> {
   [github_demand(), gitlab_demand()]
 }
 
-fn decide(
+// The ordinary helper attests the principal the command acts as, so every
+// existing test below still exercises the population and execution logic rather
+// than the attestation gate. The gate has its own tests, where the attestation
+// and the command deliberately disagree.
+fn attesting(principal: NonEmptyStr) -> CommandAttestation<NonEmptyStr> {
+  CommandAttestation { principal: principal, evidence: "binding-auth-1" }
+}
+
+fn decide_as(
+  attested: NonEmptyStr,
   population: List<Demand<NonEmptyStr>>,
   grants: List<ExecutionGrant<NonEmptyStr>>,
   command: DemandCommand<NonEmptyStr>,
@@ -226,6 +238,20 @@ fn decide(
     population: population,
     grants: grants,
     terminal: NoTerminalReceipt,
+    attestation: attesting(principal: attested),
+    command: command,
+  )
+}
+
+fn decide(
+  population: List<Demand<NonEmptyStr>>,
+  grants: List<ExecutionGrant<NonEmptyStr>>,
+  command: DemandCommand<NonEmptyStr>,
+) -> DemandCommandEffect<NonEmptyStr> {
+  decide_as(
+    attested: acting_principal(command: command),
+    population: population,
+    grants: grants,
     command: command,
   )
 }
@@ -302,9 +328,9 @@ test fn an_unregistered_key_refuses_as_unknown_not_as_a_principal_mismatch() -> 
 test fn the_terminal_receipt_answer_alone_decides_whether_a_receipt_satisfies() -> Bool {
   let may = demand_of(principal: "github", key: "d-1", work_key: "w-1", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: true, new_attempt_required: false, step_reuse_permitted: true })
   let may_not = demand_of(principal: "github", key: "d-1", work_key: "w-1", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: false, step_reuse_permitted: true })
-  effect_label(e: decide_demand_command(population: [], grants: [], terminal: TerminalReceiptPresent, command: SubmitDemand { demand: may }))
+  effect_label(e: decide_demand_command(population: [], grants: [], terminal: TerminalReceiptPresent, attestation: attesting(principal: "github"), command: SubmitDemand { demand: may }))
     == "satisfied-by-terminal-receipt"
-    && effect_label(e: decide_demand_command(population: [], grants: [], terminal: TerminalReceiptPresent, command: SubmitDemand { demand: may_not }))
+    && effect_label(e: decide_demand_command(population: [], grants: [], terminal: TerminalReceiptPresent, attestation: attesting(principal: "github"), command: SubmitDemand { demand: may_not }))
       == "await-admission"
 }
 
@@ -420,4 +446,132 @@ test fn a_supersede_may_not_replace_another_principals_demand() -> Bool {
 test fn resubmitting_a_registered_identity_refuses_rather_than_overwriting() -> Bool {
   effect_label(e: decide(population: both_demands(), grants: [], command: SubmitDemand { demand: github_demand() }))
     == "duplicate-demand"
+}
+
+// THE IMPERSONATION WALL (review 55256, first finding). The identity presented
+// is entirely correct - right principal, right key, registered exactly as
+// spelled - and that is the point: the principal-mismatch arm cannot see this
+// case at all, because there is no mismatch to see. What refuses it is that the
+// caller attested to being github and acted as gitlab.
+//
+// The mirror is the same command with a truthful attestation, which must be
+// admitted. Without it, this test is satisfied by a gate that refuses every
+// withdrawal.
+
+test fn a_binding_may_not_withdraw_a_demand_it_did_not_attest_to() -> Bool {
+  let impersonating = decide_as(
+    attested: "github",
+    population: both_demands(),
+    grants: [running_grant()],
+    command: withdraw(principal: "gitlab", key: "demand-gl"),
+  )
+  let truthful = decide_as(
+    attested: "gitlab",
+    population: both_demands(),
+    grants: [running_grant()],
+    command: withdraw(principal: "gitlab", key: "demand-gl"),
+  )
+  effect_label(e: impersonating) == "attestation-does-not-cover-principal"
+    && effect_label(e: truthful) == "still-required-attempt-continues"
+}
+
+// The gate covers submission too, so a binding cannot register a demand under a
+// principal it did not authenticate and then withdraw it truthfully afterwards.
+
+test fn a_binding_may_not_submit_a_demand_under_a_principal_it_did_not_attest_to() -> Bool {
+  effect_label(
+    e: decide_as(
+      attested: "github",
+      population: [],
+      grants: [],
+      command: SubmitDemand { demand: gitlab_demand() },
+    ),
+  ) == "attestation-does-not-cover-principal"
+}
+
+// THE RESERVATION LEAK (review 55256, second finding). new_attempt_required
+// admits a fresh attempt while one is running, so two grants against one Work
+// is an ordinary state rather than a corner. When the last demand goes, EVERY
+// grant's capacity and budget must be named for release: an effect that
+// released the first and dropped the tail would strand a machine still billing
+// under a Work nothing requires.
+//
+// The count is the discriminator. Each grant carries one money reservation and
+// one resource reservation, so two grants must yield four named reservations -
+// a head-only implementation yields two and this goes red.
+
+fn second_running_grant() -> ExecutionGrant<NonEmptyStr> {
+  ExecutionGrant {
+    id: FabricIdentity { principal: "fabric", key: "grant-2" },
+    object: FabricGrantObject {
+      offer: FabricIdentity { principal: "supplier", key: "offer-2" },
+      quote: QuotedFlatPerGrant(
+        MoneyOnce { amount: money_amount_micro(count: 50000), currency: Usd },
+      ),
+    },
+    context: FabricGrantContext {
+      demand: demand_id(principal: "gitlab", key: "demand-gl"),
+      work: work_of(principal: "fabric", key: "work-1"),
+      attempt: FabricIdentity { principal: "fabric", key: "attempt-2" },
+      executor: "supplier",
+      lease: LeaseIdentity {
+        lease_key: "lease-2",
+        resource_fingerprint: content_hash_of_value(value: "slice-b"),
+        generation: 1,
+      },
+      issued_at: "2026-08-24T00:00:03Z",
+      maximum_liability: money_amount_micro(count: 200000),
+    },
+    evidence: FabricGrantEvidence {
+      fungibility_receipt: "ev-1",
+      offer_authority: "ev-2",
+      resource_conservation: "ev-3",
+      budget_conservation: "ev-4",
+      principal_authority: "ev-5",
+    },
+    resource_reservations: ["res-cpu-2"],
+    money_reservation: "res-money-2",
+  }
+}
+
+test fn releasing_a_work_names_every_grants_reservations_not_just_the_first() -> Bool {
+  let after_first = decide(
+    population: both_demands(),
+    grants: [running_grant(), second_running_grant()],
+    command: withdraw(principal: "github", key: "demand-gh"),
+  )
+  let released = decide(
+    population: effect_population(e: after_first),
+    grants: [running_grant(), second_running_grant()],
+    command: withdraw(principal: "gitlab", key: "demand-gl"),
+  )
+  effect_label(e: released) == "released-attempt-stops"
+    && released_reservations(e: released).length() == 4
+}
+
+// The same blindness on the surviving-work arm: while a Work is still required,
+// every running attempt continues, and an arm naming one of them would tell the
+// caller to keep one alive while saying nothing about the others.
+
+test fn a_surviving_work_names_every_running_attempt() -> Bool {
+  let e = decide(
+    population: both_demands(),
+    grants: [running_grant(), second_running_grant()],
+    command: withdraw(principal: "github", key: "demand-gh"),
+  )
+  effect_label(e: e) == "still-required-attempt-continues"
+    && continuing_attempts(e: e).length() == 2
+}
+
+fn continuing_attempts(
+  e: DemandCommandEffect<NonEmptyStr>,
+) -> List<FabricIdentity<NonEmptyStr, ExecutionAttemptKey>> {
+  match e {
+    CommandRefused { refusal: _ } => []
+    DemandAdmitted { population: _, directive: _ } => []
+    WorkStillRequiredNothingRunning { population: _, remaining: _ } => []
+    WorkReleasedNothingRunning { population: _, work: _ } => []
+    WorkReleasedAttemptStops { population: _, work: _, release_plan: _ } => []
+    WorkStillRequiredAttemptContinues { population: _, remaining: _, attempts: a } => a
+  }
 }
