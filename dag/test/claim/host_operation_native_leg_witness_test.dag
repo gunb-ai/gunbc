@@ -7,6 +7,7 @@ import v2.std.operation_argv { OperationRef, bind_operation_invocation, operatio
 import gunbc.host_operation_exec {
   HostOperation,
   SystemctlIsActive,
+  host_operation,
   host_operation_native_leg_agrees,
   hostname_read_short_host_operation,
   systemctl_is_active_host_operation,
@@ -50,12 +51,15 @@ test fn witness_hostname_read_short_native_leg_agrees() -> Bool {
   host_operation_native_leg_agrees(operation: hostname_read_short_host_operation())
 }
 
-// THE DISCRIMINATING RED. Status's identity, IsActive's local leg -- the exact silent failure the
+// THE DISCRIMINATING RED. `HostOperation` is `sole_constructor`, so this mispairing is authorable
+// ONLY because this declaration is named in the mint's admit list -- see the annotation on
+// gunbc.host_operation_exec `host_operation` for why that one exception is taken and what it costs.
+// A record literal here would not compile, which is the seal working. Status's identity, IsActive's local leg -- the exact silent failure the
 // guard exists to catch: over ssh this row runs `systemctl status`, locally it runs
 // `systemctl is-active`, and both succeed while answering different questions. If the guard is ever
 // weakened to something that cannot see the disagreement, this witness stops refusing and goes red.
 fn mispaired_host_operation() -> HostOperation {
-  HostOperation {
+  host_operation(
     invocation: bind_operation_invocation(
       at: OperationRef {
         path: "dag/extdeps/systemd/systemctl.dag",
@@ -65,7 +69,7 @@ fn mispaired_host_operation() -> HostOperation {
       bindings: [operation_argv_bind_text(name: "unit", text: unit_under_test as String)],
     ),
     native: SystemctlIsActive { unit: unit_under_test },
-  }
+  )
 }
 
 test fn witness_mispaired_native_leg_is_refused() -> Bool {

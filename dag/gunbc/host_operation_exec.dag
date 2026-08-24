@@ -97,10 +97,47 @@ type LocalInvocation =
 // shell_materialize_operation_argv already consumes it; re-spelling path/service/operation/bindings
 // as fields of this record would have been a second naming of that carrier -- the section 3
 // violation this diff is removing, re-committed in the diff removing it.
-type HostOperation {
+type HostOperation sole_constructor {
   invocation: BoundOperationInvocation
   native: LocalInvocation
 }
+
+// THE ONE MINT, AND WHY THE CARRIER IS SEALED. Without the seal, `host_operation_native_leg_agrees`
+// below is a LENS OVER FIVE HAND-LISTED OPERATIONS rather than a wall: nothing in production consults
+// it, so a sixth operation added next month pairs an identity with a variant, `host_operation_exec`
+// runs the mispairing without complaint, and the five green rows stay green. That is the
+// coverage-by-illusion tier DESIGN section 6 names -- machinery that exists while nothing gates on it.
+//
+// Sealing does not make a mispairing impossible; it makes it AUTHORABLE ONLY INSIDE A REVIEWED
+// FUNCTION. A record literal cannot be written wherever a record literal can be written, so adding a
+// sixth operation is an edit to the admit list in this file -- a conspicuous, counted review event --
+// rather than an import a caller writes in their own. This is the mechanism extdeps.exec.command
+// `argv_command` already established in this repository, used here for the same reason.
+//
+// ONE DEPARTURE FROM THAT PRECEDENT, STATED RATHER THAN SLIPPED IN. `argv_command`'s annotation says
+// no test declaration is admitted, because a witness there would obtain a VALID value by a route
+// production lacks. The admission below is the opposite case: the witness's whole purpose is to author
+// an INVALID PAIRING, which is exactly the regression probe DESIGN section 4b says must stay
+// authorable -- "a compiler is precisely a thing whose regression probes are invalid programs", and
+// reachability is judged against what a FIXTURE MAY AUTHOR. Refusing the admission would delete the
+// only discriminating RED this guard has, and the alternative home for such a probe
+// (compile_dag_diagnostic_census, the sole-constructor-cross-module class) sits in the required
+// floor's DeclinedLiveTree arm and DOES NOT EXECUTE -- so moving the red there would trade an
+// executing probe for a specification, which is the trap section 5 names.
+//
+// WHAT THE ADMISSION COSTS, stated so it is not read as free: the seal holds against every module in
+// the corpus except this one witness. That is one named, reviewed exception carrying an executing
+// red, not a general opening.
+fn host_operation(invocation: BoundOperationInvocation, native: LocalInvocation) -> HostOperation
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_operation_exec", decl_name: "systemctl_is_active_host_operation"),
+    decl_ref(module_path: "gunbc.host_operation_exec", decl_name: "systemctl_status_host_operation"),
+    decl_ref(module_path: "gunbc.host_operation_exec", decl_name: "systemctl_stop_host_operation"),
+    decl_ref(module_path: "gunbc.host_operation_exec", decl_name: "systemctl_show_property_host_operation"),
+    decl_ref(module_path: "gunbc.host_operation_exec", decl_name: "hostname_read_short_host_operation"),
+    decl_ref(module_path: "test.claim.host_operation_native_leg_witness", decl_name: "mispaired_host_operation"),
+  ]
+  = HostOperation { invocation: invocation, native: native }
 
 // THE OUTCOME IS DELIBERATELY NOT SshSessionExecResult. Three of the four legs produce one, but
 // naming a local process observation after ssh would be a nickname in the return position, and the
@@ -290,37 +327,37 @@ fn systemctl_operation_ref(operation: String) -> OperationRef {
 }
 
 fn systemctl_is_active_host_operation(unit: NonEmptyStr) -> HostOperation {
-  HostOperation {
+  host_operation(
     invocation: bind_operation_invocation(
       at: systemctl_operation_ref(operation: "IsActive"),
       bindings: [operation_argv_bind_text(name: "unit", text: unit as String)],
     ),
     native: SystemctlIsActive { unit: unit },
-  }
+  )
 }
 
 fn systemctl_status_host_operation(unit: NonEmptyStr) -> HostOperation {
-  HostOperation {
+  host_operation(
     invocation: bind_operation_invocation(
       at: systemctl_operation_ref(operation: "Status"),
       bindings: [operation_argv_bind_text(name: "unit", text: unit as String)],
     ),
     native: SystemctlStatus { unit: unit },
-  }
+  )
 }
 
 fn systemctl_stop_host_operation(unit: NonEmptyStr) -> HostOperation {
-  HostOperation {
+  host_operation(
     invocation: bind_operation_invocation(
       at: systemctl_operation_ref(operation: "Stop"),
       bindings: [operation_argv_bind_text(name: "unit", text: unit as String)],
     ),
     native: SystemctlStop { unit: unit },
-  }
+  )
 }
 
 fn systemctl_show_property_host_operation(unit: NonEmptyStr, property: SystemdUnitProperty) -> HostOperation {
-  HostOperation {
+  host_operation(
     invocation: bind_operation_invocation(
       at: systemctl_operation_ref(operation: "ShowProperty"),
       bindings: [
@@ -332,11 +369,11 @@ fn systemctl_show_property_host_operation(unit: NonEmptyStr, property: SystemdUn
       ],
     ),
     native: SystemctlShowProperty { unit: unit, property: property },
-  }
+  )
 }
 
 fn hostname_read_short_host_operation() -> HostOperation {
-  HostOperation {
+  host_operation(
     invocation: bind_operation_invocation(
       at: OperationRef {
         path: hostname_operation_path,
@@ -346,5 +383,5 @@ fn hostname_read_short_host_operation() -> HostOperation {
       bindings: [],
     ),
     native: HostnameReadShort,
-  }
+  )
 }
