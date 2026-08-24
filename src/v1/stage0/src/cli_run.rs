@@ -7074,6 +7074,119 @@ impl EntryEmissionRun {
     }
 }
 
+/// AN ENTRY OUTSIDE THE WORKSPACE ROOT IS A REFUSAL, NOT A PANIC, and the pair is the
+/// assertion: an existing file outside the repo and an existing file inside it must reach
+/// different fates through the SAME argument.
+///
+/// RED against the pre-fix code: the outside-the-root case did not return at all -- it
+/// panicked in `repo_relative_path_normalized` while keying the module graph, so this test
+/// aborts the process rather than failing an assertion. The inside-the-root control is what
+/// makes the refusal specific rather than a function that refuses everything.
+///
+/// The absent-file arm is included because it is the neighbouring refusal a wrong fix would
+/// collapse into: "does not exist" and "exists but is not ours" are different facts with
+/// different remedies (create the file vs move it into the tree), and one message for both
+/// would be the state-space conflation this file is full of warnings about.
+#[cfg(test)]
+mod entry_admission_tests {
+    use super::*;
+
+    fn cause_of(run: &EntryEmissionRun) -> (String, String) {
+        match &run.disposition {
+            EntryEmissionDisposition::NotExecuted {
+                earlier_phase,
+                cause,
+            } => (earlier_phase.clone(), cause.clone()),
+            other => panic!("expected NotExecuted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_entry_outside_the_workspace_root_refuses_instead_of_panicking() {
+        // THE FILENAME CARRIES THE PID because this fleet runs concurrent `cargo test`
+        // invocations on one host: a fixed name lets two runs write and delete the same path,
+        // and the loser sees the file vanish mid-test. That failure would surface as this test
+        // flaking on the ABSENT-file arm -- reporting the neighbouring refusal it exists to
+        // hold apart -- which is the most confusing possible symptom for the least
+        // interesting possible cause (review 55343, non-blocking; taken because a flake class
+        // costs more to diagnose later than to remove now).
+        let outside = std::env::temp_dir().join(format!(
+            "gunbc_entry_admission_probe_{}.dag",
+            std::process::id()
+        ));
+        std::fs::write(
+            &outside,
+            "module probe
+",
+        )
+        .expect("fixture write");
+        let run = compile_entry_emission(
+            &["dag".to_string()],
+            outside.to_str().expect("utf8 fixture path"),
+            false,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let (phase, cause) = cause_of(&run);
+        assert_eq!(phase, "entry-admission");
+        assert!(
+            cause.contains("outside the workspace root"),
+            "the refusal must say WHY, not merely that it refused: {cause}"
+        );
+        assert!(
+            cause.contains(&process_workspace_root().display().to_string()),
+            "the refusal must name the root it resolved, or it is unactionable: {cause}"
+        );
+        let _ = std::fs::remove_file(&outside);
+    }
+
+    /// THE ADMISSION PREDICATE IS THE PROCESS-ROOT ONE, ASSERTED DIRECTLY, because the
+    /// difference between the two candidates is not observable through
+    /// `compile_entry_emission` in any environment where the process root and the
+    /// compile-time root COINCIDE -- which is every environment this test runs in, including
+    /// CI. So the discriminating input cannot be authored at the outer boundary, and claiming
+    /// a fixture had proven it would be the decoration §4b warns about.
+    ///
+    /// What IS authorable is the predicate-level distinction, and that is what this asserts:
+    /// for a path outside the process root, `repo_relative_path` refuses while
+    /// `try_repo_relative_path_normalized` is the helper whose baked-root arm made the
+    /// widening possible. The RED is real -- swap the call in `compile_entry_emission` back to
+    /// the `try_` helper and the second assertion here is the one that documents why that is
+    /// wrong for a user-supplied path (review 55344).
+    #[test]
+    fn the_entry_predicate_anchors_on_the_process_root_only() {
+        let outside = std::env::temp_dir().join(format!(
+            "gunbc_entry_predicate_probe_{}.dag",
+            std::process::id()
+        ));
+        std::fs::write(&outside, "module probe\n").expect("fixture write");
+        assert!(
+            repo_relative_path(&outside).is_err(),
+            "the process-root anchor must refuse a path outside the repository"
+        );
+        assert!(
+            repo_relative_path(&process_workspace_root().join("dag")).is_ok(),
+            "and must admit one inside it, or it refuses everything"
+        );
+        let _ = std::fs::remove_file(&outside);
+    }
+
+    #[test]
+    fn a_missing_entry_keeps_its_own_distinct_refusal() {
+        let run = compile_entry_emission(
+            &["dag".to_string()],
+            "dag/definitely_not_a_real_entry_file.dag",
+            false,
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let (phase, cause) = cause_of(&run);
+        assert_eq!(
+            phase, "entry-read",
+            "an absent file and a file outside the root are different facts"
+        );
+        assert!(cause.contains("does not exist"), "{cause}");
+    }
+}
+
 fn entry_emission_not_executed(
     entry_path: &str,
     started: std::time::Instant,
@@ -7127,6 +7240,58 @@ pub fn compile_entry_emission(
             "entry-read",
             format!(
                 "entry file does not exist: {entry_path} (--entry names a repo path, not a module path)"
+            ),
+        );
+    }
+    // AN ENTRY OUTSIDE THE WORKSPACE ROOT REFUSES HERE, WHERE THE PATH IS STILL A CLI
+    // ARGUMENT, instead of panicking four frames down in module-graph keying.
+    //
+    // THE PREDICATE IS `repo_relative_path`, NOT `try_repo_relative_path_normalized`, and the
+    // difference is load-bearing (review 55344). The `try_` helper has a third arm that strips
+    // the COMPILE-TIME `workspace_root()`, which exists so sccache-embedded absolute spellings
+    // from another runner checkout still key correctly -- an internal concern about paths the
+    // compiler produced. Reused for a USER-SUPPLIED path it becomes a widening fallback: on a
+    // host where the build checkout still exists, `--entry /that/other/checkout/x.dag` would be
+    // admitted and keyed as though it belonged to THIS tree, silently mixing two trees. That is
+    // the §5 failure arm that widens instead of refusing, inside the guard added to stop a
+    // different §5 failure. `repo_relative_path` anchors against the PROCESS root only and is
+    // already fail-closed by its own contract.
+    //
+    // HAND-RUST RECEIPT: this adds NO new path predicate. It consumes the existing gate, whose
+    // authority is `gunbc.cli_run_repo_grant` `cli_run_repo_path_admissible` and whose
+    // Rust/authority equivalence is pinned by
+    // `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag` together with
+    // this file's `cli_run_repo_grant_equivalence_tests`. Its dissolve-on is that module's:
+    // cli_run.rs Chunk F (docs/plans/cli-run-reconcile-defork.md), when the refusal becomes the
+    // located `std.access.AccessDecision::Deny` from the single grant policy. Routing a second
+    // hand-rolled containment check beside it would have been the §3 fork this receipt exists
+    // to prevent.
+    //
+    // `repo_relative_path_normalized` panics for a path it cannot anchor, and that is the
+    // right shape THERE: by the time a path reaches module-index keying, being unanchorable
+    // is a broken invariant and not an input. But `--entry` is an INPUT, and an existing
+    // file outside the repository is an ordinary thing to hand it -- a scratch fixture in
+    // `/tmp` is what anyone probing this compiler writes first. The existence check above
+    // passes for such a file, so it used to reach the keying panic: `rc=101`, no phase, no
+    // located cause, and a caller reading only stdout sees an empty result indistinguishable
+    // from a clean compile (measured 2026-08-24 while validating an annotation-grain probe).
+    //
+    // A panic is loud and fabricates nothing, so this is not silent wrongness -- it is an
+    // untyped, unlocated failure where §5 asks for a typed located diagnostic. The refusal
+    // names both the path and the root, because "not under the workspace root" is unactionable
+    // without saying which root the process resolved.
+    if repo_relative_path(&entry_abs).is_err() {
+        return entry_emission_not_executed(
+            entry_path,
+            started,
+            "entry-admission",
+            format!(
+                "entry file is outside the workspace root: {} is not under {} \
+                 (--entry names a path inside the repository; a fixture written elsewhere, \
+                 such as /tmp, cannot be keyed into the module graph -- write it under a \
+                 source root and delete it afterwards)",
+                entry_abs.display(),
+                process_workspace_root().display()
             ),
         );
     }
