@@ -3392,7 +3392,71 @@ fn reference_derived_candidate_authored(module_source: String, name: String, typ
     || reference_derived_variant_induced_parent_spelled(module_source: module_source, enum_name: name, type_summaries: type_summaries, variant_to_enum: variant_to_enum)
 }
 
-fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
+
+// THE CANDIDATE PRODUCER FOR NAMES THE SOURCE NEVER SPELLS.
+//
+// host_realized_builtin_needs_no_import_note and reference_derived_authored_source_gate_note name
+// the same terminal shape from opposite ends: derive use-lines from the EMITTED reference set,
+// because a name the collector never proposes cannot be admitted by any gate decision however wide.
+// This is that producer, at type grain and with no second authority: the realized names are read
+// back out of render_rust_type -- the one function that decides what a type reference becomes --
+// rather than re-derived from a roster of substitutions, so a renderer change cannot leave the
+// import derivation behind.
+//
+// The three substitution mechanisms this reaches, each measured on the 03_ingest board of
+// 2026-08-23 (docs/probes/board_2026-08-23): a host carrier rewrite (Diagnostics renders as
+// Option<NonEmptyDiagnostics>, four E0425 blocks across v2.compiler.normalized_tree and
+// v2.compiler.normalize), an alias expansion (Char renders as Int in v2.std.text, EpochMs as Int
+// in std.state_durability), and a leaf reduction (a qualified reference spelled
+// v2.std.cross_tree.resolution.SourceRootIndex renders as the bare leaf). In every case the SOURCE
+// name is imported or needs no import and the EMITTED name is the one with no provider line.
+//
+// It proposes only; every existing filter still decides. A proposed name must resolve through the
+// registry to another module, pass provider_proven_exports_symbol, and -- the arm below -- be
+// spelled in the module's own EMITTED text. That last attestation is why a misrendered candidate
+// cannot fabricate a use-line: a name the emitter did not write is not attested by the artifact it
+// wrote, which is a strictly stronger witness than the authored-source gate it joins.
+// Splits a Rust TEXT into bare identifier tokens. Two callers with one authority: a rendered TYPE
+// string (Rc<Vec<Int>>, crate::a::B) and a whole emitted MODULE source. The type caller only ever
+// contains the first nine delimiters; the source caller also carries statement and block
+// punctuation, and omitting those is not cosmetic -- `pub type X = Int;` would tokenize to `Int;`
+// and a membership test for `Int` would answer NO for a name the emitter demonstrably wrote,
+// dropping a required use-line and reproducing the E0425 class this producer exists to close.
+// Adding them is expected to be a no-op for the type caller (rendered types contain none of them),
+// so one tokenizer serves both rather than a second near-copy keyed to the caller. That is stated as
+// UNREFUTED rather than proven: the two-arm measurement below moved 20 use-lines and every one is
+// explained by the GATE, so nothing in it exhibits a producer-side change -- but nothing in it
+// positively rules one out either.
+fn rust_identifier_tokens(s: String) -> List<String> {
+  let spaced = replace(replace(replace(replace(replace(replace(replace(replace(replace(s,
+    "<", " "), ">", " "), ",", " "), "(", " "), ")", " "), "[", " "), "]", " "), "&", " "), ":", " ")
+  let unpunctuated = replace(replace(replace(replace(replace(replace(replace(replace(replace(spaced,
+    ";", " "), "\{", " "), "\}", " "), ".", " "), "=", " "), "\n", " "), "\t", " "), "\r", " "), "*", " ")
+  let untokened = replace(replace(replace(replace(replace(unpunctuated,
+    "!", " "), "?", " "), "|", " "), "+", " "), "#", " ")
+  untokened |> split(delimiter: " ") |> map(t => trim(t)) |> filter(t => t != "")
+}
+
+fn collect_type_node_realized_surface_names(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> List<String> {
+  rust_identifier_tokens(s: render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
+}
+
+fn collect_item_realized_surface_names(item: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> List<String> {
+  let from_ann = match item.type_annotation {
+    Present { value: t } => collect_type_node_realized_surface_names(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    Absent => []
+  }
+  let from_params = item.params |> flat_map(p =>
+    collect_type_node_realized_surface_names(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+  )
+  let from_inferred = match item.inferred {
+    Present { value: Resolved { node: rt } } => collect_type_node_realized_surface_names(n: rt, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    _ => []
+  }
+  unique_strings(items: concat(from_ann, concat(from_params, from_inferred)))
+}
+
+fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> List<String> {
   {
     let module_source = match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
       Present { value: tm } => module_authored_source_text(module: tm.module, source_indices: source_indices)
@@ -3403,10 +3467,13 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
     let field_surface_names = collect_items_field_import_surface_names(items: items, emit_info: emit_info, source_indices: source_indices)
     let variant_payload_structs = expand_variant_payload_struct_imports(names: type_surface_names, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
     let emitter_attested_anon_heads = unique_strings(items: items |> flat_map(item => collect_anonymous_record_lit_heads(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries)))
-    let candidates = unique_strings(items: concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names), variant_payload_structs))
+    let realized_surface_names = unique_strings(items: items |> flat_map(item => collect_item_realized_surface_names(item: item, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)))
+    let emitted_source_tokens = rust_identifier_tokens(s: emitted_source)
+    let candidates = unique_strings(items: concat(concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names), variant_payload_structs), realized_surface_names))
       |> filter(name =>
         reference_derived_candidate_authored(module_source: module_source, name: name, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
-          || emitter_attested_anon_heads |> any(h => h == name))
+          || emitter_attested_anon_heads |> any(h => h == name)
+          || (emitted_source_tokens |> any(t => t == name)))
       |> filter(name => !reference_is_host_realized_builtin(name: name))
     let local_decl_names = items |> flat_map(item =>
       let nm = authored_name_at(source_indices: source_indices, node: item)
@@ -3478,6 +3545,18 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       |> map(item => authored_name(env: scope.type_env, node: item)),
     collect_phantom_zst_marker_names(items: typed_module.items, env: scope.type_env)
   )
+  let module_import_items = module_imports(n: m)
+  let this_module_name = authored_name(env: scope.type_env, node: m)
+  let wire_context_items = concat(typed_module.items, contracts_items_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
+  let wire_context_imports = concat(module_import_items, contracts_imports_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
+  let wire_contract_item = wire_context_items
+    |> filter(i =>
+      is_data_def_item(item: i)
+      && authored_name_at(source_indices: scope.type_env.source_indices, node: i) == "wire_contract")
+    |> first
+  let items_str = typed_module.items
+    |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: wire_context_items, imports: wire_context_imports, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index))
+    |> join(separator: "\n\n")
   let prelude = emit_prelude(imported_names: prelude_imported_names, local_type_names: local_type_names)
   let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items)
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
@@ -3511,7 +3590,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       export_sets: export_sets,
       typed_modules: typed_modules,
       source_indices: scope.type_env.source_indices,
-      module_index: module_index
+      module_index: module_index,
+      shared_types: shared_types,
+      emitted_source: items_str
     )
   let merged_imports = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), reference_use_lines)) |> join(separator: "\n")
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
@@ -3539,22 +3620,10 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let local_coproduct_names = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
     |> map(item => authored_name(env: scope.type_env, node: item))
-  let module_import_items = module_imports(n: m)
-  let this_module_name = authored_name(env: scope.type_env, node: m)
-  let wire_context_items = concat(typed_module.items, contracts_items_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
-  let wire_context_imports = concat(module_import_items, contracts_imports_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
   let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(module_items: wire_context_items, imports: wire_context_imports, local_coproduct_names: local_coproduct_names, source_indices: scope.type_env.source_indices)
   let coproduct_wire_contract_validation_section = if coproduct_wire_contract_validations == "" { "" } else { concat(coproduct_wire_contract_validations, "\n\n") }
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
-  let wire_contract_item = wire_context_items
-    |> filter(i =>
-      is_data_def_item(item: i)
-      && authored_name_at(source_indices: scope.type_env.source_indices, node: i) == "wire_contract")
-    |> first
-  let items_str = typed_module.items
-    |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: wire_context_items, imports: wire_context_imports, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index))
-    |> join(separator: "\n\n")
   let phantom_zst_markers = emit_module_phantom_zst_markers(items: typed_module.items, env: scope.type_env)
   let phantom_section = if phantom_zst_markers == "" { "" } else { concat("\n\n", phantom_zst_markers) }
   let raw_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
