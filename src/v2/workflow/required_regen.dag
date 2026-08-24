@@ -93,6 +93,19 @@ type HandMaintainedOutcome
 // such collisions in the corpus, and required-regen green on main at 90986d19469
 // (first_generation_equal=true planned=132 executed=132). The variant is a wall for a state one
 // .dag file away, not a repair of an observed failure.
+// FORMATTER UNAVAILABILITY IS A REGEN REFUSAL, NOT A HOST ACCIDENT. Every comparison this
+// operation makes is between rustfmt fixed points -- the emitted tree is stored as one so that
+// `cargo fmt --all --check` and the drift gate cannot demand different passes of one artifact --
+// so a run without a usable formatter has nothing to compare and must refuse. It is modeled here
+// rather than left to the host because the host is a MIRROR of this carrier (DESIGN.md records
+// `run_required_regen`'s hand-written ordering at *mitigatable*, with derivation from this
+// carrier as its next-rung trigger); a refusal the host can produce and this type cannot name is
+// exactly the divergence that trigger exists to close, and it would grow the seed's semantics
+// while the freeze holds it closed to growth.
+//
+// `reason` carries the located cause -- which program was resolved, what PATH was searched, and
+// whether it was absent, non-executable or unrunnable -- because those four have different
+// remedies and a bare "no formatter" would conflate them.
 type RequiredRegenRefusal
   = GeneratedDrift { paths: List<String> }
   | MirrorMissingForEmittedSurface { paths: List<String> }
@@ -104,6 +117,7 @@ type RequiredRegenRefusal
   | EmptyCommittedPopulation
   | EmptyEmitResult
   | CandidateTreeAbsent { reason: String }
+  | FormatterUnavailable { reason: String }
 
 // The emitter's product, named by where the author finds it. `produced_paths` are the
 // generated surfaces actually written under `root`, which is the population a first

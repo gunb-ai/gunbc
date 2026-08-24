@@ -105,7 +105,7 @@ test fn witness_slot_identity_formats_zero_padded_unit() -> Bool {
 fn sequence_registers_with_github(seq: RunnerSlotAddSequence) -> Bool {
   match seq {
     GitHubRunnerAddSequence { steps: s } => list_length(items: s) == 12
-    FabricSlotProvisioningNotModeled { reason: _ } => false
+    FabricSlotHasNoGitHubAddSequence { reason: _ } => false
     SlotIsNotACommittedMember { reason: _ } => false
   }
 }
