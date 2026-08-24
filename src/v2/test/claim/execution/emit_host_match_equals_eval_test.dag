@@ -5,9 +5,11 @@ import v2.test.complexity_gate.table_fixture_match_subject_producer {
   table_fixture_match_arrow_with_body_swapped_arms
 }
 import v2.compiler.emit { emit }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
-  run_test_claim_emit_vs_eval
+  run_test_claim_emit_vs_eval,
+  run_test_claim_from_source_emit_vs_eval
 }
 import v2.compiler.eval {
   EvalContext,
@@ -52,6 +54,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.logic { Bool }
+import v2.std.text { String }
 import v2.std.node {
   Atom,
   Conj,
@@ -343,6 +346,46 @@ fn emit_match_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeV
     BuildFailed { actual: _, diagnostic: _ } => false
     RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+fn emit_match_eval_verdict_reached_semantics(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+  match run.verdict {
+    Pass => true
+    SemanticMismatch { actual: _, falsification: _ } => true
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
+    Deferred { actual: _, diagnostic: _ } => false
+  }
+}
+
+data emit_match_eval_unbuildable_source_text: String = "fn main() { this is not rust"
+
+fn emit_match_eval_unbuildable_run(tree: InferredTree) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim_from_source_emit_vs_eval(
+    subject: emit_match_eval_subject(tree: tree),
+    source_outcome: outcome_accepted(
+      value: Medium { carried: emit_match_eval_unbuildable_source_text, fidelity: Lossless }
+    ),
+    target: rust_match_target_model_staging()
+  )
+}
+
+test fn emit_host_match_run_reaches_semantics_holds() -> Bool {
+  match emit_match_eval_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      emit_match_eval_verdict_reached_semantics(run: emit_match_eval_run(tree: tree))
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_match_unbuildable_source_does_not_reach_semantics_holds() -> Bool {
+  match emit_match_eval_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      emit_match_eval_verdict_reached_semantics(
+        run: emit_match_eval_unbuildable_run(tree: tree)
+      ) == false
+    Rejected { diagnostics: _ } => false
   }
 }
 
