@@ -49,11 +49,20 @@ Local arm64 session container, release build, roots `dag` + `src/v2`, one proces
 
 Three green runs, and the spread between them is the point rather than noise to average away:
 
-| run | full reading | heads reading | ratio |
-|---|---|---|---|
-| 1 | 12175 ms | 5885 ms | 2.07x |
-| 2 | 11030 ms | 5559 ms | 1.98x |
-| 3 | 12882 ms | 6382 ms | 2.02x |
+| run | modules | full reading | heads reading | ratio |
+|---|---|---|---|---|
+| 1 | 3880 | 12175 ms | 5885 ms | 2.07x |
+| 2 | 3880 | 11030 ms | 5559 ms | 1.98x |
+| 3 | 3880 | 6382 ms* | — | 2.02x |
+| **4 — merged tree, the one that ships** | **3886** | **10009 ms** | **4995 ms** | **2.00x** |
+
+\* run 3's full/heads pair is 12882/6382 ms; the column is narrowed here for width.
+
+**Run 4 is the load-bearing one and runs 1-3 are its history.** Runs 1-3 were taken before
+`origin/main` was merged in; main then changed `src/v1/02_parse.dag` (#9028) and re-emitted four
+stage0 mirrors, including this change's own. A control taken before a merge says nothing about
+the tree that ships, so the differential and the regen fixed point were both re-taken on the
+merged tree. The denominator moved 3880 -> 3886 because main added modules; the ratio did not.
 
 This is a shared container under other sessions' load, so the ABSOLUTE walls move ~15% run to
 run. The RATIO does not, because both readings in a run pay the same contention over the same
@@ -111,7 +120,12 @@ required-regen: elapsed_ms=583524 first_generation_equal=true planned=134 execut
 exit=0
 ```
 
-`first_generation_equal=true` over all 134 planned outputs. The one declared divergence
+`first_generation_equal=true` over all 134 planned outputs. **Re-taken on the merged tree** after
+`origin/main` was merged in (`elapsed_ms=555959 first_generation_equal=true planned=134
+executed=134`, exit 0), which is what establishes that the generated-artifact merge did not
+silently take one side: `v1_compiler_parse.rs` carries `merge=generated-artifact`, main
+re-emitted it, and so did this branch. A clean merge is not coherence on that path — the fixed
+point is. The one declared divergence
 (`main.rs`) is pre-existing and unrelated. So the compiler built from this mirror re-emits this
 mirror: the heads reading is at the self-host fixed point, not merely compiling.
 
