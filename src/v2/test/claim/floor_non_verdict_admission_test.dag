@@ -33,10 +33,21 @@ test fn unchanged_population_is_admitted() -> Bool {
   non_verdict_admits(observed: observed_unchanged, roster: roster_fixture)
 }
 
-test fn repayment_is_admitted_and_is_reported_per_identity() -> Bool {
-  non_verdict_admits(observed: observed_repaid, roster: roster_fixture)
+test fn repayment_that_leaves_the_row_behind_refuses_and_is_reported_per_identity() -> Bool {
+  !non_verdict_admits(observed: observed_repaid, roster: roster_fixture)
     && length(xs: non_verdict_repaid(observed: observed_repaid, roster: roster_fixture)) == 2
     && length(xs: non_verdict_added(observed: observed_repaid, roster: roster_fixture)) == 0
+}
+
+// AND THE REPAIR ITSELF IS ADMITTED, which is the control that keeps the row above from reading as
+// a penalty on repayment. Deleting the two repaid identities from the roster in the same change
+// leaves both collections empty, and the same function that refuses the stale form admits this
+// one. Without this control the pair would not discriminate between "stale rows refuse" and
+// "repayment refuses", which are opposite rules.
+test fn repayment_with_the_row_deleted_is_admitted() -> Bool {
+  non_verdict_admits(observed: observed_repaid, roster: observed_repaid)
+    && length(xs: non_verdict_repaid(observed: observed_repaid, roster: observed_repaid)) == 0
+    && length(xs: non_verdict_added(observed: observed_repaid, roster: observed_repaid)) == 0
 }
 
 test fn growth_refuses() -> Bool {

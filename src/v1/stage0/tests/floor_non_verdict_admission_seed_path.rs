@@ -29,14 +29,31 @@ fn unchanged_population_is_admitted() {
     assert!(non_verdict_admits(&a));
 }
 
-/// THE DIRECTION THE DEBT IS SUPPOSED TO MOVE. Refusing this would red the merge that repairs the
-/// population — gunbc#9020 repays 99 of these in one landing — which is how a repository teaches
-/// people not to repair debt.
+/// A REPAID IDENTITY WHOSE ROW STILL STANDS IS A STALE ROW, AND STALE ROWS REFUSE. An earlier
+/// revision of this test asserted the opposite, reasoning that refusing repayment would red the
+/// merge that repairs the population (gunbc#9020 repays 99 in one landing). That reasoning was
+/// right about the goal and wrong about the subject: what refuses is not the repayment, it is the
+/// roster row left behind asserting a debt that no longer exists. The executing gate already
+/// refuses it — `stale_non_verdict` is a conjunct of `required_floor_outcome_is_clean` — so
+/// admitting it here made this mirror disagree with its own consumer (review 55577).
 #[test]
-fn repayment_is_admitted_and_reported_per_identity() {
+fn repayment_that_leaves_the_row_behind_refuses() {
     let a = non_verdict_admission(&ids(&["m.b"]), &roster());
     assert!(a.added.is_empty(), "added: {:?}", a.added);
     assert_eq!(a.repaid, vec!["m.a".to_string(), "m.c".to_string()]);
+    assert!(!non_verdict_admits(&a));
+}
+
+/// THE CONTROL THAT KEEPS THE ROW ABOVE FROM READING AS A PENALTY ON REPAYMENT. Repaying and
+/// deleting the row are one act: delete the two repaid identities from the roster in the same
+/// change and both collections are empty, so the same function that refuses the stale form admits
+/// this one. Without this pair the suite would not discriminate "stale rows refuse" from
+/// "repayment refuses", which are opposite rules.
+#[test]
+fn repayment_with_the_row_deleted_is_admitted() {
+    let a = non_verdict_admission(&ids(&["m.b"]), &ids(&["m.b"]));
+    assert!(a.added.is_empty(), "added: {:?}", a.added);
+    assert!(a.repaid.is_empty(), "repaid: {:?}", a.repaid);
     assert!(non_verdict_admits(&a));
 }
 

@@ -43551,7 +43551,7 @@ pub fn non_verdict_admission(
 /// admit on `repaid` — the asymmetry between the two is the content of this wall, not an
 /// inconsistency in it.
 pub fn non_verdict_admits(admission: &NonVerdictAdmission) -> bool {
-    admission.added.is_empty()
+    admission.added.is_empty() && admission.repaid.is_empty()
 }
 
 pub fn run_required_floor(
