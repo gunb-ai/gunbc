@@ -6909,7 +6909,17 @@ mod entry_admission_tests {
 
     #[test]
     fn an_entry_outside_the_workspace_root_refuses_instead_of_panicking() {
-        let outside = std::env::temp_dir().join("gunbc_entry_admission_probe.dag");
+        // THE FILENAME CARRIES THE PID because this fleet runs concurrent `cargo test`
+        // invocations on one host: a fixed name lets two runs write and delete the same path,
+        // and the loser sees the file vanish mid-test. That failure would surface as this test
+        // flaking on the ABSENT-file arm -- reporting the neighbouring refusal it exists to
+        // hold apart -- which is the most confusing possible symptom for the least
+        // interesting possible cause (review 55343, non-blocking; taken because a flake class
+        // costs more to diagnose later than to remove now).
+        let outside = std::env::temp_dir().join(format!(
+            "gunbc_entry_admission_probe_{}.dag",
+            std::process::id()
+        ));
         std::fs::write(
             &outside,
             "module probe
