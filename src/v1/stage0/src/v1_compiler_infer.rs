@@ -3857,12 +3857,38 @@ pub fn is_anonymous_bound_name(name: String) -> bool {
     (name.clone() == "_".to_string())
 }
 
-pub fn call_arg_label_matches_param(param_name: String, arg_label: String) -> bool {
-    (((param_name.clone() == arg_label.clone()) || (param_name.clone() == "_".to_string()))
-        || (((v1_rt::string_length(&param_name) >= 1)
+pub fn call_param_caller_labels(param_name: String) -> Rc<Vec<String>> {
+    if (param_name.clone() == "_".to_string()) {
+        Rc::new(vec![])
+    } else {
+        if ((v1_rt::string_length(&param_name) >= 1)
             && (v1_rt::substring(&param_name, 0, 1) == "_".to_string()))
-            && (v1_rt::substring(&param_name, 1, v1_rt::string_length(&param_name))
-                == arg_label.clone())))
+        {
+            Rc::new(vec![
+                param_name.clone(),
+                v1_rt::substring(&param_name, 1, v1_rt::string_length(&param_name)),
+            ])
+        } else {
+            Rc::new(vec![param_name.clone()])
+        }
+    }
+}
+
+pub fn call_arg_label_matches_param(param_name: String, arg_label: String) -> bool {
+    if (param_name.clone() == "_".to_string()) {
+        true
+    } else {
+        {
+            let mut __found = false;
+            for caller_label in call_param_caller_labels(param_name.clone()).iter().cloned() {
+                if (caller_label.clone() == arg_label.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
 }
 
 pub fn param_binds_positionally(
