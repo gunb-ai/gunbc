@@ -1,8 +1,12 @@
 # The name-derived loader resolves by falling through to a whole-tree pool, and the instrument watching it is blind to the failure that bit
 
 **Evidence status — two classes, and an earlier revision of this line wrongly covered both with one
-claim.** Symbols are named; line references appear only where the subject sits inside a function
-body, which is where §3's citation rule admits a position beside the symbol.
+claim.** Every reference below names a module and a symbol. **An earlier revision carried file
+offsets beside them, defending it under §3's carve-out for "a line inside a blob"; they are removed.**
+Two reviews rejected that reading on sibling documents, and the removal was an improvement rather
+than a concession — naming the enclosing function surfaced that the scoped census and the pool
+fallback live in the SAME function, head versus loop, which is the structural fact the argument in
+§4d actually rests on and which two line numbers had obscured.
 
 **MECHANISM CLAIMS — verified by reading the live tree at `bd84f669681` (2026-08-24).** Every
 statement about what the loader does, what `pool_bare_census` is built over, what
@@ -53,7 +57,7 @@ wider pool, pool coincidence is *promoted from an accident to the mechanism*.
 
 ## 2. The answer, from the loader
 
-`v1_compiler.cli_run` `build_both_closure_edge_index` (`src/v1/stage0/src/cli_run.rs`, ~7870):
+`v1_compiler.cli_run` `bare_reference_pull_paths_for_source`, inside its resolve loop:
 
 ```rust
 let target_module = match resolve_in(&census) {
@@ -62,7 +66,7 @@ let target_module = match resolve_in(&census) {
 };
 ```
 
-`census` is the **scoped** index. `pool_bare_census` (same file, ~14832) is memoized over
+`census` is the **scoped** index. `pool_bare_census` (same module) is memoized over
 `pool.nodes_by_file` — **every node in every file in the pool**:
 
 ```rust
@@ -173,7 +177,8 @@ Recorded with its history because the correction pattern is itself the subject o
 
 **Why round 2's "today pays zero" is backwards.** The *scoped* census forces the parse, and it does so
 **unconditionally, above the loop that contains the fallback** — `bare_reference_pull_paths_for_source`
-(~7754) calls `tree_bare_census_for_root` at ~7764, while the fallback in §2 is at ~7870. So a process
+calls `tree_bare_census_for_root` at its HEAD, while the fallback in §2 sits inside its resolve
+loop further down — the same function, census first, lookups after. So a process
 whose names all resolve in the scoped census pays the whole-corpus parse in full; building that census
 is what requires it. The receipt is an ordinary run with `bare_eligible=699` and
 `tree_census_misses=2` — scoped hits throughout, parse paid anyway.
@@ -267,6 +272,33 @@ when they land, and its `~5.5x` retired.**
 in a cohort receipt: the debt closes when a name that resolves *only* through the whole-tree pool is
 refused rather than silently bound — the §4 counter being the intermediate rung that makes the
 population visible first.
+
+## 5c. A misattribution corrected in this document, and how it survived three checks
+
+An earlier revision placed the fallback arm in **`build_both_closure_edge_index`**. It is in
+**`bare_reference_pull_paths_for_source`**.
+
+The claim was relayed from another session, and I verified it — but I verified **the snippet**, by
+grepping for `pool_bare_census` and reading the two lines around the hit. **I never checked which
+function enclosed the line I had found.** The code was exactly as reported; its home was not. Both
+authors then repeated the wrong function name in messages to four other sessions.
+
+It surfaced only because a review forced the offsets out, and naming the enclosing symbol requires
+computing the enclosing symbol:
+
+    awk 'NR<=7870 && /^fn |^pub fn /{last=NR": "$0} END{print last}'
+    -> 7754: fn bare_reference_pull_paths_for_source(
+
+**The positional citation was concealing the error, not merely risking rot.** `~7870` is a true
+statement about where the code is, and it let a false statement about *what the code is part of*
+travel beside it unchallenged for hours — because a line number is checkable against the file while
+being silent about the containment tree, which is precisely the structure §3 says the namespace
+authority already names.
+
+And the correction is not cosmetic: the enclosing function is *why* the argument in §4d works. The
+scoped census and the pool fallback are in **one** function — census at the head, fallback in the
+loop below — which is what makes the whole-corpus parse unconditional. Attributed to two different
+functions, that reasoning is unavailable.
 
 ## 6. Provenance
 
