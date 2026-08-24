@@ -1,12 +1,50 @@
 # Instrument traps measured on 2026-08-24
 
-Six ways an instrument in this repository answered a **narrower question than it was
-asked** in one night, across two sessions and nine lanes. Each one is recorded with what
-was measured, not with advice — the advice is always the same and always insufficient
-("check your instrument"), and what actually transfers is the specific shape.
+**Read this section and stop, unless you are looking for a specimen.** The rest of the document is
+evidence, and it grew past a thousand lines in a day because the class kept recurring while it was
+being written.
 
-Every one of these produced output that was TRUE. None of them was a bug in the tool.
-In each case the reader supplied a binding the output did not state.
+## The rule
+
+**Check the comparands, not the comparison.**
+
+Every instance below produced output that was **TRUE**. None was a bug in a tool. In each case the
+instrument answered a **narrower or neighbouring question than the one asked**, and the reader
+supplied the missing binding without noticing.
+
+The diagnostic question, which is mechanical and is the whole of the method:
+
+> **What is the instrument supplying that the subject would have to supply for itself?**
+
+    compile-clean          supplies the whole-tree pool          -> "this module is fine" is not what it said
+    a stale binary         supplies its own identity             -> two questions, one TRUE byte
+    a capped list          supplies the unseen 3865 rows         -> empty and truncated are one output
+    two lanes, two refs    supplies the branch the ruling names  -> both right, neither on the subject
+    an ambiguity counter   supplies "unique means authorized"    -> unique-but-wrong reports zero
+
+## Four things that transfer
+
+1. **A false absence is worse than a false green.** A green is caught by whatever depends on it; an
+   absence *terminates the investigation*, because there is nothing downstream to trip over.
+2. **"Check when the answer surprises you" is exactly inverted** — it fires on the results least
+   likely to be corrupted and stays silent where corruption is indistinguishable from truth.
+3. **The repair for a claim on the wrong subject is to MOVE it, not to soften it.** Hedging reads as
+   rigour while discarding signal (§ *the repair for a claim on the wrong subject*).
+4. **Attention is not a remedy.** The strongest evidence in this document is that its own authors
+   committed these errors *while writing it* — one within the hour, on the change recording the class,
+   and three of us in a single thread that was explicitly about it.
+
+**Not one instance in this document was caught by its own output.** Every one was caught by someone
+re-deriving what they had already said. That is not a run of bad luck with tools; it is what it means
+for a distinction to be absent from a channel.
+
+---
+
+## Specimens
+
+What follows is the evidence, roughly in the order it was found — across two sessions and nine lanes.
+Each is recorded with what was measured rather than with advice, because the advice is always the
+same and always insufficient ("check your instrument") and what transfers is the specific shape.
 
 ---
 
