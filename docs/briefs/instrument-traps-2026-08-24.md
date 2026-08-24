@@ -1480,3 +1480,46 @@ failed"*, and makes the timeout informative instead of merely negative.
 and an instrument whose marker is a literal reports before it starts. **Both produce a confident
 reading during the interval when nothing is known** — one by silence that looks like a value, one by
 a value that precedes the measurement.
+
+### The generalisation, which is larger than logs
+
+The framing that makes the previous entry a class rather than a `ctrl-build` quirk, in the words of
+the session that hit it:
+
+> What made the echo dangerous is not that the marker appeared. It is that **it appeared at time
+> zero**. Presence-based watchers all have a defined answer before the subject exists.
+
+**Any check whose predicate is satisfiable by the setup of the experiment is green before the
+experiment.** The log echo is one instance; the shape does not need a log:
+
+    a file the harness creates empty, checked for existence
+    a table the migration creates, checked for presence rather than contents
+    a metric registered at startup at zero, checked for "is it reported"
+    a marker string in a script, checked by grep against the script's own output
+
+In every case the check passes at t=0, and the interval where it is wrong is exactly the interval you
+built it to observe. **This is the decoration failure from DESIGN §4b arriving on a timeline instead
+of in a corpus** — not a check whose RED is unauthorable, but one whose GREEN precedes its subject.
+The repair is the same in both: make the passing state something only the real event could produce.
+
+### A specimen of the same trap in a different instrument, caught before it was reported
+
+Checking whether a commit was present in a branch's history:
+
+    git log --oneline <head> | grep -ci "9090"        ->  1        reads as PRESENT
+    git log --oneline <head> | grep -E "\(#9090\)"    ->  nothing  actually ABSENT
+
+The single match was **`e19090e107` — a commit hash containing `9090` as a substring**, on an
+unrelated PR. **A bare PR-number grep over `git log` has a false-positive rate nobody accounts for,
+because hashes are hex and PR numbers are decimal digits that occur inside them.** Every short hash
+in the log is a lottery ticket against every PR number you might search for, and the log is long.
+
+What makes it worth recording is the counterfactual: reporting the first number would have said a
+cost row *was* present and therefore that three separate measurements *were* comparable — the exact
+unrecoverable error the sibling session had written a message an hour earlier to prevent. **The
+instrument would have been used to confirm the very claim it was built to refute.**
+
+The rule is the delimiter, not the number: match `(#9090)`, never `9090`. Same shape as the marker
+rule above — **the substring is satisfiable by things that are not the subject**, and narrowing the
+pattern until only the subject can satisfy it is the construction move. Anchoring (`^RUN_EXIT=`) is
+the validation move and remains defeatable, because an echoed script can begin a line that way too.
