@@ -55,6 +55,36 @@ Without the marker those two collapse into one another, and the second silently 
 `set -x` is part of the rule, not decoration: it makes the transcript show which statements were
 reached, so a truncated run is legible as truncated.
 
+## Second clause: assert the SUBJECT, not only that you measured
+
+The rule above guards *whether the command ran*. It does not guard *what it ran against*, and that
+gap has its own live specimen from the same evening (`smart-ram-730`, confirming a fix on a merged
+head): a `git merge --ff-only` had failed, so the dispatched branch did **not** contain the commit
+under test. The head was unchanged, the payload executed normally, every execution marker was
+present — and the run would have returned zero emitted files and read as **"the fix did not work"**.
+
+The first clause cannot catch that one. The markers are there; the command did run. What is missing
+is any assertion about the *subject*:
+
+```bash
+echo "HEAD_SHA=$(git rev-parse HEAD)"
+echo "HAS_FIX=$(git merge-base --is-ancestor <fix-sha> HEAD && echo yes || echo no)"
+```
+
+Read those first. A dispatch that cannot state which tree it measured has not measured a tree — it
+has measured *a* tree, and which one is exactly the fact in dispute when the result is surprising.
+
+The two clauses are complementary and neither implies the other:
+
+| failure | execution markers | subject markers |
+|---|---|---|
+| dispatch never ran the payload | **absent** — caught | absent |
+| dispatch ran against the wrong tree | present — *not* caught | **wrong** — caught |
+
+A surprising result should send you to the subject markers before the conclusion. "The fix does not
+work" and "the fix is not in this tree" produce identical output, and only one of them is about the
+fix.
+
 ## Neighbours already recorded, and how this differs
 
 - `cargo` exiting 0 without compiling is the same rule for a different harness.
