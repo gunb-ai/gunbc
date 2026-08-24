@@ -77,7 +77,6 @@ pub mod std_occurrence_binding_candidates;
 pub mod std_occurrence_binding_resolve;
 pub mod std_occurrence_identity;
 pub mod std_pareto;
-pub mod std_primitive_projection;
 pub mod std_process_termination;
 pub mod std_realization_schedule;
 pub mod std_reference_binding_observation;
