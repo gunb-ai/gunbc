@@ -7,11 +7,12 @@ import std.algebra {
   NamedTemplate,
   PartialFunctionProfile,
   PointwisePowerCollectionProfile,
-  BooleanAlgebraCollectionProfile,
+  FinitePowerSetProfile,
   BooleanAlgebraProfile,
   ReceiverKey,
   ReceiverSelf,
   algebra_templates_for_profile,
+  all_algebra_field_templates,
 }
 import std.primitive_identity {
   GroundedInAlgebraTemplate,
@@ -23,6 +24,7 @@ import std.primitive_identity {
   SignatureUngrounded,
   algebra_grounded_semantic_contract_count,
   algebra_grounded_signatures_all_resolve,
+  declared_definition_groundings_all_dispose,
   algebra_signature_from_candidates,
   primitive_arity,
   primitive_signature,
@@ -39,10 +41,54 @@ test fn w_every_algebra_grounded_contract_resolves_a_signature() -> Bool {
   algebra_grounded_signatures_all_resolve()
 }
 
-// The denominator, stated so a green totality claim cannot be satisfied by an empty
-// population. A fold over zero rows is vacuously true; this is what makes it not.
-test fn w_derived_population_is_the_algebra_template_rows() -> Bool {
-  algebra_grounded_semantic_contract_count() == 87
+// NON-VACUITY, WITHOUT A SNAPSHOT. A fold over zero rows is vacuously true, so the totality
+// claim above needs an anchor -- but the anchor may not be a count copied out of the current
+// tree. DESIGN section 5's oracle ruling is explicit that a measurement taken from the same
+// tree is not an oracle: adding any legitimate algebra template row would red such a check
+// with no change-related meaning, and automating its update would collapse it to
+// measure() == measure(). This states the SELF-DENOMINATING identity instead -- the derived
+// population is exactly the template population, both sides read from the one authority, so a
+// new template row moves both and a derivation that dropped a profile reds it.
+test fn w_derived_population_is_exactly_the_algebra_template_population() -> Bool {
+  algebra_grounded_semantic_contract_count() == (all_algebra_field_templates() |> count)
+}
+
+// The non-vacuity anchor proper, as a CONTROLLED FIXTURE: input and expected population are
+// both authored here, neither is measured from the corpus, so the assertion carries
+// information no matter what the tree contains. This is what keeps the identity above from
+// being satisfiable by two empty sides.
+fn controlled_fixture_rows() -> List<AlgebraFieldTemplate> {
+  [
+    { name: "fixture_nullary", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "fixture_unary", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "fixture_binary", param_types: [ReceiverSelf, ReceiverKey], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
+  ]
+}
+
+fn fixture_arity_label(name: String) -> String {
+  match algebra_signature_from_candidates(canonical_name: name as NonEmptyStr, candidates: controlled_fixture_rows()) {
+    SignatureResolved { parameters: ps, result: _ } => concat("arity:", to_string(ps |> count))
+    SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => "ambiguous"
+    SignatureAbsentFromProfile { canonical_name: _ } => "absent"
+    SignatureNotGrounded { reason: _ } => "not_grounded"
+  }
+}
+
+test fn w_every_row_of_a_controlled_fixture_resolves_to_its_authored_arity() -> Bool {
+  fixture_arity_label(name: "fixture_nullary") == "arity:0"
+    && fixture_arity_label(name: "fixture_unary") == "arity:1"
+    && fixture_arity_label(name: "fixture_binary") == "arity:2"
+    && fixture_arity_label(name: "fixture_absent") == "absent"
+}
+
+// THE HAND-AUTHORED GROUNDINGS. Every declared PrimitiveDefinition must either resolve or say
+// NotGrounded; an Absent or Ambiguous means someone typed a (name, profile) pair that upstream
+// no longer honours. This is the claim the derived-population fold CANNOT make, because these
+// profiles are typed by a human rather than derived. Its RED is authorable and has already
+// occurred in the wild: map_keys and map_values moved from PartialFunction to
+// FinitelySupportedFunction upstream, which turns any stale grounding into a silent Absent.
+test fn w_every_declared_grounding_still_resolves_or_says_ungrounded() -> Bool {
+  declared_definition_groundings_all_dispose()
 }
 
 // ---------------------------------------------------------------------------
@@ -97,7 +143,7 @@ fn arity_label(contract: PrimitiveSemanticContract) -> String {
 test fn w_member_has_a_different_arity_on_each_profile() -> Bool {
   let boolean_member = PrimitiveSemanticContract {
     canonical_name: "member" as NonEmptyStr,
-    signature: GroundedInAlgebraTemplate { profile: BooleanAlgebraCollectionProfile }
+    signature: GroundedInAlgebraTemplate { profile: FinitePowerSetProfile }
   }
   let pointwise_member = PrimitiveSemanticContract {
     canonical_name: "member" as NonEmptyStr,

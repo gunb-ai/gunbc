@@ -5,7 +5,7 @@ import std.algebra {
   AlgebraProfile,
   AlgebraTypeTemplate,
   CostShape,
-  PartialFunctionProfile,
+  FinitelySupportedFunctionProfile,
   ShapeIterateBody,
   ShapeLinearScan,
   algebra_templates_for_profile,
@@ -69,11 +69,11 @@ type PrimitiveSignatureGrounding
   = GroundedInAlgebraTemplate { profile: AlgebraProfile }
   | SignatureUngrounded { reason: NonEmptyStr }
 
-// WHY THE KEY CARRIES A PROFILE. Measured over the 87 AlgebraFieldTemplate rows: 21 of the
-// 59 distinct names carry more than one row, and four of those disagree in what they take --
+// WHY THE KEY CARRIES A PROFILE. Measured over the 90 AlgebraFieldTemplate rows: 23 of the
+// 59 distinct names carry more than one row, and several disagree in what they take --
 // get is [ReceiverSelf, NamedTemplate{Int}] on the List profile and [ReceiverSelf, ReceiverKey]
-// on the Map profile; join carries three signatures; member disagrees in ARITY OUTRIGHT
-// (2 on BooleanAlgebraCollection, 1 on PointwisePower). Those are receiver-polymorphic operations, not
+// on the two Map-shaped profiles; join carries three signatures; member disagrees in ARITY OUTRIGHT
+// (2 on FinitePowerSet, 1 on PointwisePower). Those are receiver-polymorphic operations, not
 // duplicates: both readings of get are correct. A projection keyed on canonical_name alone
 // would therefore have to pick one silently, which is the same last-import-wins shape the
 // namespace lane already carries as a structural hole. The profile is what makes the
@@ -195,6 +195,26 @@ fn algebra_grounded_signatures_all_resolve() -> Bool {
   algebra_grounded_semantic_contracts() |> all(c => primitive_signature_is_resolved(contract: c))
 }
 
+// THE GROUNDINGS THAT CAN ACTUALLY BE WRONG. The fold above walks contracts DERIVED from the
+// template rows, so it can only fail if the derivation itself breaks -- it is nearly
+// tautological. The declared definitions are the opposite: their profile is authored BY HAND,
+// so a template that moves between profiles upstream leaves the hand-written key pointing at
+// nothing, and the resolution silently becomes Absent. That is not hypothetical -- it happened:
+// map_keys and map_values were relocated from PartialFunction to FinitelySupportedFunction
+// upstream, and nothing in this module noticed until a merge forced a recompile. This fold is
+// the guard that would have caught it, and it covers exactly the rows a human typed.
+fn declared_definition_groundings_all_dispose() -> Bool {
+  primitive_declared_definitions()
+    |> all(d =>
+        match primitive_signature(contract: d.semantic_contract) {
+          SignatureResolved { parameters: _, result: _ } => true
+          SignatureNotGrounded { reason: _ } => true
+          SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => false
+          SignatureAbsentFromProfile { canonical_name: _ } => false
+        }
+      )
+}
+
 type PrimitiveDefinition {
   identity: PrimitiveIdentity
   semantic_contract: PrimitiveSemanticContract
@@ -293,7 +313,7 @@ data primitive_map_keys_definition: PrimitiveDefinition = PrimitiveDefinition {
   identity: primitive_map_keys,
   semantic_contract: PrimitiveSemanticContract {
     canonical_name: "map_keys" as NonEmptyStr,
-    signature: GroundedInAlgebraTemplate { profile: PartialFunctionProfile },
+    signature: GroundedInAlgebraTemplate { profile: FinitelySupportedFunctionProfile },
   },
 }
 
@@ -301,7 +321,7 @@ data primitive_map_values_definition: PrimitiveDefinition = PrimitiveDefinition 
   identity: primitive_map_values,
   semantic_contract: PrimitiveSemanticContract {
     canonical_name: "map_values" as NonEmptyStr,
-    signature: GroundedInAlgebraTemplate { profile: PartialFunctionProfile },
+    signature: GroundedInAlgebraTemplate { profile: FinitelySupportedFunctionProfile },
   },
 }
 
