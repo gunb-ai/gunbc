@@ -129,6 +129,52 @@ No guard fixes it, and it would survive every repair proposed in §4. It is reco
 census produced two findings whose owners differ, and separating them is what stops the smaller one
 being swept into the larger.
 
+## 4d. The cost forecast, and the two wrong versions this document carried first
+
+**The forecast is real, and it took three rounds and three authors to land it on the right term.**
+Recorded with its history because the correction pattern is itself the subject of this document.
+
+    round 1 (smart-ram-730)  "pool_parse's frequency changes by a large factor"   WRONG TERM
+    round 2 (deep-ant-102)   "pool_bare_census memoizes, so it is a step
+                              function to certainty, not a multiplication"        RIGHT MEMO,
+                                                                                  WRONG SUBJECT
+    round 3 (witty-lark-109) the multiplier is on bare_eligible                   CORRECT
+
+**Why round 2's "today pays zero" is backwards.** The *scoped* census forces the parse, and it does so
+**unconditionally, above the loop that contains the fallback** — `bare_reference_pull_paths_for_source`
+(~7754) calls `tree_bare_census_for_root` at ~7764, while the fallback in §2 is at ~7870. So a process
+whose names all resolve in the scoped census pays the whole-corpus parse in full; building that census
+is what requires it. The receipt is an ordinary run with `bare_eligible=699` and
+`tree_census_misses=2` — scoped hits throughout, parse paid anyway.
+
+The memo observation is correct but lands on a **different term**: `pool_bare_census`'s own whole-pool
+symbol index, built over every pool module (3875, against 2818 and 1893 for the two root censuses).
+That is the largest index the loader can construct and the only one no successful resolve pays for.
+Memoized, so it is 0-or-1 per index — bounded, and magnitude unmeasured.
+
+**The real multiplier is on a third term nobody had named**, and it needs no post-cut estimate because
+it is the negation of the syntax being deleted:
+
+```rust
+fn source_declares_import_lines(content: &str) -> bool {
+    content.lines().any(|l| l.trim_start().starts_with("import "))
+}
+```
+
+Bare-eligibility is that predicate's negation — a file is scanned by the per-file bare half exactly
+when it declares **no** imports. **The cut deletes those lines corpus-wide, so after it every file is
+eligible** and `bare_eligible` goes from a measured 699 toward the whole corpus, roughly 5.5x on the
+population the per-file bare half is denominated in. It lands on `edge_index_bare_candidates`,
+`edge_index_bare_name_universe` and `edge_index_bare_resolve_loop` — **whose per-file cost is
+unmeasured**, and that is the open gap.
+
+**The pattern, stated because it caught three people in one thread.** Round 1 had the right *shape* on
+the wrong *term*. Round 2 fixed the term to a different wrong one and, in doing so, **deleted the
+shape**. The shape was real all along, on a term neither round had looked at. Nobody measured anything
+incorrectly at any point; each round the comparand moved and the claim did not. **The repair for a
+claim attached to the wrong subject is to MOVE it, not to soften it** — round 2 escaped a wrong term by
+discarding a true forecast, which cost more than the original error.
+
 ## 5. What is not claimed
 
 - **No fallback count on the cut corpus is asserted here.** That is the measurement being asked for;
@@ -139,13 +185,9 @@ being swept into the larger.
 - **This is not a finding that the cut is wrong.** It is a finding that a property everyone has been
   assuming — that a name-derived loader resolves by *derivation* — is not what the code does, and
   that the instrument which would have surfaced the difference measures a neighbouring property.
-- **The 14.24s `pool_parse` this arm forces is not multiplied by the fallback count.**
-  `pool_bare_census` memoizes behind a borrow-check, so the whole-corpus parse is forced **once per
-  process**. The honest forecast is a *step function to certainty*, not a multiplication: today a
-  process whose scoped census always hits pays zero; after the cut every process that resolves
-  anything pays it, once, and earlier in the run. The §5 cost shape is unchanged — denominated in
-  the corpus rather than in the change — but the quantity is different, and the multiplication
-  framing fails exactly when a reviewer checks the memo.
+- **The cost forecast is NOT carried by `pool_parse`, and two earlier drafts of this bullet said it
+  was.** See §4d, which states the corrected three-part shape. Both wrong versions are recorded there
+  rather than deleted, because the way the claim moved is the finding.
 - The rung is **mitigatable**: the fallback is silent and uncounted, so nothing refuses and nothing
   ranks it. The next-rung trigger is the counter in §4; the rung after that is a typed refusal when
   a name resolves only through the pool, at which point an unauthorized edge becomes unwritable
