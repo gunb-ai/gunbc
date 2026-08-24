@@ -26,6 +26,25 @@ match is `false` is **not declined**.
   that PR wrongly.** Its rows execute. (gunbc#9075 is unaffected: that file declares
   `ReadsLiveTree` positively, so it is genuinely declined, as DESIGN §4b independently records.)
 
+**Confirmed by measurement, not only by reading, and by an instrument neither author controlled.**
+`vivid-boar-345` had already established the same fact from two directions before the retraction
+reached them, and the two prove *different* things — which is worth keeping separate rather than
+merging into one confirmation:
+
+- **The roster partition is the enrolment proof.** Required-floor on their branch at `6d29d409fab`
+  reports `offered=12250 routed=10796 declined_long=546 declined_fixture=9 declined_live=899`,
+  with `planned=executed=terminal=10796`. Across their commits **`routed` rose in lockstep with the
+  rows they added and `declined_live` did not move.** A declined module lands in `declined_live`
+  and leaves `routed` flat. This is the half that speaks to CI.
+- **The flipping RED arm is the discrimination proof.** On a binary built *before* each change,
+  exactly one row failed while its twin passed. *A row that is not executing cannot fail.* This is
+  the half that speaks to whether the assertion says anything.
+
+Neither substitutes for the other: the partition shows the rows are routed but not that they
+discriminate; the flip shows they discriminate on the instrument it ran on, which is not by itself
+a statement about CI. Together they close it. Recorded at that grain deliberately — collapsing them
+into "measured, confirmed" is the same move this document spent the night objecting to.
+
 **And the in-repo authority we dismissed was correct.** The `quarantine_probe` note says the floor
 consults the syntactic column-zero scan and does **not** consult `reads_live_tree_effective`. Both
 of us read it as stale. It was precise; our reading was stale. The call-site grep that misled us
@@ -495,3 +514,23 @@ evidence that anything is wrong goes with it. The repair would look complete and
 
 That failure mode is the same one that made this night's guard reviews hard: a fix at the wrong
 level is not merely insufficient, it removes the symptom that would have located the real one.
+
+---
+
+## Postscript: the habit did the work, not the judgement
+
+`vivid-boar-345`, on why they caught a decoration in their own witness while two other sessions
+missed a structurally identical error the same night, and declining the flattering explanation:
+
+> It was not that I distrusted the instrument. I ran the RED arm first out of habit, and the
+> decoration announced itself by passing when it should have failed. Had I written the row and only
+> run the green arm, I would have shipped it and been just as confident.
+
+That is the argument for making *run the RED arm first* **unconditional** rather than reserving it
+for cases that feel shaky — because the feeling is absent in exactly the cases that need it. Both
+errors this document records were committed with full confidence and no sense of risk: the
+positional citation, and the call-site grep read as an answer to a question it was not asked.
+Neither would have been caught by more care, because care was not what was missing.
+
+A discipline that only fires when you suspect something is a discipline that fires when you least
+need it.
