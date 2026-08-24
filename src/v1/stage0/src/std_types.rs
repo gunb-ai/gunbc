@@ -171,6 +171,8 @@ pub fn container_template_alias_rows() -> Rc<HashMap<String, String>> {
             __m.insert("set".to_string(), "FinitePowerSet".to_string());
             __m.insert("Map".to_string(), "FinitelySupportedFunction".to_string());
             __m.insert("map".to_string(), "FinitelySupportedFunction".to_string());
+            __m.insert("PartialFunction".to_string(), "PartialFunction".to_string());
+            __m.insert("partial_function".to_string(), "PartialFunction".to_string());
             Rc::new(__m)
         };
     }
