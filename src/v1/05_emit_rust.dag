@@ -3415,10 +3415,25 @@ fn reference_derived_candidate_authored(module_source: String, name: String, typ
 // spelled in the module's own EMITTED text. That last attestation is why a misrendered candidate
 // cannot fabricate a use-line: a name the emitter did not write is not attested by the artifact it
 // wrote, which is a strictly stronger witness than the authored-source gate it joins.
+// Splits a Rust TEXT into bare identifier tokens. Two callers with one authority: a rendered TYPE
+// string (Rc<Vec<Int>>, crate::a::B) and a whole emitted MODULE source. The type caller only ever
+// contains the first nine delimiters; the source caller also carries statement and block
+// punctuation, and omitting those is not cosmetic -- `pub type X = Int;` would tokenize to `Int;`
+// and a membership test for `Int` would answer NO for a name the emitter demonstrably wrote,
+// dropping a required use-line and reproducing the E0425 class this producer exists to close.
+// Adding them is expected to be a no-op for the type caller (rendered types contain none of them),
+// so one tokenizer serves both rather than a second near-copy keyed to the caller. That is stated as
+// UNREFUTED rather than proven: the two-arm measurement below moved 20 use-lines and every one is
+// explained by the GATE, so nothing in it exhibits a producer-side change -- but nothing in it
+// positively rules one out either.
 fn rust_identifier_tokens(s: String) -> List<String> {
   let spaced = replace(replace(replace(replace(replace(replace(replace(replace(replace(s,
     "<", " "), ">", " "), ",", " "), "(", " "), ")", " "), "[", " "), "]", " "), "&", " "), ":", " ")
-  spaced |> split(delimiter: " ") |> map(t => trim(t)) |> filter(t => t != "")
+  let unpunctuated = replace(replace(replace(replace(replace(replace(replace(replace(replace(spaced,
+    ";", " "), "\{", " "), "\}", " "), ".", " "), "=", " "), "\n", " "), "\t", " "), "\r", " "), "*", " ")
+  let untokened = replace(replace(replace(replace(replace(unpunctuated,
+    "!", " "), "?", " "), "|", " "), "+", " "), "#", " ")
+  untokened |> split(delimiter: " ") |> map(t => trim(t)) |> filter(t => t != "")
 }
 
 fn collect_type_node_realized_surface_names(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> List<String> {
@@ -3452,11 +3467,12 @@ fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<Stri
     let variant_payload_structs = expand_variant_payload_struct_imports(names: type_surface_names, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
     let emitter_attested_anon_heads = unique_strings(items: items |> flat_map(item => collect_anonymous_record_lit_heads(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries)))
     let realized_surface_names = unique_strings(items: items |> flat_map(item => collect_item_realized_surface_names(item: item, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)))
+    let emitted_source_tokens = rust_identifier_tokens(s: emitted_source)
     let candidates = unique_strings(items: concat(concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names), variant_payload_structs), realized_surface_names))
       |> filter(name =>
         reference_derived_candidate_authored(module_source: module_source, name: name, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
           || emitter_attested_anon_heads |> any(h => h == name)
-          || reference_derived_candidate_spelled_in_module(module_source: emitted_source, name: name))
+          || (emitted_source_tokens |> any(t => t == name)))
       |> filter(name => !reference_is_host_realized_builtin(name: name))
     let local_decl_names = items |> flat_map(item =>
       let nm = authored_name_at(source_indices: source_indices, node: item)
