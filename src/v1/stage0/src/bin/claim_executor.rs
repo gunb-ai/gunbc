@@ -9915,6 +9915,8 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_floor_mode = false;
     let mut required_ci_mode = false;
     let mut required_cited_symbol_mode = false;
+    let mut required_v2_emission_mode = false;
+    let mut required_v2_emission_selftest_mode = false;
     let mut corpus_type_judgment_mode = false;
     let mut required_regen_mode = false;
     let mut required_regen_fixed_point_mode = false;
@@ -9949,6 +9951,12 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-cited-symbol" => {
                 required_cited_symbol_mode = true;
+            }
+            "--required-v2-emission" => {
+                required_v2_emission_mode = true;
+            }
+            "--required-v2-emission-selftest" => {
+                required_v2_emission_selftest_mode = true;
             }
             "--corpus-type-judgment" => {
                 corpus_type_judgment_mode = true;
@@ -10045,6 +10053,40 @@ fn run() -> Result<ExitCode, ExitCode> {
         let job = std::env::var("GITHUB_JOB").unwrap_or_else(|_| "standalone".to_string());
         emit_cgroup_measurement(&format!("job={job} (--measure-cgroup-peak)"));
         return Ok(ExitCode::SUCCESS);
+    }
+
+    // ── V2 EMISSION: TWO STANDALONE ENTRY POINTS BESIDE THE REQUIRED PHASE ──────
+    //
+    // The v2-emission transaction IS ENROLLED in `--required-ci` as phase 3 (see that
+    // mode below), on an operator ruling relayed through the requesting session
+    // 2026-08-23, at a measured +135s against the floor's ~30-40 minutes. These two
+    // flags are not an opt-in alternative to that phase and must not be read as one:
+    // they exist because running the emission alone, or running only its red/green
+    // evidence, are real local actions -- the same reason the `src/v1` .dag parse sweep
+    // keeps its own bin beside its required phase.
+    //
+    // This comment said "DELIBERATELY NOT ENROLLED" in the revision that ADDED the
+    // enrolment, which is the premise contamination DESIGN warns about rather than a
+    // stale comment: a reader grepping here would conclude the phase is opt-in when it
+    // is required. It is rewritten rather than annotated, because two accounts of one
+    // fact is what produced the contradiction.
+    //
+    // Both flags run the SAME producer the required phase runs
+    // (`cli_run::compile_entry_emission`), so a green here and a green there cannot be
+    // different facts.
+    if required_v2_emission_selftest_mode {
+        let failures = v1_compiler::cli_run::run_required_v2_emission_selftest();
+        for failure in &failures {
+            eprintln!("required-v2-emission-selftest: FAIL {failure}");
+        }
+        return if failures.is_empty() {
+            eprintln!(
+                "required-v2-emission-selftest: OK red fixture refused on the annotation cause, green fixture emitted"
+            );
+            Ok(ExitCode::SUCCESS)
+        } else {
+            Err(ExitCode::from(1))
+        };
     }
 
     // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT, and that ordering is load-bearing rather
@@ -10215,7 +10257,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // paragraph's re-add queue), so nothing is admitted by the absence — but the three
     // measurements above are simply not taken, which is a declared rung drop, not a silent one.
     //
-    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The three phases are independent —
+    // WHAT THE ORDER IS, AND WHY EACH PHASE RUNS ANYWAY. The four phases are independent —
     // the one real data dependency, the fixed point's need for regen's pass-1 digest, went with
     // the phase that consumed it — so every phase RUNS EVEN AFTER AN EARLIER FAILURE and the run
     // reports the complete ledger instead of letting the first defect hide the rest. The line
@@ -10225,9 +10267,18 @@ fn run() -> Result<ExitCode, ExitCode> {
         let mut phase_failures: Vec<String> = Vec::new();
         let mut ran: Vec<&'static str> = Vec::new();
 
-        // PHASE 1 — src/v1 .dag parse sweep. Independent of everything below it.
-        eprintln!("required-ci: phase parse (src/v1 .dag)");
-        match v1_compiler::cli_run::run_v1_src_dag_parse(&v1_compiler::cli_run::workspace_root()) {
+        // PHASE 1 — the .dag parse sweep, over every authored root (src/v1, dag, src/v2).
+        // Independent of everything below it. The roster is
+        // `cli_run::DAG_PARSE_SWEEP_ROOTS`, shared with the standalone bin so the cheapest
+        // local check and this phase cover the same files.
+        eprintln!(
+            "required-ci: phase parse (.dag: {})",
+            v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS.join(", ")
+        );
+        match v1_compiler::cli_run::run_dag_parse_sweep(
+            &v1_compiler::cli_run::workspace_root(),
+            &v1_compiler::cli_run::DAG_PARSE_SWEEP_ROOTS,
+        ) {
             Ok(count) => eprintln!("required-ci: parse OK {count} file(s) parse-clean"),
             Err(errors) => {
                 for e in &errors {
@@ -10267,7 +10318,66 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
         ran.push("regen");
 
-        // PHASE 3 — the witness floor. Independent; runs whatever happened above.
+        // PHASE 3 — v2 emission. ENROLLED 2026-08-23 on an operator ruling relayed through
+        // the requesting session, after the 2026-08-23 break reached main and stayed for
+        // hours with every required phase green: the required run parses src/v1 .dag,
+        // compares the regen mirrors and folds the floor, and NONE OF THE THREE COMPILES A
+        // v2 ENTRY. Measured cost +135s against the floor's ~30-40 minutes.
+        //
+        // ORDERED AHEAD OF THE FLOOR, and the ordering is a report-order fact only: the
+        // phases stay independent and every one runs even after an earlier failure, so
+        // this does not stop the floor starting on an unemittable tree. Making it an early
+        // PREREQUISITE (an exit before the floor) is a scheduling decision that belongs to
+        // the operator with the number attached, and it would change this mode's
+        // stopped-line audit design, so it is not taken here.
+        //
+        // The subject is the SAME PRODUCER the cargo board runs
+        // (cli_run::compile_entry_emission, which `gunbc compile --entry` also calls), so
+        // a green here and an emitting board are one fact rather than two.
+        eprintln!("required-ci: phase v2-emission (one entry, the board's producer)");
+        match v1_compiler::cli_run::run_required_v2_emission(&source_roots) {
+            Ok(runs) => {
+                let mut not_completed = 0usize;
+                for run in &runs {
+                    eprintln!("{}", run.measurement_line("required-ci: v2-emission"));
+                    match &run.disposition {
+                        v1_compiler::cli_run::EntryEmissionDisposition::Completed { .. } => {}
+                        v1_compiler::cli_run::EntryEmissionDisposition::Refused {
+                            phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-ci: v2-emission EmissionRefused entry={} phase={phase} cause={cause}",
+                                run.entry
+                            );
+                        }
+                        v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
+                            earlier_phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-ci: v2-emission EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
+                                run.entry
+                            );
+                        }
+                    }
+                }
+                if not_completed > 0 {
+                    phase_failures.push(format!("v2-emission ({not_completed} not completed)"));
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "required-ci: v2-emission EmissionNotExecuted earlier_phase=roster cause={e}"
+                );
+                phase_failures.push(format!("v2-emission roster: {e}"));
+            }
+        }
+        ran.push("v2-emission");
+
+        // PHASE 4 — the witness floor. Independent; runs whatever happened above.
         eprintln!("required-ci: phase floor (one prepared subject, one fold)");
         let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
         match v1_compiler::cli_run::run_required_floor(
@@ -10300,6 +10410,66 @@ fn run() -> Result<ExitCode, ExitCode> {
             Ok(ExitCode::SUCCESS)
         } else {
             Err(ExitCode::from(1))
+        };
+    }
+
+    if required_v2_emission_mode {
+        let roots = if source_roots.is_empty() {
+            v1_compiler::cli_run::witness_layer_roots()
+        } else {
+            source_roots.clone()
+        };
+        return match v1_compiler::cli_run::run_required_v2_emission(&roots) {
+            Ok(runs) => {
+                let mut not_completed = 0usize;
+                for run in &runs {
+                    // ONE SELF-DESCRIBING LINE. The disposition is ON the line, so a run
+                    // that never reached the compiler cannot be read as a clean emission
+                    // of nothing by anything that reads one line at a time.
+                    eprintln!("{}", run.measurement_line("required-v2-emission"));
+                    match &run.disposition {
+                        v1_compiler::cli_run::EntryEmissionDisposition::Completed { .. } => {}
+                        v1_compiler::cli_run::EntryEmissionDisposition::Refused {
+                            phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-v2-emission: EmissionRefused entry={} phase={phase} cause={cause}",
+                                run.entry
+                            );
+                        }
+                        v1_compiler::cli_run::EntryEmissionDisposition::NotExecuted {
+                            earlier_phase,
+                            cause,
+                        } => {
+                            not_completed += 1;
+                            eprintln!(
+                                "required-v2-emission: EmissionNotExecuted entry={} earlier_phase={earlier_phase} cause={cause}",
+                                run.entry
+                            );
+                        }
+                    }
+                }
+                eprintln!(
+                    "required-v2-emission: entries={} not_completed={}",
+                    runs.len(),
+                    not_completed
+                );
+                if not_completed == 0 {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                }
+            }
+            // The roster itself being unreadable is reported as itself: no entry ran, so
+            // there is no per-entry disposition to render.
+            Err(e) => {
+                eprintln!(
+                    "required-v2-emission: EmissionNotExecuted earlier_phase=roster cause={e}"
+                );
+                Err(ExitCode::from(1))
+            }
         };
     }
 

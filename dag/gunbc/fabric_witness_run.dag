@@ -4,6 +4,8 @@ import std.types { NonEmptyStr }
 import std.currency { CurrencyCode, Usd }
 import std.nat { Nat }
 import std.measure { HardwareThreadCount, hardware_thread_count, MoneyAmountMicro, Second, second }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.envelope { unstated_envelope }
 import product.fabric.identity {
   FabricIdentity, WorkKey, ExecutionAttemptKey, OfferKey, GrantKey,
   fabric_identity_eq,
@@ -161,11 +163,40 @@ fn floor_work_contract(source: SourceManifestRef) -> WorkContract {
 // modeled, and minting the carrier early buys nothing except a row that lies
 // about being load-bearing.
 
+// WHAT A FLOOR RUN REQUIRES OF ITS EXECUTOR, AND WHY THAT IS HONESTLY NOTHING.
+//
+// A floor run is OUR OWN work on OUR OWN fleet, and it demonstrably runs today on slots that
+// provide none of the isolation guarantees -- a reused writable root by design, the host's process
+// namespace, and /home/ghrunner shared across every slot. Declaring a requirement the floor does
+// not actually have would be inventing a gap: the run would be modeled as ineligible for the
+// executor it has been green on for months, and the first person to trust the model would go
+// looking for a break that is not there.
+//
+// SO THE EMPTY PROFILE HERE IS A MEASUREMENT, NOT A PLACEHOLDER. It says the floor asks for no
+// tenancy guarantee, which is true and is exactly why the floor was safe to run this way. The gap
+// this model exists to express belongs to CUSTOMER work, where the tenant is not us -- see
+// product.fabric.isolation tenant_workload_isolation_requirement and the witness that measures
+// today's slots against it.
+//
+// CONSUMPTION STATUS, STATED PLAINLY BECAUSE THIS MODULE'S OWN HEADER INSISTS ON IT: the fold that
+// reads this (floor_offer_fungibility -> offer_fungibility_for) has NO production consumer, exactly
+// as its siblings ShapeNotCovered and CapabilitiesNotOffered do not. This is the modeled decision
+// the broker will consume, not a live wall, and calling it enforcement would be the rung inflation
+// the paragraph above already records for affordability. NEXT-RUNG TRIGGER is the same one: a
+// broker fold that selects an Offer for this Demand.
+fn floor_isolation_requirement() -> IsolationProfile {
+  IsolationProfile { guarantees: [] }
+}
+
 fn floor_execution_requirements() -> ExecutionRequirements {
   ExecutionRequirements {
-    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 8) } },
+    shape: Shape {
+      hard: HardRequirements { threads: hardware_thread_count(count: 8) },
+      envelope: unstated_envelope(),
+    },
     capabilities: "gunbc.capabilities.linux-rust-toolchain",
     trust_domain: "gunbc.trust.internal-fleet",
+    isolation: floor_isolation_requirement(),
   }
 }
 
