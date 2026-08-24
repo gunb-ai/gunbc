@@ -1763,3 +1763,96 @@ narrower question than anyone asks of it.
 obtain *a head-bound approval*, with an explicit warning not to merge an uncomposed head "just
 because old checks are green." That qualifier reads as pedantic until you see the payload; the two
 specimens behind this entry are why it was necessary.
+
+---
+
+## The capstone: in a self-hosted compiler, the tool is a variable too
+
+Everything above concerns an instrument answering a narrower question than the reader asks. This is
+the same failure with the largest blast radius the day produced, and it took four sessions an
+afternoon to notice.
+
+A branch's required run refused with **71 hard diagnostics**, and its floor produced **361 lines**.
+Four lanes bucketed the symptoms into families and authored mechanism theories: a carrier/profile
+lookup miss, a missing inverse in an alias table, a lost type argument, a gap in a call-target
+vocabulary, a changed arm selection in expression inference. **Every theory was internally
+coherent.** Several were refuted by execution; the survivors were refuted by reading. Nothing fit.
+
+Then one dispatch settled it. The compiler was rebuilt from the branch's exact merge-base, **the same
+sources** were checked out, and the run repeated:
+
+    seeded from the branch's own earlier binary   71 hard diagnostics
+    seeded from a merge-base-built binary          ZERO
+
+**Same sources. Different compiler. The refusals had no source cause at all.** A binary built from an
+earlier state of that branch had been regenerating a mirror that carried a defect forward, and every
+diagnostic under investigation was that defect's output.
+
+### The reasoning error, which was valid and still wrong
+
+The attribution had been declared *settled* on this argument:
+
+    main is green at the merge-base
+    the branch is merge-base + one delta
+    therefore the delta causes the diagnostics
+
+**The syllogism is valid. The premise was incomplete.** Two trees were compared while a second
+variable moved silently — main's CI seeds its compiler *from main*; the branch seeded its compiler
+*from itself*. **In a self-hosted repository the compiler is not a constant across a source
+comparison**, and treating the source as the only variable is the one assumption that can never hold
+there.
+
+### The rule, and its scope — the scope matters as much as the rule
+
+**"I changed the compiler and the compiler broke" has two readings, and nothing in the source
+distinguishes them.** The discriminator is one dispatch: rebuild the tool from a known-good commit,
+hold the sources fixed, re-run.
+
+**But the test is whether the COMPILER WAS HELD FIXED ACROSS THE ARMS — not whether the claim
+involves diagnostics:**
+
+    CROSS-BINARY          tree A measured with binary A, tree B with binary B.
+                          The tool moved alongside the variable under test.   DEAD.
+
+    PAIRED WITHIN-BINARY  both arms measured with the SAME binary, one variable changed.
+                          Contamination shifts both arms equally, so the DELTA survives
+                          even when the absolutes are wrong.                  NOT KILLED.
+
+A module refusing standalone and passing with its import header restored, **under one binary**, is
+the second shape: for contamination to explain it, the contaminated compiler would have to refuse one
+arm and accept the other *on exactly the axis under test*, which is the claimed mechanism rather than
+an artifact of it.
+
+**Second-order, and most likely to be skipped: a paired comparison is immune to a compiler that is
+WRONG, not to one that is IRRELEVANT.** If the binary measuring both arms was itself built from a
+contaminated mirror, the delta is real *for that compiler* and says nothing about the one the
+repository ships. Such a result is stated as *"X changes behaviour in this compiler"*, never *"in
+gunbc"* — and the same one-dispatch fix upgrades it.
+
+**Stating the rule without the scope would have been the next over-correction**, sending lanes to
+retract paired comparisons that were never contaminated. The unscoped version was written first, by
+the author of this document, and corrected by the session it was sent to.
+
+### The asymmetry, which is the day's actual finding
+
+Auditing every claim four sessions made against that boundary produced a clean split:
+
+    SURVIVED every correction, untouched      facts established by READING SOURCE
+      an alias declaration; a map's contents; which parameter a function takes;
+      a law recorded in a module; the shape of a fall-through
+
+    NEEDED retraction or narrowing            facts established by MEASUREMENT
+      a diagnostic census; a population bound; a per-file cost; an attribution;
+      a symptom taxonomy
+
+**Every claim that had to be withdrawn came from a measurement. Every claim that survived came from
+reading the source.**
+
+This is not an argument against measuring — measurement answers questions reading cannot. It is that
+**a measurement carries provenance obligations a source read does not**, and the two had been treated
+as interchangeable evidence. A source read is reproducible by anyone with the tree, carries its own
+context, and cannot be invalidated by a tool. A measurement depends on which binary, which base,
+which head, which roots, run when — **and it reports a number either way**, with the same confidence
+in both cases.
+
+**The number does not know it is wrong.** That sentence covers every entry in this document.
