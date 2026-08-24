@@ -18,7 +18,6 @@ import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_effect {
   HostEffect,
   EnsureBuildCacheInstance,
-  EnsureCompilePoolSlice,
   ProvisionCodexRuntime,
   OsInstallActuatorToolchainEnsure,
   HostOs,
@@ -30,18 +29,9 @@ import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
 import gunbc.build_cache_instance { ci_cache_instance }
 import std.realization_reconcile { Converged, NotConverged }
 
-type HostToolchainKind = BuildCache | CodexRuntime | OsInstallActuator | CompilePool
+type HostToolchainKind = BuildCache | CodexRuntime | OsInstallActuator
 
-// Compatibility specialization, not the Ensure abstraction: HostToolchainKind is the closed selector for the
-// existing HostEffect adapters reachable from this entrypoint. Generic convergence semantics live in
-// gunbc.ensure and dispatch requirements live in gunbc.roadmap_execution_contract. Cargo, rustc, provider auth,
-// and future task dependencies must not be added to this enum merely because their callers say ensure; they
-// require their own typed observation/plan/readback adapters and may then reuse generic Ensure.
-//
-// CompilePool was admitted against that bar rather than beside it, and the three parts are nameable: the
-// observation is gunbc.compile_pool_observe observe_compile_pool_slice, the plan is gunbc.compile_pool_ensure
-// admit_ensure_compile_pool_slice, and the read-back is that same admission re-derived from a fresh
-// observation after the install. It is listed here because the bar was met, not because its caller says ensure.
+// Compatibility specialization, not the Ensure abstraction: HostToolchainKind is the closed selector for two existing HostEffect adapters in this entrypoint. Generic convergence semantics live in gunbc.ensure and dispatch requirements live in gunbc.roadmap_execution_contract. Cargo, rustc, provider auth, and future task dependencies must not be added to this enum merely because their callers say ensure; they require their own typed observation/plan/readback adapters and may then reuse generic Ensure.
 data host_toolchain_ensure_srv3_fork_scaffold: Disposition = Terminal {
   reason: "srv3_os_install_actuator_toolchain_ensure thinned to host_toolchain_ensure(host: srv3, kind: OsInstallActuator) — no behavioral fork remains."
 }
@@ -99,7 +89,6 @@ fn host_toolchain_ensure_effect(kind: HostToolchainKind, host: HostIdentity) -> 
     BuildCache => EnsureBuildCacheInstance { desired: ci_cache_instance(host: host) }
     CodexRuntime => ProvisionCodexRuntime {}
     OsInstallActuator => OsInstallActuatorToolchainEnsure {}
-    CompilePool => EnsureCompilePoolSlice {}
   }
 }
 
@@ -107,7 +96,6 @@ fn host_toolchain_ensure_target_host(kind: HostToolchainKind, host: HostIdentity
   match kind {
     BuildCache => fleet_compute_host_for_identity(identity: host)
     CodexRuntime => fleet_compute_host_for_identity(identity: host)
-    CompilePool => fleet_compute_host_for_identity(identity: host)
     OsInstallActuator =>
       if host == operator_host_srv3 {
         Present { value: srv3_os_install_actuator_host }

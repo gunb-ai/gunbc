@@ -4,11 +4,8 @@ import std.types { String, NonEmptyStr, Bool }
 import std.measure { ByteSize, byte_size_count }
 import std.disposition { Disposition, SingleAuthority }
 import gunbc.build_cache_instance { CgroupMemoryLimits, EndpointObservationUnavailableReason, unavailable_reason_detail }
-import gunbc.host_layout {
-  CompilePoolPlacement, CompilePoolSliceDeclared, CompilePoolInRunnerSlots,
-  gunbc_compile_pool_placement,
-}
 import gunbc.fleet_host_budget {
+  CompilePoolPlacement, CompilePoolSliceDeclared, CompilePoolInRunnerSlots,
   CompilePoolResolution, CompilePoolDerived, CompilePoolUnresolved,
 }
 import gunbc.runner_activation { HostCompilePoolReady }

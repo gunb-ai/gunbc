@@ -3,9 +3,7 @@ module gunbc.compile_pool_ensure
 import std.types { String, NonEmptyStr, Bool, List }
 import std.measure { ByteSize, byte_size_count }
 import std.disposition { Disposition, SingleAuthority }
-import gunbc.host_layout {
-  CompilePoolPlacement, CompilePoolSliceDeclared, CompilePoolInRunnerSlots,
-  gunbc_compile_pool_placement, gunbc_managed_compile_pool_slice }
+import gunbc.host_layout { gunbc_managed_compile_pool_slice }
 import gunbc.build_cache_unit { compile_pool_slice_unit_file }
 import extdeps.systemd.unit_file { SystemdUnitFile }
 import gunbc.host_compile_pool {
@@ -15,6 +13,9 @@ import gunbc.host_compile_pool {
   CompilePoolObservationUnavailable,
 }
 import gunbc.fleet_host_budget {
+  CompilePoolPlacement,
+  CompilePoolSliceDeclared,
+  CompilePoolInRunnerSlots,
   CompilePoolResolution,
   CompilePoolDerived,
   CompilePoolUnresolved,

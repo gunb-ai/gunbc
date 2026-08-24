@@ -42,7 +42,6 @@ type HostEffect =
   | OsInstallActuatorToolchainEnsure {}
   | EnsureBuildCacheInstance { desired: BuildCacheInstance }
   | ProvisionCodexRuntime {}
-  | EnsureCompilePoolSlice {}
   | SetHostnameCas { hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbe { probe: SudoNopasswdExecuteProbeShape }
