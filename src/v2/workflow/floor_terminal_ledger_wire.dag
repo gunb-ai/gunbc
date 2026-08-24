@@ -1,0 +1,844 @@
+module v2.workflow.floor_terminal_ledger_wire
+
+// ONE GRAMMAR, READ IN BOTH DIRECTIONS, FOR THE ARTIFACT THE SCHEMA ALREADY DESCRIBES.
+//
+// `v2.workflow.floor_terminal_ledger` says a ledger "is published atomically under its final
+// name" and carries "a footer with the row count and a digest over the rows". Until this module
+// there was no such artifact: the rows were consumed in-process and the sentence described an
+// intention. This is the wire form, and it is authored ONCE and read in both directions per
+// DESIGN §4 -- `render_*` selects a production forward, `parse_*` selects from the same
+// productions backward. A second, separately-authored reader would be the N x M adapter pair that
+// section exists to refuse, and it would also be undetectable: two hand-written halves of one
+// grammar agree until the day they do not.
+//
+// THE SEED DOES NOT RE-IMPLEMENT ANY OF THIS. It holds the rows and performs the host write; the
+// bytes are produced by calling into this module, the way `cli_run` already calls
+// `wire_fnv1a64_content_hash_hex` rather than hashing in Rust beside it. That is what keeps the
+// artifact from becoming a THIRD representation beside the schema and the seed's mirror -- the
+// mirror is declared debt already, and answering it by minting another copy would be the fix
+// that deepens the defect.
+//
+// WHAT THAT COUPLES, DECLARED RATHER THAN DISCOVERED: once the bytes come from EVALUATING this
+// module, the evidence path depends on the interpreter. An interpreter defect makes the ledger
+// unwritable, and by this schema's own admission rule unwritable evidence is not green -- so a
+// run whose witnesses ALL PASSED still reds. That is the intended direction and not an oversight:
+// the alternative is a run that goes green while its evidence is silently missing, which is the
+// instrumentation being optional exactly when it fails. It is written here because the first
+// person to hit it will otherwise read it as the ledger being fragile rather than as a trade
+// somebody made on purpose.
+//
+// The failure is also not silent in the other direction: an interpreter defect that produced
+// WRONG bytes rather than none is caught by the round trip -- the digest is recomputed from the
+// rows a reader parses and compared to the footer the writer emitted.
+
+data ledger_wire_format: String = "gunbc-terminal-ledger/1"
+
+data ledger_wire_footer_tag: String = "#end"
+
+// A REFUSED LEDGER STILL LEAVES ITS ROWS, UNDER A NAME THAT CANNOT BE MISTAKEN FOR EVIDENCE.
+//
+// An earlier revision returned only a reason and an offending identity, and the seed then wrote
+// nothing at all. That is the instrumentation-optional shape one turn up: the diagnosis
+// disappears on precisely the run where something went wrong, so an operator holding a refusal
+// that names ONE identity has no way to tell whether the defect is isolated to that row or spans
+// every row of a whole terminal shape -- the other ten thousand rows, which are the only thing
+// that answers it, are gone with the file.
+//
+// So a refusal carries a DIAGNOSIS: every row the seed sent, in the seed's own words, plus the
+// refusal. It is not a degraded ledger and cannot be read as one -- its first field is a
+// different format token, so `parse_ledger` refuses it as `ledger-format-unrecognized` rather
+// than parsing it as a short run. That is the naming convention made structural: a partial file
+// being cited as a ledger has no spelling, instead of being forbidden by a rule someone must
+// remember. The floor still goes non-green; nothing here mints a receipt.
+data ledger_partial_format: String = "gunbc-terminal-ledger-partial/1"
+
+// THE UNPUBLISHED TOKEN IS DECLARED HERE, and an unrecognised snapshot field REFUSES rather than
+// being read as unpublished. "anything I could not decode is a local run" would be the absorbing
+// fallback: a typo'd commit id would silently downgrade a candidate-bound ledger to an unbound
+// one, which is the direction that loses evidence quietly.
+data ledger_unpublished_snapshot_wire: String = "unpublished"
+
+// THE SNAPSHOT IS RENDERED AS BARE LOWERCASE HEX, decoded back through git's own untagged
+// decoder, and this is a deliberate departure from a sentence in the cited authority.
+//
+// `git_object_id_untagged_hex_note` says our own wires "stay family-prefixed
+// (<family>:<hex>, render/parse_git_object_id_wire)". Those two functions exist -- in
+// `gunbc.merge_admission_subject`, a PRODUCT-layer module -- and that is the reason not to use
+// them here: a `v2.workflow` module would be taking a dependency on merge admission in order to
+// render a git object id, which is a worse coupling than using the extdeps authority the type
+// already belongs to. So this wire reuses that authority in both directions instead:
+// `git_object_id_wire_hex` forward and `git_object_id_from_untagged_hex` backward, the latter
+// being the module's own decoder for text git itself produced -- which is exactly what
+// `GITHUB_SHA` is. Nothing is re-derived locally: the width-to-family inference stays inside the
+// authority that owns it, and this wire's own format token already discriminates it, so the
+// family prefix would be carrying a distinction the header line makes anyway.
+fn render_repository_snapshot(snapshot: RepositorySnapshot) -> String {
+  match snapshot {
+    UnpublishedWorkingTree => ledger_unpublished_snapshot_wire
+    PublishedCommit { commit: c } => git_object_id_wire_hex(oid: c) as String
+  }
+}
+
+type RepositorySnapshotAdmission
+  = SnapshotAdmitted { snapshot: RepositorySnapshot }
+  | SnapshotWireUnrecognized { offending: String }
+
+fn admit_repository_snapshot_wire(wire: String) -> RepositorySnapshotAdmission {
+  if wire == ledger_unpublished_snapshot_wire {
+    SnapshotAdmitted { snapshot: UnpublishedWorkingTree }
+  } else {
+    match git_object_id_from_untagged_hex(hex: wire) {
+      Absent => SnapshotWireUnrecognized { offending: wire }
+      Present { value: oid } =>
+        SnapshotAdmitted { snapshot: PublishedCommit { commit: oid } }
+    }
+  }
+}
+
+fn ledger_wire_separator() -> String {
+  "\t"
+}
+
+// A FIELD THAT COULD CONTAIN THE SEPARATOR IS REFUSED, NEVER SANITIZED.
+//
+// The neighbouring `required_floor_disposition` writer does `.replace(['\t','\n'], " ")`, which
+// silently rewrites the fact it is recording: a route name containing a tab is published as a
+// different route name and nothing anywhere reports that it happened. That is the fabricated
+// plausible output at the serialization boundary. Here a field carrying a separator makes the
+// ledger UNRENDERABLE, with a typed reason, because a ledger whose fields were quietly rewritten
+// is not evidence about the run that produced it.
+fn ledger_wire_field_is_clean(field: String) -> Bool {
+  field.split(delimiter: "\t").length() == 1
+    && field.split(delimiter: "\n").length() == 1
+}
+
+// A DELIMITER JOIN WRITTEN LOCALLY, which is the corpus idiom rather than a nickname: there is no
+// single `join` authority in `std` to reuse -- `extdeps/github/expressions`, the TypeScript and
+// JSON emitters and several witnesses each carry their own. Minting the shared one is a real §2
+// consolidation and it is not this change's subject, so this stays local and stays small.
+fn ledger_wire_join(fields: List<String>) -> String {
+  match fields.first() {
+    Absent => ""
+    Present { value: head } =>
+      fold(fields.skip(n: 1), head, (acc, field) => concat(concat(acc, ledger_wire_separator()), field))
+  }
+}
+
+fn ledger_wire_join_lines(lines: List<String>) -> String {
+  match lines.first() {
+    Absent => ""
+    Present { value: head } =>
+      fold(lines.skip(n: 1), head, (acc, line) => concat(concat(acc, "\n"), line))
+  }
+}
+
+fn render_expectation(expectation: ClaimExpectation) -> String {
+  match expectation {
+    ExpectedToHold => "expect-hold"
+    ExpectedRed => "expect-red"
+  }
+}
+
+fn parse_expectation(wire: String) -> ClaimExpectation? {
+  if wire == "expect-hold" {
+    Present { value: ExpectedToHold }
+  } else {
+    if wire == "expect-red" { Present { value: ExpectedRed } } else { none }
+  }
+}
+
+// THE TERMINAL IS RENDERED AS TAG PLUS DETAIL, one field each, so the arms stay distinguishable
+// after a round trip. Collapsing the detail into the tag would make `RouteGap { route: "shell" }`
+// and `HostToolUnresolved { name: "shell" }` render alike, and the reader would have to guess --
+// which is the state-space conflation the disposition projection was built to avoid, arriving one
+// layer down at the wire.
+fn render_terminal_tag(terminal: ClaimAttemptTerminal) -> String {
+  match terminal {
+    Returned { observation: o } =>
+      match o {
+        ObservedVerdict { holds: h } => if h { "returned-true" } else { "returned-false" }
+        ObservationUnrepresentable { reason: _ } => "returned-unreadable"
+      }
+    RuntimeErrored { message: _ } => "runtime-errored"
+    BudgetRefused { safety: _ } => "budget-refused"
+    HostToolUnresolved { name: _, probed: _ } => "host-tool-unresolved"
+    RouteGap { route: _ } => "route-gap"
+  }
+}
+
+fn render_safety_detail(safety: ClaimSafetyOutcome) -> String {
+  match safety {
+    CompletedWithinSafetyLimits => "completed-within-limits"
+    SafetyInterrupted { raised_by: r, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => r
+    CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } =>
+      "completed-past-limit"
+  }
+}
+
+fn render_terminal_detail(terminal: ClaimAttemptTerminal) -> String {
+  match terminal {
+    Returned { observation: o } =>
+      match o {
+        ObservedVerdict { holds: _ } => ""
+        ObservationUnrepresentable { reason: r } => r as String
+      }
+    RuntimeErrored { message: m } => m
+    BudgetRefused { safety: s } => render_safety_detail(safety: s)
+    HostToolUnresolved { name: n, probed: _ } => n
+    RouteGap { route: r } => r
+  }
+}
+
+fn render_row(row: ClaimTerminalRow) -> String {
+  ledger_wire_join(fields: [
+    witness_identity_qualified_name(identity: row.identity),
+    render_expectation(expectation: row.expectation),
+    render_terminal_tag(terminal: row.terminal),
+    render_terminal_detail(terminal: row.terminal)
+  ])
+}
+
+// THE DIGEST IS COMPUTED OVER THE RENDERED ROWS, NOT OVER THE TYPED ONES, because the artifact is
+// what a later reader holds: a digest over values the reader cannot see could not be recomputed
+// by anyone, and an unrecomputable digest is decoration. Every hashed line is prefixed, so no
+// input to `content_hash_atom` can be empty -- the `NonEmptyStr` refinement then has no reachable
+// refusal here rather than a runtime one nobody would expect at a serialization boundary.
+fn ledger_rows_digest(rows: List<ClaimTerminalRow>) -> Fnv1a64Structural {
+  fold(
+    rows,
+    content_hash_atom(value: ledger_wire_format),
+    (acc, row) => content_hash_combine_structural(
+      left: acc,
+      right: content_hash_atom(value: concat("row:", render_row(row: row)))
+    )
+  )
+}
+
+fn typed_roster_identity(rows: List<ClaimTerminalRow>) -> Fnv1a64Structural {
+  fold(
+    rows,
+    content_hash_atom(value: ledger_wire_format),
+    (acc, row) => content_hash_combine_structural(
+      left: acc,
+      right: content_hash_atom(
+        value: concat("identity:", witness_identity_qualified_name(identity: row.identity))
+      )
+    )
+  )
+}
+
+fn render_header(binding: LedgerBinding, rows: List<ClaimTerminalRow>) -> String {
+  ledger_wire_join(fields: [
+    ledger_wire_format,
+    render_repository_snapshot(snapshot: binding.repository_snapshot),
+    binding.prepared_subject.digest,
+    typed_roster_identity(rows: rows).digest
+  ])
+}
+
+fn render_footer(rows: List<ClaimTerminalRow>) -> String {
+  ledger_wire_join(fields: [
+    ledger_wire_footer_tag,
+    rows.length() as String,
+    ledger_rows_digest(rows: rows).digest
+  ])
+}
+
+// RENDER IS TOTAL OR IT REFUSES; IT NEVER PRODUCES A DAMAGED LEDGER.
+type LedgerRender
+  = LedgerRendered { text: String }
+  | LedgerUnrenderable { reason: Symbol, offending: String, diagnosis: String }
+
+fn ledger_unclean_fields(rows: List<ClaimTerminalRow>) -> List<String> {
+  filter(
+    flat_map(rows, row => [
+      witness_identity_qualified_name(identity: row.identity),
+      render_terminal_detail(terminal: row.terminal)
+    ]),
+    field => !ledger_wire_field_is_clean(field: field)
+  )
+}
+
+// THE DIAGNOSIS IS RENDERED FROM WHAT THE SENDER SENT, DELIBERATELY WITHOUT REPAIR. Fields are
+// written raw -- including the separator-carrying field that may have caused the refusal --
+// because a diagnostician needs to see the byte that broke the grammar, and a sanitized
+// diagnosis of a sanitization defect would be useless. It carries no footer: nothing about it
+// can look finalized.
+data ledger_partial_refusal_tag: String = "#refused"
+
+fn render_partial_header(repository_snapshot: String, prepared_subject: String, roster_identity: String) -> String {
+  ledger_wire_join(fields: [
+    ledger_partial_format,
+    repository_snapshot,
+    prepared_subject,
+    roster_identity
+  ])
+}
+
+// THE REFUSAL LINE STATES HOW MANY ROWS FOLLOW IT, and that number is the diagnosis's own
+// self-check.
+//
+// A raw TAB breaks a field, which is exactly what a diagnostician must see. A raw NEWLINE is a
+// different risk: it breaks the LINE STRUCTURE the human reader is relying on. One row carrying
+// a newline appears as two, and a row carrying `#refused …` after a newline would show a reader
+// a refusal reason the sender never wrote. Nothing parses this file, so the victim is a person
+// rather than a program -- and a person is precisely who it is for.
+//
+// Escaping the newline would sanitize the evidence and make this a second representation of the
+// row. Stating the count does not: a reader comparing the stated count against the lines they
+// observe detects the forgery, the same construction as `rows recovered vs lines read` in the
+// parser -- a self-check that cannot disagree with itself, because the number is written by the
+// same fold that writes the rows.
+fn render_partial_refusal_line(reason: Symbol, offending: String, row_count: Int) -> String {
+  ledger_wire_join(fields: [
+    ledger_partial_refusal_tag,
+    reason as String,
+    offending,
+    row_count as String
+  ])
+}
+
+fn render_typed_diagnosis(
+  binding: LedgerBinding,
+  rows: List<ClaimTerminalRow>,
+  reason: Symbol,
+  offending: String,
+) -> String {
+  ledger_wire_join_lines(
+    lines: list_append(
+      left: [
+        render_partial_header(
+          repository_snapshot: render_repository_snapshot(snapshot: binding.repository_snapshot),
+          prepared_subject: binding.prepared_subject.digest,
+          roster_identity: typed_roster_identity(rows: rows).digest
+        ),
+        render_partial_refusal_line(reason: reason, offending: offending, row_count: rows.length())
+      ],
+      right: map(rows, r => render_row(row: r))
+    )
+  )
+}
+
+fn render_seed_row_raw(row: SeedLedgerRow) -> String {
+  ledger_wire_join(fields: [
+    row.qualified,
+    row.expectation_wire,
+    row.terminal_tag,
+    row.terminal_detail,
+    row.seed_disposition_wire
+  ])
+}
+
+fn seed_diagnosis_of(
+  repository_snapshot: String,
+  prepared_subject: String,
+  roster_identity: String,
+  rows: List<SeedLedgerRow>,
+  reason: Symbol,
+  offending: String,
+) -> String {
+  ledger_wire_join_lines(
+    lines: list_append(
+      left: [
+        render_partial_header(
+          repository_snapshot: repository_snapshot,
+          prepared_subject: prepared_subject,
+          roster_identity: roster_identity
+        ),
+        render_partial_refusal_line(reason: reason, offending: offending, row_count: rows.length())
+      ],
+      right: map(rows, r => render_seed_row_raw(row: r))
+    )
+  )
+}
+
+fn render_ledger(binding: LedgerBinding, rows: List<ClaimTerminalRow>) -> LedgerRender {
+  match ledger_unclean_fields(rows: rows).first() {
+    Present { value: offending } =>
+      LedgerUnrenderable {
+        reason: "field-carries-separator",
+        offending: offending,
+        diagnosis: render_typed_diagnosis(
+          binding: binding,
+          rows: rows,
+          reason: "field-carries-separator",
+          offending: offending
+        )
+      }
+    Absent =>
+      LedgerRendered {
+        text: ledger_wire_join_lines(
+          lines: list_append(
+            left: list_append(
+              left: [render_header(binding: binding, rows: rows)],
+              right: map(rows, r => render_row(row: r))
+            ),
+            right: [render_footer(rows: rows)]
+          )
+        )
+      }
+  }
+}
+
+// READING THE ARTIFACT BACK, AND THE FIDELITY BOUNDARY STATED RATHER THAN ASSUMED.
+//
+// A reader holding the published file needs exactly what the obligation names: WHICH identities
+// terminated, what each was expected to do, and what each actually reached. The wire preserves
+// those three exactly. It does NOT preserve the numeric payload inside `SafetyInterrupted`
+// (`elapsed_cpu_at_least`, `elapsed_wall_at_least`) or the `probed` list inside
+// `HostToolUnresolved` -- those are cost and infrastructure telemetry, not per-identity evidence,
+// and they have their own receipts.
+//
+// So the readback row is a DIFFERENT TYPE from `ClaimTerminalRow` rather than a partially-filled
+// one. A `ClaimTerminalRow` reconstructed with zeros where the file carried nothing would be a
+// fabricated plausible value: the reader could not tell an interruption at 0ms from one whose
+// timing the wire never held. The law this module proves is therefore stated at the grain the
+// wire is lossless on, and the type makes the boundary visible instead of leaving a reader to
+// discover it from a zero.
+type LedgerReadbackRow {
+  qualified: String
+  expectation: ClaimExpectation
+  terminal_tag: String
+  terminal_detail: String
+}
+
+type LedgerReadback
+  = LedgerRead {
+      repository_snapshot: String
+      prepared_subject: String
+      roster_identity: String
+      rows: List<LedgerReadbackRow>
+      footer_row_count_wire: String
+      footer_digest: String
+    }
+  | LedgerUnreadable { reason: Symbol, at: String }
+
+fn render_readback_row(row: LedgerReadbackRow) -> String {
+  ledger_wire_join(fields: [
+    row.qualified,
+    render_expectation(expectation: row.expectation),
+    row.terminal_tag,
+    row.terminal_detail
+  ])
+}
+
+fn readback_rows_digest(rows: List<LedgerReadbackRow>) -> Fnv1a64Structural {
+  fold(
+    rows,
+    content_hash_atom(value: ledger_wire_format),
+    (acc, row) => content_hash_combine_structural(
+      left: acc,
+      right: content_hash_atom(value: concat("row:", render_readback_row(row: row)))
+    )
+  )
+}
+
+// EVERY FIELD IS EXTRACTED BY MATCHING, NEVER BY CASTING AN OPTIONAL.
+//
+// `fields.first() as String` type-checks and renders the WRAPPER -- a field would silently become
+// the text `Present { value: … }` in the parsed row, with no diagnostic anywhere. That is the
+// fabricated plausible output at its quietest: the parse succeeds, the row looks populated, and
+// the identity it carries is not the identity the file holds. So each field is taken through a
+// match whose absent arm refuses the whole line.
+fn ledger_wire_field_at(fields: List<String>, index: Int) -> String? {
+  fields.skip(n: index).first()
+}
+
+fn parse_readback_row(line: String) -> LedgerReadbackRow? {
+  let fields = line.split(delimiter: "\t")
+  if fields.length() == 4 {
+    match ledger_wire_field_at(fields: fields, index: 0) {
+      Absent => none
+      Present { value: qualified } =>
+        match ledger_wire_field_at(fields: fields, index: 1) {
+          Absent => none
+          Present { value: expectation_wire } =>
+            match parse_expectation(wire: expectation_wire) {
+              Absent => none
+              Present { value: expectation } =>
+                match ledger_wire_field_at(fields: fields, index: 2) {
+                  Absent => none
+                  Present { value: tag } =>
+                    match ledger_wire_field_at(fields: fields, index: 3) {
+                      Absent => none
+                      Present { value: detail } =>
+                        Present {
+                          value: LedgerReadbackRow {
+                            qualified: qualified,
+                            expectation: expectation,
+                            terminal_tag: tag,
+                            terminal_detail: detail
+                          }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  } else {
+    none
+  }
+}
+
+// THE READBACK REFUSES THE WHOLE FILE ON ANY DEFECT, and this is the arm most tempting to widen.
+//
+// The available shortcut is to skip lines that do not parse and return the ones that do. That is
+// the empty-observation narrow: a truncated ledger would read back as a SHORTER but well-formed
+// population, the reconciliation would name the dropped identities as never having terminated,
+// and the run would be blamed for losing claims it in fact executed. One unreadable line means
+// the reader does not know what the file says, and "I could not read it" is not "these rows are
+// what happened".
+fn parse_ledger(text: String) -> LedgerReadback {
+  let lines = text.split(delimiter: "\n")
+  if lines.length() < 2 {
+    LedgerUnreadable { reason: "ledger-shorter-than-header-and-footer", at: text }
+  } else {
+    match ledger_wire_field_at(fields: lines, index: 0) {
+      Absent => LedgerUnreadable { reason: "ledger-has-no-header", at: text }
+      Present { value: header } => parse_ledger_with_header(lines: lines, header: header)
+    }
+  }
+}
+
+fn parse_ledger_with_header(lines: List<String>, header: String) -> LedgerReadback {
+  let header_fields = header.split(delimiter: "\t")
+  if header_fields.length() == 4 {
+    match ledger_wire_field_at(fields: header_fields, index: 0) {
+      Absent => LedgerUnreadable { reason: "ledger-header-empty", at: header }
+      Present { value: format } =>
+        if format == ledger_wire_format {
+          parse_ledger_body(lines: lines, header_fields: header_fields)
+        } else {
+          LedgerUnreadable { reason: "ledger-format-unrecognized", at: format }
+        }
+    }
+  } else {
+    LedgerUnreadable { reason: "ledger-header-arity", at: header }
+  }
+}
+
+fn ledger_wire_field_or_empty(fields: List<String>, index: Int) -> String {
+  match ledger_wire_field_at(fields: fields, index: index) {
+    Absent => ""
+    Present { value: v } => v
+  }
+}
+
+// PARSING THE BODY: EACH LINE YIELDS EXACTLY ONE ROW OR NONE, so a shortfall between the lines read and the rows
+// recovered IS the count of lines that would otherwise have been dropped. This is written as a
+// length comparison rather than by searching the mapped list for an absent element because the
+// search was WRONG and shipped green: `filter(parsed, r => match r { Absent => true ... })`
+// found nothing while `flat_map` over the same list dropped a row, so the damaged file parsed
+// as a shorter well-formed ledger -- the empty-observation narrow, committed inside the very
+// function this annotation describes. Measured, not reasoned: a ledger with one damaged
+// line read back as `read:1`.
+fn parse_ledger_body(lines: List<String>, header_fields: List<String>) -> LedgerReadback {
+  let body = lines.skip(n: 1)
+  let footer_index = body.length() - 1
+  let footer = ledger_wire_field_or_empty(fields: body, index: footer_index)
+  let footer_fields = footer.split(delimiter: "\t")
+  let row_lines = take(body, footer_index)
+  let parsed_rows = flat_map(row_lines, l => match parse_readback_row(line: l) {
+    Absent => []
+    Present { value: v } => [v]
+  })
+  if ledger_wire_field_or_empty(fields: footer_fields, index: 0) != ledger_wire_footer_tag {
+    LedgerUnreadable { reason: "ledger-footer-missing", at: footer }
+  } else {
+    if footer_fields.length() != 3 {
+      LedgerUnreadable { reason: "ledger-footer-arity", at: footer }
+    } else {
+      if parsed_rows.length() != row_lines.length() {
+        LedgerUnreadable { reason: "ledger-row-unparseable", at: footer }
+      } else {
+          LedgerRead {
+            repository_snapshot: ledger_wire_field_or_empty(fields: header_fields, index: 1),
+            prepared_subject: ledger_wire_field_or_empty(fields: header_fields, index: 2),
+            roster_identity: ledger_wire_field_or_empty(fields: header_fields, index: 3),
+            rows: parsed_rows,
+            footer_row_count_wire: ledger_wire_field_or_empty(fields: footer_fields, index: 1),
+            footer_digest: ledger_wire_field_or_empty(fields: footer_fields, index: 2)
+          }
+      }
+    }
+  }
+}
+
+// THE FOOTER COUNT IS COMPARED IN ITS WIRE FORM, and that is a construction choice rather than
+// laziness. The host `parse_int` answers `Value::Null` for any text it cannot read, so a footer
+// reading `twelve` -- or one truncated mid-digit -- would arrive as an absent Int that some arm
+// then has to interpret, and every available interpretation is a fabrication: zero rows, the
+// parsed row count, or a silent skip. Rendering the expected count and comparing text has no such
+// arm. It is total, it needs no failure branch, and a footer that does not say what the planned
+// population says fails the comparison whatever it says instead.
+//
+// The referent is the PLANNED count the caller already holds, never the rows this reader parsed:
+// comparing the footer to the rows read is an identity, and a truncation that also rewrote the
+// footer would agree with itself.
+fn readback_footer_count_agrees(readback: LedgerReadback, planned_rows: Int) -> Bool {
+  match readback {
+    LedgerUnreadable { reason: _, at: _ } => false
+    LedgerRead {
+      repository_snapshot: _,
+      prepared_subject: _,
+      roster_identity: _,
+      rows: _,
+      footer_row_count_wire: wire,
+      footer_digest: _
+    } => wire == planned_rows as String
+  }
+}
+
+// THE DIGEST IS RECOMPUTED FROM THE ROWS THE READER PARSED AND COMPARED TO THE ONE THE FILE
+// CARRIES. This is the only check in the module that can catch a file whose rows were edited
+// while its count was left alone -- the count says how many, the digest says which.
+fn readback_digest_agrees(readback: LedgerReadback) -> Bool {
+  match readback {
+    LedgerUnreadable { reason: _, at: _ } => false
+    LedgerRead {
+      repository_snapshot: _,
+      prepared_subject: _,
+      roster_identity: _,
+      rows: rows,
+      footer_row_count_wire: _,
+      footer_digest: digest
+    } => readback_rows_digest(rows: rows).digest == digest
+  }
+}
+
+// THE DISPOSITION SURVIVES THE ROUND TRIP, AND THIS IS THE PROPERTY THE ARTIFACT EXISTS FOR.
+//
+// A file that preserved identities but lost what happened to them would satisfy every structural
+// check in this module and answer none of the obligation's question. So the wire's tag is chosen
+// to determine the disposition exactly, and the test beside this asserts agreement with
+// `claim_disposition` over EVERY terminal shape -- not a sample -- because a tag collision would
+// show up in exactly one arm and nowhere else.
+//
+// An unrecognised tag refuses. It does not fall through to a default disposition: a ledger
+// written by a newer format and read by this one must say "I cannot read this", never "everything
+// I could not parse passed".
+fn readback_disposition(row: LedgerReadbackRow) -> ClaimDisposition? {
+  if row.terminal_tag == "runtime-errored" {
+    Present { value: RuntimeErroredBeforeVerdict }
+  } else {
+  if row.terminal_tag == "budget-refused" {
+    Present { value: BudgetRefusedBeforeVerdict }
+  } else {
+  if row.terminal_tag == "host-tool-unresolved" {
+    Present { value: HostToolUnresolvedBeforeVerdict }
+  } else {
+  if row.terminal_tag == "route-gap" {
+    Present { value: RouteGapBeforeVerdict }
+  } else {
+  if row.terminal_tag == "returned-unreadable" {
+    Present { value: ObservationUnreadableBeforeVerdict }
+  } else {
+  if row.terminal_tag == "returned-true" {
+    match row.expectation {
+      ExpectedToHold => Present { value: Passed }
+      ExpectedRed => Present { value: KnownRedNowPassing }
+    }
+  } else {
+  if row.terminal_tag == "returned-false" {
+    match row.expectation {
+      ExpectedToHold => Present { value: Failed }
+      ExpectedRed => Present { value: KnownRedHeld }
+    }
+  } else {
+    none
+  }}}}}}}
+}
+
+// ── THE SEED-FACING SURFACE, AND THE MIRROR COMPARATOR THAT COMES WITH IT ──────────────────
+//
+// The seed holds the rows and performs the host write; the BYTES are produced here. Something
+// must still cross the boundary, because two type systems have to meet somewhere: the seed says
+// which terminal arm a claim reached, and it says it in this module's vocabulary rather than its
+// own. That crossing is the irreducible part. What is NOT irreducible is it being unchecked.
+//
+// `cli_run.rs` computes a disposition for every row from `ClaimOutcome` and `expected_red`. This
+// module computes one from the wire tag and the expectation. They are INDEPENDENT derivations of
+// the same fact over the same row, so the seed sends both its tag and its disposition, and a row
+// whose two answers disagree makes the whole ledger UNRENDERABLE with a typed reason.
+//
+// This is the production half of `TerminalDispositionWireAgreement`, whose rung, guarantee, stated
+// non-claim and coverage bound are declared once in `v2.workflow.floor_terminal_ledger`'s schema
+// note. They are NOT restated here: two accounts of one standing drift apart, and the one a reader
+// finds first wins rather than the one that is right.
+//
+// What belongs here is only what this code does. The comparator runs in production on every row
+// rather than as an offline audit, so a divergence between the two mappings stops the line instead
+// of being discovered later. It catches divergence in the MAPPINGS; the type DECLARATIONS are the
+// separate `SeedDagTerminalSchemaDeclarationLockstep` class and this does not touch them. An
+// unknown tag or an unknown disposition label refuses on the same arm, so a seed built against a
+// newer vocabulary cannot publish a ledger this module would read differently.
+type SeedLedgerRow {
+  qualified: String
+  expectation_wire: String
+  terminal_tag: String
+  terminal_detail: String
+  seed_disposition_wire: String
+}
+
+fn render_disposition(disposition: ClaimDisposition) -> String {
+  match disposition {
+    Passed => "passed"
+    Failed => "failed"
+    KnownRedHeld => "known-red-held"
+    KnownRedNowPassing => "known-red-now-passing"
+    BudgetRefusedBeforeVerdict => "budget-refused-before-verdict"
+    HostToolUnresolvedBeforeVerdict => "host-tool-unresolved-before-verdict"
+    RouteGapBeforeVerdict => "route-gap-before-verdict"
+    RuntimeErroredBeforeVerdict => "runtime-errored-before-verdict"
+    ObservationUnreadableBeforeVerdict => "observation-unreadable-before-verdict"
+  }
+}
+
+type SeedRowAdmission
+  = SeedRowAdmitted { row: LedgerReadbackRow }
+  | SeedRowRefused { reason: Symbol, offending: String }
+
+fn admit_seed_row(row: SeedLedgerRow) -> SeedRowAdmission {
+  match parse_expectation(wire: row.expectation_wire) {
+    Absent => SeedRowRefused { reason: "seed-expectation-unrecognized", offending: row.qualified }
+    Present { value: expectation } => {
+      let readback = LedgerReadbackRow {
+        qualified: row.qualified,
+        expectation: expectation,
+        terminal_tag: row.terminal_tag,
+        terminal_detail: row.terminal_detail
+      }
+      match readback_disposition(row: readback) {
+        Absent => SeedRowRefused { reason: "seed-terminal-tag-unrecognized", offending: row.qualified }
+        Present { value: derived } =>
+          if render_disposition(disposition: derived) == row.seed_disposition_wire {
+            SeedRowAdmitted { row: readback }
+          } else {
+            SeedRowRefused { reason: "seed-disposition-disagrees", offending: row.qualified }
+          }
+      }
+    }
+  }
+}
+
+// THE ROSTER IDENTITY IS DERIVED HERE, NOT SUPPLIED, and that removes the last thing the seed
+// could have fabricated. It is a fold over the identities actually being published, so it cannot
+// disagree with the population it names -- a supplied roster identity could, and a binding whose
+// roster identity described a different roster than the rows is worse than no roster identity at
+// all. The seed has no such value to hand over anyway: nothing in `run_required_floor` computes
+// one, and inventing a parameter for a fact that does not exist is how hollow carriers start.
+fn seed_roster_identity(rows: List<SeedLedgerRow>) -> Fnv1a64Structural {
+  fold(
+    rows,
+    content_hash_atom(value: ledger_wire_format),
+    (acc, row) => content_hash_combine_structural(
+      left: acc,
+      right: content_hash_atom(value: concat("identity:", row.qualified))
+    )
+  )
+}
+
+fn render_ledger_from_seed(
+  repository_snapshot: String,
+  prepared_subject: String,
+  rows: List<SeedLedgerRow>,
+) -> LedgerRender {
+  let roster_identity = seed_roster_identity(rows: rows).digest
+  let snapshot_admission = admit_repository_snapshot_wire(wire: repository_snapshot)
+  let admissions = map(rows, r => admit_seed_row(row: r))
+  let admitted = flat_map(admissions, a => match a {
+    SeedRowRefused { reason: _, offending: _ } => []
+    SeedRowAdmitted { row: r } => [r]
+  })
+  let refusals = flat_map(admissions, a => match a {
+    SeedRowRefused { reason: reason, offending: offending } => [SeedRowRefused { reason: reason, offending: offending }]
+    SeedRowAdmitted { row: _ } => []
+  })
+  match snapshot_admission {
+    SnapshotWireUnrecognized { offending: offending } =>
+      LedgerUnrenderable {
+        reason: "seed-repository-snapshot-unrecognized",
+        offending: offending,
+        diagnosis: seed_diagnosis_of(
+          repository_snapshot: offending,
+          prepared_subject: prepared_subject,
+          roster_identity: roster_identity,
+          rows: rows,
+          reason: "seed-repository-snapshot-unrecognized",
+          offending: offending
+        )
+      }
+    SnapshotAdmitted { snapshot: _ } =>
+  match refusals.first() {
+    Present { value: first_refusal } =>
+      match first_refusal {
+        SeedRowAdmitted { row: _ } =>
+          LedgerUnrenderable {
+            reason: "unreachable-admitted-in-refusals",
+            offending: "",
+            diagnosis: seed_diagnosis_of(
+              repository_snapshot: repository_snapshot,
+              prepared_subject: prepared_subject,
+              roster_identity: roster_identity,
+              rows: rows,
+              reason: "unreachable-admitted-in-refusals",
+              offending: ""
+            )
+          }
+        SeedRowRefused { reason: reason, offending: offending } =>
+          LedgerUnrenderable {
+            reason: reason,
+            offending: offending,
+            diagnosis: seed_diagnosis_of(
+              repository_snapshot: repository_snapshot,
+              prepared_subject: prepared_subject,
+              roster_identity: roster_identity,
+              rows: rows,
+              reason: reason,
+              offending: offending
+            )
+          }
+      }
+    Absent =>
+      match filter(
+        flat_map(admitted, r => [r.qualified, r.terminal_detail]),
+        field => !ledger_wire_field_is_clean(field: field)
+      ).first() {
+        Present { value: offending } =>
+          LedgerUnrenderable {
+            reason: "field-carries-separator",
+            offending: offending,
+            diagnosis: seed_diagnosis_of(
+              repository_snapshot: repository_snapshot,
+              prepared_subject: prepared_subject,
+              roster_identity: roster_identity,
+              rows: rows,
+              reason: "field-carries-separator",
+              offending: offending
+            )
+          }
+        Absent =>
+          LedgerRendered {
+            text: ledger_wire_join_lines(
+              lines: list_append(
+                left: list_append(
+                  left: [ledger_wire_join(fields: [
+                    ledger_wire_format,
+                    repository_snapshot,
+                    prepared_subject,
+                    roster_identity
+                  ])],
+                  right: map(admitted, r => render_readback_row(row: r))
+                ),
+                right: [ledger_wire_join(fields: [
+                  ledger_wire_footer_tag,
+                  admitted.length() as String,
+                  readback_rows_digest(rows: admitted).digest
+                ])]
+              )
+            )
+          }
+      }
+  }
+  }
+}

@@ -1,76 +1,165 @@
 module extdeps.exec.command
 
-data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
-  uri: extdeps.uri.Uri {
-    scheme: extdeps.uri.Https
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
     locator: "man7.org/linux/man-pages/man1/ssh.1.html"
   }
 }
 
-type ArgvCommand {
-  argv: List<String>
+// THE ARGV CONSTRUCTION WALL. ArgvCommand was a plain record, so every module could write
+// `ArgvCommand { argv: ["curl", "-fsL", "-o", dest, url] }` at the call site and the flags of a tool
+// this repository does not own lived wherever someone happened to need them. That is the anemic
+// modeling DESIGN §2 names -- a String leaf hiding named parts -- and it is what made the omitted
+// `--fail` fail-open class writable (gunbc.plans.transport_argv_anemia_dissolution, Lane B).
+//
+// It is now sole_constructor: only this module may build one, and `argv_command` below is the single
+// admitted route in, caller-sealed BY NAME to the typed builders that derive an argv from a cited
+// authority. A hand-spelled word list has no route to a process that does not pass through one of
+// them, so "which flags does this tool take" is answered in the tool's own extdeps module and
+// nowhere else. Adding a command is an edit to the admit list in this file -- a conspicuous, counted
+// review event -- rather than an import a caller can write in their own.
+//
+// THE PROGRAM IS NOT AN ARGUMENT. execve takes the executable and the argument vector as distinct
+// parameters, and this carrier now does the same, for the reason already recorded at
+// extdeps.shell.exec RunArgv: conflating them is a state-space collapse. It also makes the EMPTY
+// argv -- a command naming no program to execute -- unrepresentable rather than refused after the
+// fact (DESIGN §4b: structurally impossible beats mechanically preventable). The two
+// `HeadAbsent => empty argv` refusal arms in gunbc.command_runner dissolve with this shape; there is
+// always a program, so there is nothing left to refuse.
+type ArgvCommand sole_constructor {
+  program: NonEmptyStr
+  arguments: List<String>
+}
+
+// THE ONE MINT. It takes the program and its operands, and gates WHO may call it. Every admitted
+// caller is a named builder for ONE operation of ONE tool, homed in that tool's own extdeps module
+// beside its cited upstream authority -- never here: a generic hub may define the agnostic shape but
+// may not enumerate concrete products (DESIGN §3, external upstream decomposition). That is why the
+// six builders this module used to carry (curl_download_command, mkdir_p_command,
+// tar_extract_command, make_command, sed_in_place_command, cp_command) are GONE from this file and
+// live in extdeps.tools.{curl,mkdir,tar,make,sed,gnu_coreutils}: sealing the record while keeping
+// the product rows in the hub would have made this module the one place every tool's flags collect.
+//
+// TWO CONCRETE PRODUCTS DO STILL LIVE IN THIS FILE -- sshpass and OpenSSH's ssh/scp -- and that is a
+// stated exception rather than an oversight in the rule above. They are not here as tools a caller
+// picks; they are the REALIZATION of the CommandTransport coproduct this module declares, so
+// command_over_transport cannot compose an SshExec without naming them. Moving them out would leave
+// the transport unable to build its own outer invocation, or force an import cycle to get it back.
+// If a second ssh realization ever lands, that is the moment this becomes a real product
+// enumeration and the pair moves to extdeps.ssh with the transport dispatching over them.
+//
+// No test declaration is admitted. A witness obtains an ArgvCommand through a production builder,
+// the same way production does -- the rule extdeps.shell.exec transport_script_seal already sets.
+fn argv_command(program: NonEmptyStr, arguments: List<String>) -> ArgvCommand
+  admit_callers: [
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "scp_command"),
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command"),
+    decl_ref(module_path: "extdeps.exec.command", decl_name: "command_over_transport"),
+    decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
+    decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_extract_command"),
+    decl_ref(module_path: "extdeps.tools.make", decl_name: "make_command"),
+    decl_ref(module_path: "extdeps.tools.sed", decl_name: "sed_in_place_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_force_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "printf_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "true_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "whoami_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "readlink_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_one_per_line_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_target_glob_command"),
+    decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_set_mode_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_owner_user_name_command"),
+    decl_ref(module_path: "extdeps.tools.hostname", decl_name: "hostname_read_command"),
+    decl_ref(module_path: "extdeps.tools.hostname", decl_name: "hostname_short_read_command"),
+    decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_httpd_command"),
+    decl_ref(module_path: "extdeps.tools.busybox", decl_name: "busybox_tftpd_over_udpsvd_command"),
+    decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_server_command"),
+    decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_client_attach_command"),
+    decl_ref(module_path: "extdeps.storage.nbd", decl_name: "nbd_client_disconnect_command"),
+    decl_ref(module_path: "extdeps.posix.sh_invocation", decl_name: "posix_sh_program_command"),
+    decl_ref(module_path: "extdeps.languages.bash.invocation", decl_name: "bash_program_command"),
+    decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_regular_file_command"),
+    decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_public_key_command"),
+    decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_fingerprint_command"),
+    decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_known_hosts_find_command"),
+    decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keyscan_command"),
+    decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_add_list_identities_command"),
+    decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_enable_now_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_config_local_set_command"),
+    decl_ref(module_path: "extdeps.sudo.elevation", decl_name: "sudo_preserve_environment_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_file_type_command"),
+    decl_ref(module_path: "extdeps.tools.stat", decl_name: "stat_inode_command"),
+    decl_ref(module_path: "extdeps.tools.mkdir", decl_name: "mkdir_parents_command_at"),
+    decl_ref(module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_command"),
+    decl_ref(module_path: "gunbc.repo_local_git_config", decl_name: "reconcile_install_command"),
+  ]
+  = ArgvCommand { program: program, arguments: arguments }
+
+// The words a process would receive, program first. Renderers and transports that need one flat
+// vector derive it here rather than each re-deciding that argv[0] is the program.
+fn argv_words(command: ArgvCommand) -> List<String> {
+  append([command.program as String], items: command.arguments)
 }
 
 data ssh_exec_interpretation_note: String = "SshExec now carries the target's RemoteExecCommandInterpretation as a field, not an inferred fact: DESIGN §5 construction-over-validation -- whether the far side hands the RFC 4254 command string to a POSIX shell is a per-deployment implementation fact (gunbc.remote_shell_command remote_exec_command_interpretation_note), so the caller who knows which deployment it is targeting must declare it rather than command_over_transport guessing from the target string. A target this module cannot classify names Unknown explicitly; command_over_transport then refuses rather than picking a default (operator directive, 2026-08-19)."
 
 type CommandTransport
   = LocalExec
-  | SshExec { ssh_target: std.types.NonEmptyStr, interpretation: gunbc.remote_shell_command.RemoteExecCommandInterpretation }
+  | SshExec { ssh_target: NonEmptyStr, interpretation: RemoteExecCommandInterpretation }
 
-data sshpass_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
-  uri: extdeps.uri.Uri {
-    scheme: extdeps.uri.Https
+data sshpass_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
     locator: "sourceforge.net/projects/sshpass/"
   }
 }
 
-data ssh_host_key_verification_posture: String = "🟡 dissolve-on: ssh_exec_prefix — DECLARED SECURITY POSTURE, not an accident of argv building: StrictHostKeyChecking=no + UserKnownHostsFile=/dev/null disables SSH host-key verification for these fleet/BMC transports, so a LAN-position MITM would not be detected; accepted interim because the targets are LAN-scoped fleet members and BMCs whose host keys are not yet provisioned facts. sshpass (its own upstream, anchor above) feeds the password via -e (SSHPASS env), never argv. DISSOLVES WHEN known-hosts provisioning lands on gunbc.fleet_ssh_access (pinned host key per fleet member) and this prefix drops both overrides in favor of a pinned UserKnownHostsFile."
+data ssh_host_key_verification_posture: String = "🟡 dissolve-on: ssh_host_key_override_opts — DECLARED SECURITY POSTURE, not an accident of argv building: StrictHostKeyChecking=no + UserKnownHostsFile=/dev/null disables SSH host-key verification for these fleet/BMC transports, so a LAN-position MITM would not be detected; accepted interim because the targets are LAN-scoped fleet members and BMCs whose host keys are not yet provisioned facts. sshpass (its own upstream, anchor above) feeds the password via -e (SSHPASS env), never argv. DISSOLVES WHEN known-hosts provisioning lands on gunbc.fleet_ssh_access (pinned host key per fleet member) and these options drop both overrides in favor of a pinned UserKnownHostsFile."
 
-fn sshpass_prefix() -> List<String> {
-  ["sshpass", "-e"]
-}
+// The transport's own program, split from its flags for the same reason ArgvCommand splits them:
+// sshpass is what gets executed, `-e` is what it is told.
+data sshpass_binary_name: NonEmptyStr = "sshpass"
 
 fn ssh_host_key_override_opts() -> List<String> {
   ["-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null"]
 }
 
-fn ssh_exec_prefix(target: std.types.NonEmptyStr) -> List<String> {
-  append(
-    append(
-      append(sshpass_prefix(), items: ["ssh"]),
-      items: ssh_host_key_override_opts(),
+fn scp_command(local_path: NonEmptyStr, remote_target: NonEmptyStr) -> ArgvCommand {
+  argv_command(
+    program: sshpass_binary_name,
+    arguments: append(
+      append(
+        append(["-e", "scp"], items: ssh_host_key_override_opts()),
+        items: [local_path as String],
+      ),
+      items: [remote_target as String],
     ),
-    items: [target as String],
   )
 }
 
-fn scp_command(local_path: std.types.NonEmptyStr, remote_target: std.types.NonEmptyStr) -> ArgvCommand {
-  ArgvCommand {
-    argv: append(
-      append(
-        append(sshpass_prefix(), items: ["scp"]),
-        items: ssh_host_key_override_opts(),
-      ),
-      items: [local_path as String, remote_target as String],
-    )
-  }
-}
-
-data command_over_transport_composition_note: String = "The SshExec arm no longer does append(ssh_exec_prefix, command.argv): that concatenated an outer local ssh/sshpass argv with an inner remote-shell argv as if they were one target's words, which is wrong in KIND (gunbc.remote_shell_command remote_exec_command_string_note) -- RFC 4254 section 6.5 carries the remote program as ONE command string, not a suffixed argv. The inner ArgvCommand is now folded through remote_exec_command_string into that one NonEmptyStr, cited to IEEE 1003.1-2017 section 2.2.2, and carried as the SINGLE final element of the outer ssh argv -- a composition of two targets, never a flattening of one into the other. Quoting stays a property of the interpretation arm named on SshExec, never of the transport itself: LocalExec never quotes anything, and an Unknown interpretation refuses here exactly as it refuses inside remote_exec_command_string, rather than this function inventing its own default."
+data command_over_transport_composition_note: String = "The SshExec arm no longer does append(ssh_exec_prefix, command.argv) (that prefix helper is itself gone now that the outer invocation is minted through argv_command with sshpass as its program): that concatenated an outer local ssh/sshpass argv with an inner remote-shell argv as if they were one target's words, which is wrong in KIND (gunbc.remote_shell_command remote_exec_command_string_note) -- RFC 4254 section 6.5 carries the remote program as ONE command string, not a suffixed argv. The inner ArgvCommand is now folded through remote_exec_command_string into that one NonEmptyStr, cited to IEEE 1003.1-2017 section 2.2.2, and carried as the SINGLE final element of the outer ssh argv -- a composition of two targets, never a flattening of one into the other. Quoting stays a property of the interpretation arm named on SshExec, never of the transport itself: LocalExec never quotes anything, and an Unknown interpretation refuses here exactly as it refuses inside remote_exec_command_string, rather than this function inventing its own default."
 
 type CommandOverTransportOutcome
   = CommandOverTransportBuilt { command: ArgvCommand }
-  | CommandOverTransportRefused { cause: gunbc.remote_shell_command.RemoteExecCommandRefusalCause }
+  | CommandOverTransportRefused { cause: RemoteExecCommandRefusalCause }
 
 fn command_over_transport(command: ArgvCommand, transport: CommandTransport) -> CommandOverTransportOutcome {
   match transport {
     LocalExec => CommandOverTransportBuilt { command: command }
     SshExec { ssh_target: t, interpretation: interp } =>
-      match gunbc.remote_shell_command.remote_exec_command_string(argv: map(command.argv, a => a as std.types.NonEmptyStr), interpretation: interp) {
+      match remote_exec_command_string(argv: map(argv_words(command: command), a => a as NonEmptyStr), interpretation: interp) {
         RemoteExecCommandRefused { cause: c } => CommandOverTransportRefused { cause: c }
         RemoteExecCommandBuilt { command: s } =>
           CommandOverTransportBuilt {
-            command: ArgvCommand { argv: append(ssh_exec_prefix(target: t), items: [s as String]) }
+            command: argv_command(
+              program: sshpass_binary_name,
+              arguments: append(
+                append(["-e", "ssh"], items: ssh_host_key_override_opts()),
+                items: [t as String, s as String],
+              ),
+            )
           }
       }
   }
@@ -79,37 +168,37 @@ fn command_over_transport(command: ArgvCommand, transport: CommandTransport) -> 
 data shell_quote_provenance_note: String = "shell_quote delegates to extdeps.posix.shell_command_language posix_single_quote (operator finding, 2026-08-19): this was an independently hand-rolled THIRD copy of the single-quote wrap-and-escape encoding already consolidated once from v2.extdeps.languages.bash into the POSIX authority, and cited there against IEEE 1003.1-2017 section 2.2.2 -- split(s, delimiter: \"'\") then join with \"'\\''\" is the same operation as replace(s, \"'\", \"'\\''\"), so this is a pure internal-implementation swap: byte-identical output, unchanged signature, no diff for any of shell_command_render's 13+ existing consumers. DESIGN §2/§3: one escaping fact, one authority."
 
 fn shell_quote(arg: String) -> String {
-  extdeps.posix.shell_command_language.posix_single_quote(spelling: arg)
+  posix_single_quote(spelling: arg)
 }
 
 fn shell_command_render(command: ArgvCommand) -> String {
-  join(map(command.argv, a => shell_quote(arg: a)), " ")
+  join(map(argv_words(command: command), a => shell_quote(arg: a)), " ")
 }
 
-data argv_builder_note: String = "Typed ArgvCommand builders (§2): each derives the argv for one tool operation so the opaque flags (dash-f, dash-p, --strip-components, ...) live in ONE place, not hand-spelled per call site. A caller names the operation (curl_download_command, tar_extract_command, ...); the flags are the derived realization, not a magic string the caller must remember. This is the ArgvCommand-value analogue of the transport rest dissolution — see gunbc.plans.transport_argv_anemia_dissolution (Lane B)."
+data program_spelling_is_an_observation_claim: String = "WHICH SPELLING OF A PROGRAM A BUILDER CARRIES IS A CLAIM, AND THE TWO FORMS ANSWER DIFFERENT QUESTIONS (still-seal-394, 2026-08-22 -- recorded here once rather than repeated at every row it governs). An ABSOLUTE PATH is a claim that this repository has OBSERVED the target's filesystem, and where that claim is true it is the STRONGER form and the one to prefer: it is what a sudoers NOPASSWD rule can name and what a preflight can test for. extdeps.tools.mkdir, extdeps.tools.chmod, extdeps.tools.stat, extdeps.tools.id, extdeps.tools.chown and extdeps.sudo.elevation carry absolute paths for exactly that reason, each with a consumer that needs the path. PATH RESOLUTION is correct where the host is UNOBSERVED -- a BMC, a fleet member, a runner image nobody has read -- because there an absolute path fabricates a host fact (DESIGN section 5), and it is what the hand-spelled call sites this seal converted were already doing. THE RULE IS NOT 'BARE IS THE SAFE DEFAULT', and an earlier revision of this lane got that backwards in both directions within one afternoon: nine new rows were first written with invented absolute paths on the reasoning that a bare name declines to say which binary, then reverted wholesale on the reasoning that PATH is safer. Neither is the rule. Each row states which question it answers, and a row is only as good as the observation behind it. THE COUNTER-EXAMPLE THAT MAKES THIS LOAD-BEARING, and it is why a wrong absolute path is not merely cosmetic: gunbc.roadmap_dashboard_instance_apply carried /usr/bin/chmod both as the program its install step execs and in the required-executable roster its preflight tests, while extdeps.tools.chmod records /bin/chmod for the same fleet -- so the preflight gated a path no sanctioned caller runs, and passed only because those hosts are usrmerged. NEXT-RUNG TRIGGER for every PATH-resolved row this lane landed: a real filesystem observation of the target -- a preflight receipt or a provisioning fact naming the binary -- at which point that row becomes an absolute path with the observation as its citation, and the class climbs from 'we did not look' to 'we looked and this is where it is'."
 
-fn curl_download_command(url: String, destination: String) -> ArgvCommand {
-  ArgvCommand { argv: ["curl", "-fsL", "-o", destination, url] }
-}
+data argv_builder_note: String = "Typed ArgvCommand builders (§2): each derives the argv for one tool operation so the opaque flags (dash-f, dash-p, --strip-components, ...) live in ONE place, not hand-spelled per call site. A caller names the operation (curl_download_command, tar_extract_command, ...); the flags are the derived realization, not a magic string the caller must remember. THE BUILDERS THEMSELVES ARE NOT HERE: each is homed in its tool's own extdeps module beside that tool's cited upstream authority, and admitted by name on argv_command above, because a generic hub may not enumerate concrete products (DESIGN §3). This module owns the SHAPE and the seal; the products own their flags."
 
-fn mkdir_p_command(directory: String) -> ArgvCommand {
-  ArgvCommand { argv: ["mkdir", "-p", directory] }
-}
-
-fn tar_extract_command(archive: String, into_directory: String, strip_components: Int) -> ArgvCommand {
-  ArgvCommand {
-    argv: ["tar", "xf", archive, "-C", into_directory, concat("--strip-components=", to_string(strip_components))]
-  }
-}
-
-fn make_command(directory: String, arguments: List<String>) -> ArgvCommand {
-  ArgvCommand { argv: append(["make", "-C", directory], items: arguments) }
-}
-
-fn sed_in_place_command(expression: String, path: String) -> ArgvCommand {
-  ArgvCommand { argv: ["sed", "-i", expression, path] }
-}
-
-fn cp_command(source: String, destination: String) -> ArgvCommand {
-  ArgvCommand { argv: ["cp", source, destination] }
+// THE ENV-PREFIXED INVOCATION LIVES HERE, IN THE CARRIER'S OWN MODULE, AND THE DEPENDENCY RUNS ONE
+// WAY ONLY. env(1) is modeled at extdeps.tools.env -- its binary path, its NAME=VALUE and -u
+// spellings, and the fact that an unset is TWO argv elements rather than one -- and this builder
+// consumes that authority to mint an ArgvCommand. It is not in the env module because the env
+// authority must know nothing about this seal: a dependency that imported its consumer's carrier
+// would invert the direction the whole extdeps layering runs in.
+//
+// THE INNER COMMAND IS AN ArgvCommand, not a word list, which is the point: `env A=1 prog --flag`
+// is a composition of two invocations, and if the inner one arrived as List<String> this builder
+// would be the laundering seam the seal exists to remove. The env prefix is a wrapper around a
+// command that already came from a builder.
+// IT NAMES env BY THE PATH-RESOLVED SPELLING, DELIBERATELY. extdeps.tools.env carries both
+// env_binary_path and env_path_resolved_program because an absolute path is a claim about an
+// observed filesystem, and both of this builder's call sites target hosts this repository has never
+// read -- a runner image and a machine reached over ssh. Writing /usr/bin/env for them would trade a
+// vague spelling for a confident false host fact (DESIGN section 5). A caller whose target IS
+// observed wants the absolute row, and that is a different builder when one is needed, not a flag.
+fn env_prefixed_command(bindings: List<EnvBinding>, command: ArgvCommand) -> ArgvCommand {
+  argv_command(
+    program: env_path_resolved_program,
+    arguments: env_prefixed_args(bindings: bindings, command_argv: argv_words(command: command)),
+  )
 }

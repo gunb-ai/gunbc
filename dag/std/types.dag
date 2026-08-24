@@ -1,6 +1,5 @@
 module std.types
 
-
 data kernel_type_set: Map<String, Bool> = {
   "String": true, "Int": true, "Bool": true, "Float": true,
   "Secret": true, "Json": true, "Unit": true, "Bytes": true
@@ -13,18 +12,8 @@ fn is_kernel_type(name: String) -> Bool {
   }
 }
 
-// Qualified spellings (std.types.List, std.algebra.FreeMonoid, ...) carry their own rows because
-// several call sites key these lookups on the FULL authored name rather than its last segment.
-// The rows are DERIVED from the bare row each mirrors, which is why the coverage is deliberately
-// uneven: Witness takes an arity row and no template row, PointwisePower takes a template row and
-// no canonical entry, and ordered_element_collections takes nothing because Set and Map are not
-// ordered. DECLARED RESIDUAL: a qualified spelling with no row does not refuse -- both consuming
-// arms answer `false` -- so a NEW spelling added later is silently wrong rather than loud. Rung:
-// mitigatable. Trigger and the three-conjunct wall it needs (including the six service-operation
-// false-refusals a leaf-only test would hit): docs/plans/qualified-container-spelling-residual.md
 data container_type_arity: Map<String, Int> = {
-  "List": 1, "List": 1, "Set": 1, "Set": 1, "Map": 2, "Map": 2, "Witness": 1,
-  "Witness": 1
+  "List": 1, "Set": 1, "Map": 2, "Witness": 1
 }
 
 fn is_container_type(name: String) -> Bool {
@@ -58,7 +47,6 @@ fn container_param_name(kind_name: String, index: Int) -> String? {
 }
 
 data ordered_element_collections: Map<String, Bool> = {
-  "List": true,
   "List": true
 }
 
@@ -68,12 +56,9 @@ fn is_ordered_element_collection(name: String) -> Bool {
 
 data container_template_algebra_rows: Map<String, String> = {
   "List": "FreeMonoid",
-  "List": "FreeMonoid",
   "list": "FreeMonoid",
   "Set": "PointwisePower",
-  "Set": "PointwisePower",
   "set": "PointwisePower",
-  "Map": "PartialFunction",
   "Map": "PartialFunction",
   "map": "PartialFunction",
   "FreeMonoid": "FreeMonoid",
@@ -83,21 +68,14 @@ data container_template_algebra_rows: Map<String, String> = {
   "PartialFunction": "PartialFunction",
   "partial_function": "PartialFunction",
   "PointwisePower": "PointwisePower",
-  "pointwise_power": "PointwisePower",
-  "FreeMonoid": "FreeMonoid",
-  "BooleanAlgebra": "BooleanAlgebra",
-  "PointwisePower": "PointwisePower",
-  "PartialFunction": "PartialFunction"
+  "pointwise_power": "PointwisePower"
 }
 
 data container_template_alias_rows: Map<String, String> = {
   "List": "FreeMonoid",
-  "List": "FreeMonoid",
   "list": "FreeMonoid",
   "Set": "PointwisePower",
-  "Set": "PointwisePower",
   "set": "PointwisePower",
-  "Map": "PartialFunction",
   "Map": "PartialFunction",
   "map": "PartialFunction"
 }
@@ -111,7 +89,7 @@ fn container_template_alias_algebra(name: String) -> String? {
 }
 
 fn canonical_container_names() -> List<String> {
-  ["BooleanAlgebra", "FreeMonoid", "List", "List", "Map", "Map", "PartialFunction", "Set", "Set", "Witness", "FreeMonoid", "Witness", "BooleanAlgebra", "PartialFunction"]
+  ["BooleanAlgebra", "FreeMonoid", "List", "Map", "PartialFunction", "Set", "Witness"]
 }
 
 type Bool = True | False
@@ -123,9 +101,27 @@ type Bytes
 
 type Char = Int where unicode_scalar, brand("Char")
 
-type List<element> = std.algebra.FreeMonoid<element>
-type Set<element> = std.algebra.PointwisePower<element>
-type Map<key, value> = std.algebra.PartialFunction<key, value>
+type List<element> = FreeMonoid<element>
+// ONE SPELLING, TWO CARRIERS -- the open half of the collection-realization fork, stated where the
+// fusion is authored rather than where it surfaces. `Set` names a predicate here and a finite
+// enumeration at every realization: `extdeps.languages.rust.types` gives `PointwisePower` the
+// inhabitant `BTreeSet<{0}>`, so a declaration position lowers to `im::OrdSet` while a record
+// literal `Set { member: .. }` lowers to the algebra struct, and the two meet as a rustc refusal
+// wherever one compiled closure holds both. Measured at
+// `docs/probes/t3_collection_realization_2026-08-22.md`.
+//
+// The PREDICATE half is closed: every corpus site that constructs by characteristic function or
+// reads `.member` now names `std.algebra` `PointwisePower` directly, so no `Set { member: .. }`
+// literal survives in `src/v2`. What is NOT closed is this alias -- `Set` still resolves to the
+// predicate carrier, so the literal is still writable and nothing refuses a new one. Making it
+// unwritable is a retarget of this row onto the finite carrier, and it is deliberately not taken
+// here: it is a `std` authority change whose only verification is a whole-corpus compile, and the
+// Map half of the same fork (`Map { lookup: .. }`, 145 literals) is untouched and would have to
+// move with it. NEXT-RUNG TRIGGER: the Map-side decomposition landing, after which both rows
+// retarget in one motion. Until then the class sits at MITIGATABLE (DESIGN 4b) -- the invalid
+// state is writable and only review sees it.
+type Set<element> = PointwisePower<element>
+type Map<key, value> = PartialFunction<key, value>
 
 fn list_length<T>(items: List<T>) -> Int {
   fold(items, init: 0, f: (acc, _) => acc + 1)
@@ -157,7 +153,7 @@ type NonEmptyStr     = String where non_empty
 type LanguageId      = String where non_empty
 type SecretName      = String where non_empty
 
-type PathSegment   = std.types.NonEmptyStr where brand("PathSegment")
+type PathSegment   = NonEmptyStr where brand("PathSegment")
 
 data path_segment_safety_note: String = "WHAT MAKES A STRING SAFE TO USE AS ONE PATH SEGMENT — the law, held once, so every branded id that becomes a directory name tests the same thing. The brand alone never carried it: a branded NonEmptyStr accepts \"..\", \"a/b\", and an embedded newline, so a value that typechecked as a segment could still escape its parent directory, alias a sibling, or split a line-oriented file written under that name. The refused set is exactly the characters that change what a concatenated path MEANS — `/` and `\\` introduce a level, `.` and `..` navigate, CR and LF terminate a record in every line-oriented format this repo writes, NUL terminates the string at the syscall boundary. Callers REFUSE on false rather than sanitizing, because a sanitized segment silently denotes something other than what the caller named (§5: a failure arm must refuse, never widen). Percent- or hex-encoding is the reversible alternative and is deliberately not offered until a caller needs a segment it cannot rename.
 
@@ -173,23 +169,23 @@ fn path_segment_is_safe(raw: String) -> Bool {
     || string_contains(s: raw, pattern: "\x0d")
     || string_contains(s: raw, pattern: "\x00"))
 }
-type GlobSegment   = std.types.NonEmptyStr where brand("GlobSegment")
+type GlobSegment   = NonEmptyStr where brand("GlobSegment")
 
 data rendered_terminal_text_note: String = "TEXT THAT CARRIES NO TERMINAL CONTROL SEQUENCES — the vocabulary two unrelated dependencies meet on so neither has to know the other exists. A terminal-facing tool emits SGR escapes around the values it highlights; a parser reading those values needs them absent. Those are facts about DIFFERENT upstreams, and the wrong fix is for either to mention the other: a note in a CLI's module explaining what a terminal multiplexer strips is a fact filed under the wrong authority, and it stops being true the moment a second capture transport appears (operator, 2026-07-30: 'tmux stripping ansi should be a tmux fact, and codex prompts should be a codex fact, and the interaction should be emergent').\\n\\nSo the brand is the seam. A capture surface that renders a pane PRODUCES RenderedTerminalText; a prompt parser CONSUMES it; and the composition is admissible because the types line up, not because one module was written knowing about the other. A raw stdout pipe cannot inhabit the brand, so feeding one to a parser that requires it is a type error rather than a runtime paste of escape bytes the operator discovers when the far end rejects them.\\n\\nIt lives in std because it is a property of text, not of any one tool — the same reason FilePath is not owned by whichever dependency happens to open files."
 
 type RenderedTerminalText = String where brand("RenderedTerminalText")
 type FilePathParts {
-  segments: List<std.types.PathSegment>
+  segments: List<PathSegment>
 }
 type GlobPattern {
-  segments: List<std.types.GlobSegment>
+  segments: List<GlobSegment>
 }
 type FilePath      = String where non_empty
 
 data file_path_sentinel_scaffold_note: String = "review 45141. FilePath where non_empty made empty-string absent-file sentinels unwritable; interim re-spellings encode absence in a nominally-non_empty carrier (state-space conflation — path promises a real path while sentinel means absent/synthetic). Sites: emit_rust/go/python emit_*_test_file returns TextFile { path: \"<none>\", content: \"\" }, filtered by string_length(content) > 0 not path; 00_core no_span uses SourceSpan.file \"<synthetic>\" for the null span (make_span, which fabricated that file name for CALLER-SUPPLIED offsets, is deleted -- the fileless constructor now takes no offsets, so a located range inside a nonexistent file has no constructor). Preserves pre-wall behavior. dissolve-on: feature:optional-textfile-and-source-span (lift emit carriers to Option<TextFile> and SourceSpan.file to optional FilePath; delete sentinels and content-length filter)."
 
 type SourceSpan {
-  file: std.types.FilePath
+  file: FilePath
   start: Int
   end: Int
 }
@@ -201,21 +197,21 @@ type Duration      = Int where range(min: 0)
 type Milliseconds  = Int where range(min: 0), brand("Milliseconds")
 type Seconds       = Int where range(min: 0), brand("Seconds")
 
-type LogicalTime   = std.types.NonEmptyStr where brand("LogicalTime")
+type LogicalTime   = NonEmptyStr where brand("LogicalTime")
 
-type IntentId     = std.types.NonEmptyStr where brand("IntentId")
-type IssueId      = std.types.NonEmptyStr where brand("IssueId")
-type RunKey       = std.types.NonEmptyStr where brand("RunKey")
-type ArtifactId   = std.types.NonEmptyStr where brand("ArtifactId")
-type LeaseToken   = std.types.NonEmptyStr where brand("LeaseToken")
-type WorkerId     = std.types.NonEmptyStr where brand("WorkerId")
-type CommentId    = std.types.NonEmptyStr where brand("CommentId")
-type SignalKey    = std.types.NonEmptyStr where brand("SignalKey")
+type IntentId     = NonEmptyStr where brand("IntentId")
+type IssueId      = NonEmptyStr where brand("IssueId")
+type RunKey       = NonEmptyStr where brand("RunKey")
+type ArtifactId   = NonEmptyStr where brand("ArtifactId")
+type LeaseToken   = NonEmptyStr where brand("LeaseToken")
+type WorkerId     = NonEmptyStr where brand("WorkerId")
+type CommentId    = NonEmptyStr where brand("CommentId")
+type SignalKey    = NonEmptyStr where brand("SignalKey")
 
-type WorkflowProducerId = std.types.NonEmptyStr where brand("WorkflowProducerId")
-type WorkflowObserverId = std.types.NonEmptyStr where brand("WorkflowObserverId")
-type WorkflowProverId = std.types.NonEmptyStr where brand("WorkflowProverId")
-type WorkflowRunId = std.types.NonEmptyStr where brand("WorkflowRunId")
+type WorkflowProducerId = NonEmptyStr where brand("WorkflowProducerId")
+type WorkflowObserverId = NonEmptyStr where brand("WorkflowObserverId")
+type WorkflowProverId = NonEmptyStr where brand("WorkflowProverId")
+type WorkflowRunId = NonEmptyStr where brand("WorkflowRunId")
 
 type GitRef       = String where non_empty
 
@@ -224,9 +220,9 @@ type DocSourceKind    = Template | Generated | Static
 
 type FermiDepth = Xs | S | M | L | Xl
 
-type TextFilePath   = std.types.FilePath
+type TextFilePath   = FilePath
 
-type BinaryFilePath = std.types.FilePath
+type BinaryFilePath = FilePath
 
 type MimeType = String
 
@@ -239,34 +235,34 @@ type AuthScheme
   | ApiKey
 
 type AccessToken {
-  token: std.types.Secret
-  scheme: std.types.AuthScheme
-  expires_at: std.types.Timestamp?
+  token: Secret
+  scheme: AuthScheme
+  expires_at: Timestamp?
 }
 
 type Credential {
-  token: std.types.Secret
-  scheme: std.types.AuthScheme
+  token: Secret
+  scheme: AuthScheme
   header_name: String?
   source_id: String
   required_scopes: List<String>
   expires_in: Int?
 }
 
-type FilesystemHandle = std.types.FilePath where brand("FilesystemHandle")
+type FilesystemHandle = FilePath where brand("FilesystemHandle")
 type NetworkHandle    = Unit where brand("NetworkHandle")
 type ToolHandle       = String where brand("ToolHandle")
 
 type TransportRequest {
-  method: std.types.HttpMethod
+  method: HttpMethod
   url: String
-  headers: std.types.Json
+  headers: Json
   body: String
 }
 
 type TransportResponse {
   status: Int
-  headers: std.types.Json
+  headers: Json
   body: String
 }
 
@@ -284,8 +280,8 @@ type ShellResponse {
 
 type RestResponse {
   status: Int
-  headers: std.types.Json
-  body: std.types.Json
+  headers: Json
+  body: Json
 }
 
 type TestResult {
@@ -293,7 +289,7 @@ type TestResult {
   ok: Bool
   stdout: String
   stderr: String
-  duration_ms: std.types.Milliseconds
+  duration_ms: Milliseconds
 }
 
 type Summary {
@@ -322,19 +318,19 @@ type ToolEntry {
 }
 
 type ToolRegistry {
-  tools: List<std.types.ToolEntry>
+  tools: List<ToolEntry>
 }
 
 type DagTopology {
-  nodes: List<std.types.TopologyNode>
-  edges: List<std.types.TopologyEdge>
+  nodes: List<TopologyNode>
+  edges: List<TopologyEdge>
   subdag_boundaries: List<String>
 }
 
 type TopologyNode {
   id: String
   label: String
-  kind: std.types.TopologyNodeKind
+  kind: TopologyNodeKind
   parent: String?
 }
 
@@ -357,8 +353,8 @@ type PragmaDirective {
 }
 
 type DocSource {
-  path: std.types.FilePath
-  kind: std.types.DocSourceKind
+  path: FilePath
+  kind: DocSourceKind
 }
 
 type ReferenceModel<T>

@@ -1,25 +1,25 @@
 module v2.test.manual.bootstrap_footprint_anchor
 
-fn bootstrap_footprint_anchor_bad_snapshot_root_node() -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^bootstrap_footprint_anchor_bad_snapshot_root } },
+fn bootstrap_footprint_anchor_bad_snapshot_root_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^bootstrap_footprint_anchor_bad_snapshot_root } },
     children: [],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn bootstrap_footprint_anchor_bad_projection_inputs() -> v2.workflow.bootstrap.BootstrapProjectionInputs {
-  v2.workflow.bootstrap.BootstrapProjectionInputs {
-    snapshot: v2.workflow.bootstrap.BootstrapSourceSnapshot {
+fn bootstrap_footprint_anchor_bad_projection_inputs() -> BootstrapProjectionInputs {
+  BootstrapProjectionInputs {
+    snapshot: BootstrapSourceSnapshot {
       root: bootstrap_footprint_anchor_bad_snapshot_root_node(),
-      language_model: v2.workflow.bootstrap.seed_capability_language_model(),
-      content_hash: v2.workflow.bootstrap.BootstrapHashPin {
-        digest: v2.workflow.bootstrap.pinned_v4_fixed_point_hash,
+      language_model: seed_capability_language_model(),
+      content_hash: BootstrapHashPin {
+        digest: pinned_v4_fixed_point_hash,
         pin: ^pinned_v4_fixed_point_hash_pin
       }
     },
-    target_model: v2.extdeps.languages.rust.rust_target_model(),
-    runtime_model: v2.extdeps.runtimes.v2_evaluator.v2_evaluator_runtime()
+    target_model: rust_target_model(),
+    runtime_model: v2_evaluator_runtime()
   }
 }
 
@@ -34,87 +34,87 @@ fn bootstrap_footprint_anchor_bad_projection_inputs() -> v2.workflow.bootstrap.B
 // refuses at runtime: "atom_identity_hash requires exactly one string argument".
 // These rows re-promote when either the code-point encoding carries a string identity or
 // content_hash gains a non-symbol atom arm.
-fn bootstrap_footprint_canonical_holds() -> Bool {
-  match v2.workflow.bootstrap.bootstrap_footprint(inputs: v2.workflow.bootstrap.bootstrap_projection_inputs) {
+test fn bootstrap_footprint_canonical_holds() -> Bool {
+  match bootstrap_footprint(inputs: bootstrap_projection_inputs) {
     Holds { value: fp } =>
       fp.closure_hash ==
-        v2.std.node.content_hash(n: v2.workflow.bootstrap.bootstrap_projection_closure_node(inputs: v2.workflow.bootstrap.bootstrap_projection_inputs))
+        content_hash(n: bootstrap_projection_closure_node(inputs: bootstrap_projection_inputs))
     Violates { diagnostic: _ } => false
   }
 }
 
-fn bootstrap_footprint_non_canonical_violates() -> Bool {
+test fn bootstrap_footprint_non_canonical_violates() -> Bool {
   let bad_inputs = bootstrap_footprint_anchor_bad_projection_inputs()
-  match v2.workflow.bootstrap.bootstrap_footprint(inputs: bad_inputs) {
+  match bootstrap_footprint(inputs: bad_inputs) {
     Holds { value: _ } => false
     Violates { diagnostic: d } => d.reason == ^bootstrap_footprint_not_realized
   }
 }
 
-fn bootstrap_footprint_anchor_bad_content_hash_projection_inputs() -> v2.workflow.bootstrap.BootstrapProjectionInputs {
-  v2.workflow.bootstrap.BootstrapProjectionInputs {
-    snapshot: v2.workflow.bootstrap.BootstrapSourceSnapshot {
-      root: v2.workflow.bootstrap.bootstrap_source_snapshot_root(),
-      language_model: v2.workflow.bootstrap.seed_capability_language_model(),
-      content_hash: v2.workflow.bootstrap.BootstrapHashPin {
-        digest: v2.workflow.bootstrap.v2_stage0_hash,
+fn bootstrap_footprint_anchor_bad_content_hash_projection_inputs() -> BootstrapProjectionInputs {
+  BootstrapProjectionInputs {
+    snapshot: BootstrapSourceSnapshot {
+      root: bootstrap_source_snapshot_root(),
+      language_model: seed_capability_language_model(),
+      content_hash: BootstrapHashPin {
+        digest: v2_stage0_hash,
         pin: ^pinned_v4_fixed_point_hash_pin
       }
     },
-    target_model: v2.extdeps.languages.rust.rust_target_model(),
-    runtime_model: v2.extdeps.runtimes.v2_evaluator.v2_evaluator_runtime()
+    target_model: rust_target_model(),
+    runtime_model: v2_evaluator_runtime()
   }
 }
 
-fn bootstrap_footprint_bad_content_hash_violates() -> Bool {
+test fn bootstrap_footprint_bad_content_hash_violates() -> Bool {
   let bad_inputs = bootstrap_footprint_anchor_bad_content_hash_projection_inputs()
-  match v2.workflow.bootstrap.bootstrap_footprint(inputs: bad_inputs) {
+  match bootstrap_footprint(inputs: bad_inputs) {
     Holds { value: _ } => false
     Violates { diagnostic: d } => d.reason == ^bootstrap_footprint_not_realized
   }
 }
 
-fn bootstrap_footprint_anchor_bad_runtime_boundary() -> v2.std.runtime.ResourceEffectBoundary {
-  v2.std.runtime.ResourceEffectBoundary {
-    ffi: v2.extdeps.runtimes.v2_evaluator.v2_eval_boundary_allowance(allowed: true),
-    exceptions: v2.extdeps.runtimes.v2_evaluator.v2_eval_boundary_allowance(allowed: false),
-    async: v2.extdeps.runtimes.v2_evaluator.v2_eval_boundary_allowance(allowed: false),
-    concurrency: v2.extdeps.runtimes.v2_evaluator.v2_eval_boundary_allowance(allowed: false),
-    identity_reference: v2.extdeps.runtimes.v2_evaluator.v2_eval_boundary_allowance(allowed: false)
+fn bootstrap_footprint_anchor_bad_runtime_boundary() -> ResourceEffectBoundary {
+  ResourceEffectBoundary {
+    ffi: v2_eval_boundary_allowance(allowed: true),
+    exceptions: v2_eval_boundary_allowance(allowed: false),
+    async: v2_eval_boundary_allowance(allowed: false),
+    concurrency: v2_eval_boundary_allowance(allowed: false),
+    identity_reference: v2_eval_boundary_allowance(allowed: false)
   }
 }
 
-fn bootstrap_footprint_anchor_bad_runtime_model() -> v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime {
-  v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime {
+fn bootstrap_footprint_anchor_bad_runtime_model() -> V4EvaluatorRuntime {
+  V4EvaluatorRuntime {
     runtime_identity: ^v2_evaluator_runtime_id,
-    core: v2.extdeps.runtimes.v2_evaluator.v2_evaluator_model_core(),
-    values: v2.extdeps.runtimes.v2_evaluator.v2_evaluator_value_representation(),
-    execution: v2.extdeps.runtimes.v2_evaluator.v2_evaluator_execution(),
+    core: v2_evaluator_model_core(),
+    values: v2_evaluator_value_representation(),
+    execution: v2_evaluator_execution(),
     boundary: bootstrap_footprint_anchor_bad_runtime_boundary()
   }
 }
 
-fn bootstrap_footprint_anchor_bad_runtime_projection_inputs() -> v2.workflow.bootstrap.BootstrapProjectionInputs {
-  v2.workflow.bootstrap.BootstrapProjectionInputs {
-    snapshot: v2.workflow.bootstrap.BootstrapSourceSnapshot {
-      root: v2.workflow.bootstrap.bootstrap_source_snapshot_root(),
-      language_model: v2.workflow.bootstrap.seed_capability_language_model(),
-      content_hash: v2.workflow.bootstrap.BootstrapHashPin {
-        digest: v2.workflow.bootstrap.pinned_v4_fixed_point_hash,
+fn bootstrap_footprint_anchor_bad_runtime_projection_inputs() -> BootstrapProjectionInputs {
+  BootstrapProjectionInputs {
+    snapshot: BootstrapSourceSnapshot {
+      root: bootstrap_source_snapshot_root(),
+      language_model: seed_capability_language_model(),
+      content_hash: BootstrapHashPin {
+        digest: pinned_v4_fixed_point_hash,
         pin: ^pinned_v4_fixed_point_hash_pin
       }
     },
-    target_model: v2.extdeps.languages.rust.rust_target_model(),
+    target_model: rust_target_model(),
     runtime_model: bootstrap_footprint_anchor_bad_runtime_model()
   }
 }
 
-fn bootstrap_footprint_bad_runtime_same_identity_violates() -> Bool {
+test fn bootstrap_footprint_bad_runtime_same_identity_violates() -> Bool {
   let bad_runtime = bootstrap_footprint_anchor_bad_runtime_model()
-  let canonical_runtime = v2.extdeps.runtimes.v2_evaluator.v2_evaluator_runtime()
+  let canonical_runtime = v2_evaluator_runtime()
   (bad_runtime.runtime_identity == canonical_runtime.runtime_identity)
     && (bad_runtime != canonical_runtime)
-    && (match v2.workflow.bootstrap.bootstrap_footprint(inputs: bootstrap_footprint_anchor_bad_runtime_projection_inputs()) {
+    && (match bootstrap_footprint(inputs: bootstrap_footprint_anchor_bad_runtime_projection_inputs()) {
       Holds { value: _ } => false
       Violates { diagnostic: d } => d.reason == ^bootstrap_footprint_not_realized
     })

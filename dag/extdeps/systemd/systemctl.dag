@@ -1,35 +1,33 @@
-module extdeps.uri.extdeps.systemd.systemctl
+module extdeps.systemd.systemctl
 
-
-
-data extdeps_external_authority_anchor: extdeps.uri.extdeps.external_authority.ExternalAuthority = extdeps.uri.extdeps.external_authority.ExternalAuthority {
-  uri: extdeps.uri.extdeps.uri.Uri {
-    scheme: extdeps.uri.extdeps.uri.Https
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
     locator: "www.freedesktop.org/software/systemd/man/latest/systemctl.html"
   }
 }
 
-data systemctl_authority: extdeps.uri.extdeps.external_authority.ExternalAuthority = extdeps.uri.extdeps.systemd.systemctl.extdeps_external_authority_anchor
+data systemctl_authority: ExternalAuthority = extdeps_external_authority_anchor
 
-data systemctl_binary_name: std.types.NonEmptyStr = "systemctl" as std.types.NonEmptyStr
+data systemctl_binary_name: NonEmptyStr = "systemctl" as NonEmptyStr
 
-fn systemctl_binary_path() -> std.types.NonEmptyStr {
-  extdeps.systemd.systemd_binary_path(name: systemctl_binary_name)
+fn systemctl_binary_path() -> NonEmptyStr {
+  systemd_binary_path(name: systemctl_binary_name)
 }
 
-data systemctl_reboot_verb: std.types.NonEmptyStr = "reboot" as std.types.NonEmptyStr
+data systemctl_reboot_verb: NonEmptyStr = "reboot" as NonEmptyStr
 
 // The reboot command in the two renderings a sudoers grant and its actuator need. Unlike
 // enable-linger this verb takes no subject -- it reboots the host the grant is installed on -- and
 // that asymmetry is the reason the grant coproduct carries its subject per-variant rather than
 // taking one uniformly: a subject appended here would authorize an argument sudo would then refuse
 // to match, and `systemctl reboot <anything>` is not a command upstream accepts.
-fn systemctl_reboot_argv() -> List<std.types.String> {
-  [systemctl_binary_name as std.types.String, systemctl_reboot_verb as std.types.String]
+fn systemctl_reboot_argv() -> List<String> {
+  [systemctl_binary_name as String, systemctl_reboot_verb as String]
 }
 
-fn systemctl_reboot_command() -> std.types.NonEmptyStr {
-  join([systemctl_binary_path() as std.types.String, " ", systemctl_reboot_verb as std.types.String], "") as std.types.NonEmptyStr
+fn systemctl_reboot_command() -> NonEmptyStr {
+  join([systemctl_binary_path() as String, " ", systemctl_reboot_verb as String], "") as NonEmptyStr
 }
 
 // THE REST OF THIS MODULE STILL SPELLS "systemctl" INLINE, at 24 sites, and that is left alone
@@ -39,57 +37,57 @@ fn systemctl_reboot_command() -> std.types.NonEmptyStr {
 // because a privilege grant needs the absolute and bare renderings to be derived from one authority;
 // converging the remaining sites is a separate, byte-neutral cleanup and is not claimed here.
 
-fn systemctl_daemon_reload_argv() -> List<std.types.String> {
+fn systemctl_daemon_reload_argv() -> List<String> {
   ["systemctl", "daemon-reload"]
 }
 
-fn systemctl_enable_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
-  ["systemctl", "enable", unit as std.types.String]
+fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "enable", unit as String]
 }
 
-fn systemctl_restart_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
-  ["systemctl", "restart", unit as std.types.String]
+fn systemctl_restart_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "restart", unit as String]
 }
 
-fn systemctl_disable_now_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
-  ["systemctl", "disable", "--now", unit as std.types.String]
+fn systemctl_disable_now_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "disable", "--now", unit as String]
 }
 
-fn systemctl_stop_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
-  ["systemctl", "stop", unit as std.types.String]
+fn systemctl_stop_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "stop", unit as String]
 }
 
-fn systemctl_set_property_argv(unit: std.types.NonEmptyStr, property: std.types.NonEmptyStr, value: std.types.NonEmptyStr) -> List<std.types.String> {
+fn systemctl_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr) -> List<String> {
   [
     "systemctl",
     "set-property",
-    unit as std.types.String,
-    concat(property as std.types.String, concat("=", value as std.types.String)),
+    unit as String,
+    concat(property as String, concat("=", value as String)),
   ]
 }
 
-fn systemctl_revert_memory_caps_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
-  ["systemctl", "revert", unit as std.types.String, "MemoryMax", "MemoryHigh"]
+fn systemctl_revert_memory_caps_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "revert", unit as String, "MemoryMax", "MemoryHigh"]
 }
 
-fn systemctl_show_property_argv(unit: std.types.NonEmptyStr, property: extdeps.uri.extdeps.systemd.SystemdUnitProperty) -> List<std.types.String> {
+fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
   [
     "systemctl",
     "show",
-    unit as std.types.String,
-    concat("--property=", extdeps.uri.extdeps.systemd.systemd_unit_property_wire(property: property) as std.types.String),
+    unit as String,
+    concat("--property=", systemd_unit_property_wire(property: property) as String),
     "--value",
   ]
 }
 
-// LoadState is a non-numeric unit lifecycle observation, so it has its own argv authority rather than joining extdeps.systemd.SystemdUnitProperty, whose shared ShowProperty mock is numeric cgroup evidence. systemctl show exits nonzero on an unreadable manager; the load-state wire value not-found is the only observation that proves an absent unit.
+// LoadState is a non-numeric unit lifecycle observation, so it has its own argv authority rather than joining SystemdUnitProperty, whose shared ShowProperty mock is numeric cgroup evidence. systemctl show exits nonzero on an unreadable manager; the load-state wire value not-found is the only observation that proves an absent unit.
 // `is-enabled` answers the INSTALL state (whether the unit is wanted by a target), which is a
 // different question from `is-active` (whether it is running now) and from LoadState (whether the
 // manager could parse a unit file for it). A unit can be loaded and active yet not enabled, and
 // would then not come back after a reboot -- so a convergence claim that reads only is-active is
 // answering a question it was not asked.
-fn systemctl_user_is_enabled_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
-  ["systemctl", "--user", "is-enabled", unit as std.types.String]
+fn systemctl_user_is_enabled_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "is-enabled", unit as String]
 }
 
 // TWO SIBLING BUILDERS WERE DELETED HERE RATHER THAN KEPT FOR SYMMETRY, and counting their references
@@ -114,20 +112,20 @@ fn systemctl_user_is_enabled_argv(unit: std.types.NonEmptyStr) -> List<std.types
 // two remedies under one word, so a plan that needed only one of them pays for both, and -- worse --
 // the two facts stop being separately observable in the actuation the way they are separately
 // observable on the host.
-fn systemctl_user_enable_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
-  ["systemctl", "--user", "enable", unit as std.types.String]
+fn systemctl_user_enable_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "enable", unit as String]
 }
 
-fn systemctl_user_start_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
-  ["systemctl", "--user", "start", unit as std.types.String]
+fn systemctl_user_start_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "start", unit as String]
 }
 
-fn systemctl_show_load_state_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
-  ["systemctl", "show", unit as std.types.String, "--property=LoadState", "--value"]
+fn systemctl_show_load_state_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "show", unit as String, "--property=LoadState", "--value"]
 }
 
-fn systemctl_status_argv(unit: std.types.NonEmptyStr) -> List<std.types.String> {
-  ["systemctl", "status", "--no-pager", "--full", unit as std.types.String]
+fn systemctl_status_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "status", "--no-pager", "--full", unit as String]
 }
 
 type UnitFileState
@@ -144,72 +142,72 @@ type UnitFileState
 
 service systemd.Systemctl {
   operation Enable {
-    input { unit: std.types.NonEmptyStr }
+    input { unit: NonEmptyStr }
     output {
-      success: std.types.Bool from "exit_success"
-      stdout: std.types.String from "stdout"
-      stderr: std.types.String from "stderr"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["systemctl", "enable", "{unit}"] }
     exit {
       0 => Unit
-      nonzero => std.types.String "systemctl enable failed"
+      nonzero => String "systemctl enable failed"
     }
   }
 
   operation Restart {
-    input { unit: std.types.NonEmptyStr }
+    input { unit: NonEmptyStr }
     output {
-      success: std.types.Bool from "exit_success"
-      stdout: std.types.String from "stdout"
-      stderr: std.types.String from "stderr"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["systemctl", "restart", "{unit}"] }
     exit {
       0 => Unit
-      nonzero => std.types.String "systemctl restart failed"
+      nonzero => String "systemctl restart failed"
     }
   }
 
   operation DisableNow {
-    input { unit: std.types.NonEmptyStr }
+    input { unit: NonEmptyStr }
     output {
-      success: std.types.Bool from "exit_success"
-      stdout: std.types.String from "stdout"
-      stderr: std.types.String from "stderr"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["systemctl", "disable", "--now", "{unit}"] }
     exit {
       0 => Unit
-      nonzero => std.types.String "systemctl disable --now failed"
+      nonzero => String "systemctl disable --now failed"
     }
   }
 
   operation Start {
-    input { unit: std.types.NonEmptyStr }
+    input { unit: NonEmptyStr }
     output {
-      success: std.types.Bool from "exit_success"
-      stdout: std.types.String from "stdout"
-      stderr: std.types.String from "stderr"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["systemctl", "start", "{unit}"] }
     exit {
       0 => Unit
-      nonzero => std.types.String "systemctl start failed"
+      nonzero => String "systemctl start failed"
     }
   }
 
   operation Stop {
-    input { unit: std.types.NonEmptyStr }
+    input { unit: NonEmptyStr }
     output {
-      success: std.types.Bool from "exit_success"
-      stdout: std.types.String from "stdout"
-      stderr: std.types.String from "stderr"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["systemctl", "stop", "{unit}"] }
     exit {
       0 => Unit
-      nonzero => std.types.String "systemctl stop failed"
+      nonzero => String "systemctl stop failed"
     }
     mock_response {
       0 => { success: true, stdout: "", stderr: "" } "hermetic systemd.Systemctl.Stop"
@@ -217,15 +215,15 @@ service systemd.Systemctl {
   }
 
   operation SetProperty {
-    input { unit: std.types.NonEmptyStr, property: std.types.NonEmptyStr, value: std.types.NonEmptyStr }
+    input { unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr }
     output {
-      success: std.types.Bool from "exit_success"
-      stderr: std.types.String from "stderr"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["systemctl", "set-property", "{unit}", "{property}={value}"] }
     exit {
       0 => Unit
-      nonzero => std.types.String "systemctl set-property failed"
+      nonzero => String "systemctl set-property failed"
     }
     mock_response {
       0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.SetProperty"
@@ -233,15 +231,15 @@ service systemd.Systemctl {
   }
 
   operation RevertMemoryCaps {
-    input { unit: std.types.NonEmptyStr }
+    input { unit: NonEmptyStr }
     output {
-      success: std.types.Bool from "exit_success"
-      stderr: std.types.String from "stderr"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["systemctl", "revert", "{unit}", "MemoryMax", "MemoryHigh"] }
     exit {
       0 => Unit
-      nonzero => std.types.String "systemctl revert MemoryMax MemoryHigh failed"
+      nonzero => String "systemctl revert MemoryMax MemoryHigh failed"
     }
     mock_response {
       0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.RevertMemoryCaps"
@@ -251,28 +249,28 @@ service systemd.Systemctl {
   operation DaemonReload {
     input {}
     output {
-      success: std.types.Bool from "exit_success"
-      stderr: std.types.String from "stderr"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
     }
     transport shell { argv: ["systemctl", "daemon-reload"] }
     exit {
       0 => Unit
-      nonzero => std.types.String "systemctl daemon-reload failed"
+      nonzero => String "systemctl daemon-reload failed"
     }
   }
 
   operation IsActive {
-    input { unit: std.types.NonEmptyStr }
+    input { unit: NonEmptyStr }
     output {
-      state: std.types.String from "stdout"
-      active: std.types.Bool from "exit_success"
+      state: String from "stdout"
+      active: Bool from "exit_success"
     }
     readonly
     transport shell { argv: ["systemctl", "is-active", "{unit}"] }
     exit {
       0 => Unit
       3 => Unit "unit is not active"
-      nonzero => std.types.String "systemctl is-active failed"
+      nonzero => String "systemctl is-active failed"
     }
     mock_response {
       0 => { state: "active", active: true } "hermetic systemd.Systemctl.IsActive active"
@@ -280,16 +278,16 @@ service systemd.Systemctl {
   }
 
   operation ShowProperty {
-    input { unit: std.types.NonEmptyStr, property: extdeps.uri.extdeps.systemd.SystemdUnitProperty }
+    input { unit: NonEmptyStr, property: SystemdUnitProperty }
     output {
-      value: std.types.String from "stdout"
-      success: std.types.Bool from "exit_success"
+      value: String from "stdout"
+      success: Bool from "exit_success"
     }
     readonly
     transport shell { argv: ["systemctl", "show", "{unit}", "--property={property}", "--value"] }
     exit {
       0 => Unit
-      nonzero => std.types.String "systemctl show failed"
+      nonzero => String "systemctl show failed"
     }
     mock_response {
       0 => { value: "8589934592", success: true } "hermetic systemd.Systemctl.ShowProperty"
@@ -298,13 +296,13 @@ service systemd.Systemctl {
 
   operation ListUnits {
     input {
-      pattern: std.types.NonEmptyStr,
-      unit_type: std.types.String = "service",
-      state: std.types.String = "active",
+      pattern: NonEmptyStr,
+      unit_type: String = "service",
+      state: String = "active",
     }
     output {
-      stdout: std.types.String from "stdout"
-      success: std.types.Bool from "exit_success"
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
     }
     readonly
     transport shell {
@@ -320,7 +318,7 @@ service systemd.Systemctl {
     }
     exit {
       0 => Unit
-      nonzero => std.types.String "systemctl list-units failed"
+      nonzero => String "systemctl list-units failed"
     }
     mock_response {
       0 => {
@@ -331,10 +329,10 @@ service systemd.Systemctl {
   }
 
   operation Status {
-    input { unit: std.types.NonEmptyStr }
+    input { unit: NonEmptyStr }
     output {
-      stdout: std.types.String from "stdout"
-      success: std.types.Bool from "exit_success"
+      stdout: String from "stdout"
+      success: Bool from "exit_success"
     }
     readonly
     transport shell { argv: ["systemctl", "status", "--no-pager", "--full", "{unit}"] }
@@ -344,7 +342,7 @@ service systemd.Systemctl {
       2 => Unit "unit dead, lock file remains (LSB init-script code)"
       3 => Unit "unit not running (LSB init-script code)"
       4 => Unit "unit status unknown (LSB init-script code)"
-      nonzero => std.types.String "systemctl status failed"
+      nonzero => String "systemctl status failed"
     }
     mock_response {
       0 => {
@@ -353,4 +351,41 @@ service systemd.Systemctl {
       } "hermetic systemd.Systemctl.Status active"
     }
   }
+}
+
+// PATH-resolved for the reason recorded across this conversion: the runner hosts these units live
+// on have not been observed by this repository, and sudo resolves the command through its own
+// secure_path. sudo's OWN path is absolute because extdeps.sudo.elevation records it with a
+// consumer -- the NOPASSWD rules that name it.
+data systemctl_program: NonEmptyStr = "systemctl"
+
+// ENABLE --now IS FUSED HERE AND SPLIT IN THE USER-SCOPE BUILDERS ABOVE, which reads like a
+// contradiction and is not. That split exists because the user-scope consumer converges the two
+// facts separately and observes them separately. This builder serves a different consumer: runner
+// slot activation, where the fused form is what is deployed today and what the sudoers grant on
+// those hosts names. Splitting it here would be a change to a live actuation shipped inside an argv
+// refactor, which is exactly the silent behaviour change this lane keeps refusing to make. If the
+// activation path later wants the two facts apart, that is its own change with its own witness.
+//
+// TWO THINGS ABOUT THE EMITTED WORDS CHANGE HERE AND ARE STATED RATHER THAN SLIPPED IN, because the
+// call site this replaces spelled `sudo` bare with no flag. The elevation now comes from
+// extdeps.sudo.elevation, so the words become that module's absolute /usr/bin/sudo and its -n:
+// non-interactive, which FAILS instead of blocking on a tty that CI does not have. That module mints
+// only the non-interactive form deliberately (interactive sudo is unreachable through it), and every
+// other privileged leaf in this repository already runs that way -- so this aligns one straggler
+// rather than inventing a posture. A reader who wants the old prompting behaviour is asking for a
+// different operation, and should say so with its own row.
+//
+// ELEVATION IS PART OF THE OPERATION, not a prefix the caller assembles: the units live in the
+// system manager, so an unelevated invocation is not a weaker version of this request, it is a
+// different one that fails. sudo's own calling convention comes from extdeps.sudo.elevation rather
+// than being re-spelled as two more literals here.
+fn systemctl_enable_now_command(units: List<String>) -> ArgvCommand {
+  argv_command(
+    program: sudo_binary_path,
+    arguments: append(
+      [sudo_non_interactive_flag as String, systemctl_program as String, "enable", "--now"],
+      items: units,
+    ),
+  )
 }

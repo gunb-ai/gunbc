@@ -1,6 +1,5 @@
 module v2.extdeps.languages.kotlin
 
-
 type KotlinIntWidth
   = Bits8
   | Bits16
@@ -37,7 +36,7 @@ type KotlinScalar
   | NothingScalar
 
 type KotlinIntegerPrimitiveFacts {
-  surface_spelling: v2.std.node.Symbol
+  surface_spelling: Symbol
   width: KotlinIntWidth
   overflow: KotlinIntegerOverflowUnspecified
   representation: KotlinRuntimeRepresentation
@@ -58,7 +57,7 @@ type KotlinOrderedRingIntegerFacts
     }
 
 type KotlinFloatPrimitiveFacts {
-  surface_spelling: v2.std.node.Symbol
+  surface_spelling: Symbol
   width: KotlinFloatWidth
   value_format: KotlinFloatValueFormat
   representation: KotlinRuntimeRepresentation
@@ -71,14 +70,14 @@ type KotlinNonNumericValueFact
   | ControlFlowInhabitanceFact { inhabitance: KotlinControlFlowInhabitance }
 
 type KotlinNonNumericPrimitiveFacts {
-  surface_spelling: v2.std.node.Symbol
+  surface_spelling: Symbol
   scalar: KotlinScalar
   value_fact: KotlinNonNumericValueFact
 }
 
 type KotlinGrammarRelationRow {
-  head: v2.std.compilers.target_model.ConcreteSyntaxToken
-  tail: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
+  head: ConcreteSyntaxToken
+  tail: List<ConcreteSyntaxToken>
 }
 fn kotlin_integer_overflow_unspecified_marker() -> KotlinIntegerOverflowUnspecified {
   KotlinIntegerOverflowUnspecified {}
@@ -201,33 +200,33 @@ data kotlin_nonnumeric_facts_catalog: List<KotlinNonNumericPrimitiveFacts> = [
   kotlin_facts_nothing
 ]
 
-data kotlin_concrete_token_head: v2.std.compilers.target_model.ConcreteSyntaxToken = v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_kw_fun }
+data kotlin_concrete_token_head: ConcreteSyntaxToken = FixedToken { token_class: ^kotlin_token_kw_fun }
 
-fn kotlin_concrete_token_tail() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn kotlin_concrete_token_tail() -> List<ConcreteSyntaxToken> {
   [
-    v2.std.compilers.target_model.BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_fn_add },
-    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_lparen },
-    v2.std.compilers.target_model.BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_param_x },
-    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_colon },
-    v2.std.compilers.target_model.BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_type_int },
-    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_comma },
-    v2.std.compilers.target_model.BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_param_y },
-    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_colon },
-    v2.std.compilers.target_model.BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_type_int },
-    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_rparen },
-    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_colon },
-    v2.std.compilers.target_model.BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_type_int },
-    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_lbrace },
-    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_kw_return },
-    v2.std.compilers.target_model.BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_param_x },
-    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_plus },
-    v2.std.compilers.target_model.BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_param_y },
-    v2.std.compilers.target_model.FixedToken { token_class: ^kotlin_token_rbrace }
+    BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_fn_add },
+    FixedToken { token_class: ^kotlin_token_lparen },
+    BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_param_x },
+    FixedToken { token_class: ^kotlin_token_colon },
+    BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_type_int },
+    FixedToken { token_class: ^kotlin_token_comma },
+    BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_param_y },
+    FixedToken { token_class: ^kotlin_token_colon },
+    BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_type_int },
+    FixedToken { token_class: ^kotlin_token_rparen },
+    FixedToken { token_class: ^kotlin_token_colon },
+    BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_type_int },
+    FixedToken { token_class: ^kotlin_token_lbrace },
+    FixedToken { token_class: ^kotlin_token_kw_return },
+    BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_param_x },
+    FixedToken { token_class: ^kotlin_token_plus },
+    BoundToken { token_class: ^kotlin_token_ident, binding: ^kotlin_binding_param_y },
+    FixedToken { token_class: ^kotlin_token_rbrace }
   ]
 }
 
-fn kotlin_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
-  std.algebra.Cons {
+fn kotlin_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  Cons {
     head: kotlin_concrete_token_head,
     tail: kotlin_concrete_token_tail()
   }
@@ -235,21 +234,21 @@ fn kotlin_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntax
 
 data kotlin_source_text: String = "fun add(x: Int, y: Int): Int { return x + y }"
 
-data kotlin_bool_grounding: std.algebra.BooleanAlgebra<v2.std.logic.Bool> = v2.std.logic.bool_boolean_algebra
+data kotlin_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
-fn kotlin_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
+fn kotlin_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
+fn kotlin_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
 }
 
-fn kotlin_int_width_node(width: KotlinIntWidth) -> v2.std.node.Node {
+fn kotlin_int_width_node(width: KotlinIntWidth) -> Node {
   match width {
     Bits8 => kotlin_atom(id: ^kotlin_tag_bits8)
     Bits16 => kotlin_atom(id: ^kotlin_tag_bits16)
@@ -258,51 +257,51 @@ fn kotlin_int_width_node(width: KotlinIntWidth) -> v2.std.node.Node {
   }
 }
 
-fn kotlin_float_width_node(width: KotlinFloatWidth) -> v2.std.node.Node {
+fn kotlin_float_width_node(width: KotlinFloatWidth) -> Node {
   match width {
     FloatBits32 => kotlin_atom(id: ^kotlin_tag_bits32)
     FloatBits64 => kotlin_atom(id: ^kotlin_tag_bits64)
   }
 }
 
-fn kotlin_overflow_node(overflow: KotlinIntegerOverflowUnspecified) -> v2.std.node.Node {
+fn kotlin_overflow_node(overflow: KotlinIntegerOverflowUnspecified) -> Node {
   let _witness = overflow
   kotlin_atom(id: ^kotlin_tag_overflow_unspecified)
 }
 
-fn kotlin_runtime_representation_node(representation: KotlinRuntimeRepresentation) -> v2.std.node.Node {
+fn kotlin_runtime_representation_node(representation: KotlinRuntimeRepresentation) -> Node {
   let _witness = representation
   kotlin_atom(id: ^kotlin_tag_platform_specific_runtime_representation)
 }
 
-fn kotlin_character_encoding_node(encoding: KotlinCharacterEncoding) -> v2.std.node.Node {
+fn kotlin_character_encoding_node(encoding: KotlinCharacterEncoding) -> Node {
   match encoding {
     Ucs2CodeUnit => kotlin_atom(id: ^kotlin_tag_ucs2_code_unit)
     Ucs2CodeUnitSequence => kotlin_atom(id: ^kotlin_tag_ucs2_code_unit_sequence)
   }
 }
 
-fn kotlin_singleton_inhabitance_node(inhabitance: KotlinSingletonInhabitance) -> v2.std.node.Node {
+fn kotlin_singleton_inhabitance_node(inhabitance: KotlinSingletonInhabitance) -> Node {
   let _witness = inhabitance
   kotlin_atom(id: ^kotlin_tag_singleton_object)
 }
 
-fn kotlin_control_flow_inhabitance_node(inhabitance: KotlinControlFlowInhabitance) -> v2.std.node.Node {
+fn kotlin_control_flow_inhabitance_node(inhabitance: KotlinControlFlowInhabitance) -> Node {
   let _witness = inhabitance
   kotlin_atom(id: ^kotlin_tag_uninhabited_control_flow)
 }
 
-fn kotlin_float_value_format_node(value_format: KotlinFloatValueFormat) -> v2.std.node.Node {
+fn kotlin_float_value_format_node(value_format: KotlinFloatValueFormat) -> Node {
   match value_format {
     Ieee754Binary32Precision => kotlin_atom(id: ^kotlin_tag_ieee754_binary32_precision)
     Ieee754Binary64Precision => kotlin_atom(id: ^kotlin_tag_ieee754_binary64_precision)
   }
 }
 
-fn kotlin_scalar_node(scalar: KotlinScalar) -> v2.std.node.Node {
+fn kotlin_scalar_node(scalar: KotlinScalar) -> Node {
   match scalar {
-    IntScalar { width } => v2.std.node.Node {
-      kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+    IntScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
       children: [
         kotlin_named_edge(
           name: ^kotlin_facts_field_scalar_classifier,
@@ -310,10 +309,10 @@ fn kotlin_scalar_node(scalar: KotlinScalar) -> v2.std.node.Node {
         ),
         kotlin_named_edge(name: ^kotlin_facts_field_width, target: kotlin_int_width_node(width: width))
       ],
-      occurrence_id: v2.std.node.SyntheticOccurrence
+      occurrence_id: SyntheticOccurrence
 }
-    FloatScalar { width } => v2.std.node.Node {
-      kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+    FloatScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
       children: [
         kotlin_named_edge(
           name: ^kotlin_facts_field_scalar_classifier,
@@ -321,7 +320,7 @@ fn kotlin_scalar_node(scalar: KotlinScalar) -> v2.std.node.Node {
         ),
         kotlin_named_edge(name: ^kotlin_facts_field_width, target: kotlin_float_width_node(width: width))
       ],
-      occurrence_id: v2.std.node.SyntheticOccurrence
+      occurrence_id: SyntheticOccurrence
 }
     BoolScalar => kotlin_atom(id: ^kotlin_tag_scalar_bool)
     CharScalar => kotlin_atom(id: ^kotlin_tag_scalar_char)
@@ -331,9 +330,9 @@ fn kotlin_scalar_node(scalar: KotlinScalar) -> v2.std.node.Node {
   }
 }
 
-fn kotlin_integer_facts_node(facts: KotlinIntegerPrimitiveFacts) -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+fn kotlin_integer_facts_node(facts: KotlinIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_facts_field_surface_spelling,
@@ -354,13 +353,13 @@ fn kotlin_integer_facts_node(facts: KotlinIntegerPrimitiveFacts) -> v2.std.node.
         target: kotlin_scalar_node(scalar: IntScalar { width: facts.width })
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_float_facts_node(facts: KotlinFloatPrimitiveFacts) -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+fn kotlin_float_facts_node(facts: KotlinFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_facts_field_surface_spelling,
@@ -380,13 +379,13 @@ fn kotlin_float_facts_node(facts: KotlinFloatPrimitiveFacts) -> v2.std.node.Node
         target: kotlin_scalar_node(scalar: FloatScalar { width: facts.width })
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_nonnumeric_facts_node(facts: KotlinNonNumericPrimitiveFacts) -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+fn kotlin_nonnumeric_facts_node(facts: KotlinNonNumericPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_facts_field_surface_spelling,
@@ -401,11 +400,11 @@ fn kotlin_nonnumeric_facts_node(facts: KotlinNonNumericPrimitiveFacts) -> v2.std
         target: kotlin_scalar_node(scalar: facts.scalar)
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_nonnumeric_value_fact_field(value_fact: KotlinNonNumericValueFact) -> v2.std.node.Symbol {
+fn kotlin_nonnumeric_value_fact_field(value_fact: KotlinNonNumericValueFact) -> Symbol {
   match value_fact {
     RuntimeRepresentationFact { representation } => {
       let _witness = representation
@@ -426,7 +425,7 @@ fn kotlin_nonnumeric_value_fact_field(value_fact: KotlinNonNumericValueFact) -> 
   }
 }
 
-fn kotlin_nonnumeric_value_fact_axis(value_fact: KotlinNonNumericValueFact) -> v2.std.node.Symbol {
+fn kotlin_nonnumeric_value_fact_axis(value_fact: KotlinNonNumericValueFact) -> Symbol {
   match value_fact {
     RuntimeRepresentationFact { representation } => {
       let _witness = representation
@@ -447,7 +446,7 @@ fn kotlin_nonnumeric_value_fact_axis(value_fact: KotlinNonNumericValueFact) -> v
   }
 }
 
-fn kotlin_nonnumeric_value_fact_node(value_fact: KotlinNonNumericValueFact) -> v2.std.node.Node {
+fn kotlin_nonnumeric_value_fact_node(value_fact: KotlinNonNumericValueFact) -> Node {
   match value_fact {
     RuntimeRepresentationFact { representation } =>
       kotlin_runtime_representation_node(representation: representation)
@@ -460,16 +459,16 @@ fn kotlin_nonnumeric_value_fact_node(value_fact: KotlinNonNumericValueFact) -> v
   }
 }
 
-fn kotlin_integer_spec_facts(facts: KotlinIntegerPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
-  std.types.Map {
+fn kotlin_integer_spec_facts(facts: KotlinIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: kotlin_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}) {
+      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
           v2.std.optional.Present { value: kotlin_int_width_node(width: facts.width) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}) {
+      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
           v2.std.optional.Present { value: kotlin_atom(id: ^kotlin_tag_signed) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisOverflowDisposition {}) {
+      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
           v2.std.optional.Present { value: kotlin_overflow_node(overflow: facts.overflow) }
       } else if axis == ^kotlin_primitive_fact_axis_runtime_representation {
           v2.std.optional.Present { value: kotlin_runtime_representation_node(representation: facts.representation) }
@@ -482,12 +481,12 @@ fn kotlin_integer_spec_facts(facts: KotlinIntegerPrimitiveFacts) -> Map<v2.std.n
   }
 }
 
-fn kotlin_float_spec_facts(facts: KotlinFloatPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
-  std.types.Map {
+fn kotlin_float_spec_facts(facts: KotlinFloatPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: kotlin_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}) {
+      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
           v2.std.optional.Present { value: kotlin_float_width_node(width: facts.width) }
       } else if axis == ^kotlin_primitive_fact_axis_value_format {
           v2.std.optional.Present { value: kotlin_float_value_format_node(value_format: facts.value_format) }
@@ -502,10 +501,10 @@ fn kotlin_float_spec_facts(facts: KotlinFloatPrimitiveFacts) -> Map<v2.std.node.
   }
 }
 
-fn kotlin_nonnumeric_spec_facts(facts: KotlinNonNumericPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
-  std.types.Map {
+fn kotlin_nonnumeric_spec_facts(facts: KotlinNonNumericPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: kotlin_atom(id: facts.surface_spelling) }
       } else {
           if axis == kotlin_nonnumeric_value_fact_axis(value_fact: facts.value_fact) {
@@ -526,15 +525,15 @@ fn kotlin_nonnumeric_spec_facts(facts: KotlinNonNumericPrimitiveFacts) -> Map<v2
 
 fn kotlin_primitive_bundle_from_integer_facts(
   facts: KotlinIntegerPrimitiveFacts
-) -> v2.std.model_core.PrimitiveFactBundle {
-  v2.std.model_core.PrimitiveFactBundle {
+) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
     substrate_carrier: kotlin_integer_facts_node(facts: facts),
     spec_facts: kotlin_integer_spec_facts(facts: facts)
   }
 }
 
-fn kotlin_primitive_bundle_from_float_facts(facts: KotlinFloatPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {
-  v2.std.model_core.PrimitiveFactBundle {
+fn kotlin_primitive_bundle_from_float_facts(facts: KotlinFloatPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
     substrate_carrier: kotlin_float_facts_node(facts: facts),
     spec_facts: kotlin_float_spec_facts(facts: facts)
   }
@@ -542,19 +541,19 @@ fn kotlin_primitive_bundle_from_float_facts(facts: KotlinFloatPrimitiveFacts) ->
 
 fn kotlin_primitive_bundle_from_nonnumeric_facts(
   facts: KotlinNonNumericPrimitiveFacts
-) -> v2.std.model_core.PrimitiveFactBundle {
-  v2.std.model_core.PrimitiveFactBundle {
+) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
     substrate_carrier: kotlin_nonnumeric_facts_node(facts: facts),
     spec_facts: kotlin_nonnumeric_spec_facts(facts: facts)
   }
 }
 
-fn kotlin_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
-  v2.std.algebra.fold_list(
+fn kotlin_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
     xs: kotlin_integer_facts_catalog,
-    empty: std.algebra.Empty,
+    empty: Empty,
     cons: fn(acc, facts) {
-      v2.std.algebra.list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: kotlin_primitive_bundle_from_integer_facts(facts: facts)
       )
@@ -562,12 +561,12 @@ fn kotlin_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.Pri
   )
 }
 
-fn kotlin_primitive_bundles_from_float_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
-  v2.std.algebra.fold_list(
+fn kotlin_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
     xs: kotlin_float_facts_catalog,
-    empty: std.algebra.Empty,
+    empty: Empty,
     cons: fn(acc, facts) {
-      v2.std.algebra.list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: kotlin_primitive_bundle_from_float_facts(facts: facts)
       )
@@ -575,12 +574,12 @@ fn kotlin_primitive_bundles_from_float_catalog() -> List<v2.std.model_core.Primi
   )
 }
 
-fn kotlin_primitive_bundles_from_nonnumeric_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
-  v2.std.algebra.fold_list(
+fn kotlin_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
     xs: kotlin_nonnumeric_facts_catalog,
-    empty: std.algebra.Empty,
+    empty: Empty,
     cons: fn(acc, facts) {
-      v2.std.algebra.list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: kotlin_primitive_bundle_from_nonnumeric_facts(facts: facts)
       )
@@ -588,9 +587,9 @@ fn kotlin_primitive_bundles_from_nonnumeric_catalog() -> List<v2.std.model_core.
   )
 }
 
-fn kotlin_primitive_fact_bundles() -> List<v2.std.model_core.PrimitiveFactBundle> {
-  v2.std.algebra.list_append(
-    left: v2.std.algebra.list_append(
+fn kotlin_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  list_append(
+    left: list_append(
       left: kotlin_primitive_bundles_from_integer_catalog(),
       right: kotlin_primitive_bundles_from_float_catalog()
     ),
@@ -631,7 +630,7 @@ fn kotlin_ordered_ring_integer_to_primitive_facts(
   }
 }
 
-fn kotlin_ordered_ring_integer_facts_node(facts: KotlinOrderedRingIntegerFacts) -> v2.std.node.Node {
+fn kotlin_ordered_ring_integer_facts_node(facts: KotlinOrderedRingIntegerFacts) -> Node {
   kotlin_integer_facts_node(
     facts: kotlin_ordered_ring_integer_to_primitive_facts(facts: facts)
   )
@@ -640,9 +639,9 @@ fn kotlin_ordered_ring_integer_facts_node(facts: KotlinOrderedRingIntegerFacts) 
 fn kotlin_ordered_ring_integer_algebra_witness_body(
   overflow: KotlinIntegerOverflowUnspecified,
   representation: KotlinRuntimeRepresentation
-) -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_witness_integer_ordered_ring,
@@ -657,11 +656,11 @@ fn kotlin_ordered_ring_integer_algebra_witness_body(
         target: kotlin_runtime_representation_node(representation: representation)
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_integer_algebra_witness_node(facts: KotlinOrderedRingIntegerFacts) -> v2.std.node.Node {
+fn kotlin_integer_algebra_witness_node(facts: KotlinOrderedRingIntegerFacts) -> Node {
   match facts {
     KotlinOrderedRingIntFacts { overflow, representation } =>
       kotlin_ordered_ring_integer_algebra_witness_body(
@@ -676,9 +675,9 @@ fn kotlin_integer_algebra_witness_node(facts: KotlinOrderedRingIntegerFacts) -> 
   }
 }
 
-fn kotlin_float_algebra_witness_node(facts: KotlinFloatPrimitiveFacts) -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+fn kotlin_float_algebra_witness_node(facts: KotlinFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_witness_float_approximate_field,
@@ -693,13 +692,13 @@ fn kotlin_float_algebra_witness_node(facts: KotlinFloatPrimitiveFacts) -> v2.std
         target: kotlin_runtime_representation_node(representation: facts.representation)
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_bool_algebra_witness_node() -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+fn kotlin_bool_algebra_witness_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_witness_bool_boolean_algebra,
@@ -712,66 +711,66 @@ fn kotlin_bool_algebra_witness_node() -> v2.std.node.Node {
         )
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_integer_algebra_inhabitance(facts: KotlinOrderedRingIntegerFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
+fn kotlin_integer_algebra_inhabitance(facts: KotlinOrderedRingIntegerFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = kotlin_ordered_ring_integer_facts_node(facts: facts)
-  v2.std.model_core.AlgebraInhabitanceDecl {
-    algebra: v2.std.algebra.ordered_ring_node(inhabitant: inhabitant),
+  AlgebraInhabitanceDecl {
+    algebra: ordered_ring_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: kotlin_integer_algebra_witness_node(facts: facts)
   }
 }
 
-fn kotlin_float_algebra_inhabitance(facts: KotlinFloatPrimitiveFacts) -> v2.std.model_core.AlgebraInhabitanceDecl {
+fn kotlin_float_algebra_inhabitance(facts: KotlinFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = kotlin_float_facts_node(facts: facts)
-  v2.std.model_core.AlgebraInhabitanceDecl {
-    algebra: v2.std.algebra.approximate_field_node(inhabitant: inhabitant),
+  AlgebraInhabitanceDecl {
+    algebra: approximate_field_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: kotlin_float_algebra_witness_node(facts: facts)
   }
 }
 
-fn kotlin_bool_algebra_inhabitance() -> v2.std.model_core.AlgebraInhabitanceDecl {
+fn kotlin_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
   let inhabitant = kotlin_nonnumeric_facts_node(facts: kotlin_facts_boolean)
-  v2.std.model_core.AlgebraInhabitanceDecl {
-    algebra: v2.std.algebra.boolean_algebra_node(inhabitant: inhabitant),
+  AlgebraInhabitanceDecl {
+    algebra: boolean_algebra_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: kotlin_bool_algebra_witness_node()
   }
 }
 
-fn kotlin_integer_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
-  v2.std.algebra.fold_list(
+fn kotlin_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
     xs: kotlin_integer_algebra_inhabitance_facts_catalog,
-    empty: std.algebra.Empty,
+    empty: Empty,
     cons: fn(acc, facts) {
-      v2.std.algebra.list_snoc_item(xs: acc, item: kotlin_integer_algebra_inhabitance(facts: facts))
+      list_snoc_item(xs: acc, item: kotlin_integer_algebra_inhabitance(facts: facts))
     }
   )
 }
 
-fn kotlin_float_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
-  v2.std.algebra.fold_list(
+fn kotlin_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
     xs: kotlin_float_facts_catalog,
-    empty: std.algebra.Empty,
+    empty: Empty,
     cons: fn(acc, facts) {
-      v2.std.algebra.list_snoc_item(xs: acc, item: kotlin_float_algebra_inhabitance(facts: facts))
+      list_snoc_item(xs: acc, item: kotlin_float_algebra_inhabitance(facts: facts))
     }
   )
 }
 
-fn kotlin_bool_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
+fn kotlin_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   [
     kotlin_bool_algebra_inhabitance()
   ]
 }
 
-fn kotlin_model_core_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
-  v2.std.algebra.list_append(
-    left: v2.std.algebra.list_append(
+fn kotlin_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  list_append(
+    left: list_append(
       left: kotlin_integer_algebra_inhabitance_decls(),
       right: kotlin_float_algebra_inhabitance_decls()
     ),
@@ -780,31 +779,31 @@ fn kotlin_model_core_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabi
 }
 
 fn kotlin_integer_catalog_surface_symbol_step(
-  sym: v2.std.node.Symbol,
-  acc: v2.std.logic.Bool,
+  sym: Symbol,
+  acc: Bool,
   facts: KotlinIntegerPrimitiveFacts
-) -> v2.std.logic.Bool {
+) -> Bool {
   acc || sym == facts.surface_spelling
 }
 
 fn kotlin_float_catalog_surface_symbol_step(
-  sym: v2.std.node.Symbol,
-  acc: v2.std.logic.Bool,
+  sym: Symbol,
+  acc: Bool,
   facts: KotlinFloatPrimitiveFacts
-) -> v2.std.logic.Bool {
+) -> Bool {
   acc || sym == facts.surface_spelling
 }
 
 fn kotlin_nonnumeric_catalog_surface_symbol_step(
-  sym: v2.std.node.Symbol,
-  acc: v2.std.logic.Bool,
+  sym: Symbol,
+  acc: Bool,
   facts: KotlinNonNumericPrimitiveFacts
-) -> v2.std.logic.Bool {
+) -> Bool {
   acc || sym == facts.surface_spelling
 }
 
-fn kotlin_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
-  v2.std.algebra.fold_list(
+fn kotlin_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
     xs: kotlin_integer_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -813,8 +812,8 @@ fn kotlin_integer_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logi
   )
 }
 
-fn kotlin_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
-  v2.std.algebra.fold_list(
+fn kotlin_float_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
     xs: kotlin_float_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -823,8 +822,8 @@ fn kotlin_float_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.
   )
 }
 
-fn kotlin_nonnumeric_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
-  v2.std.algebra.fold_list(
+fn kotlin_nonnumeric_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
     xs: kotlin_nonnumeric_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -833,15 +832,15 @@ fn kotlin_nonnumeric_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.l
   )
 }
 
-fn kotlin_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
+fn kotlin_catalog_surface_symbol(sym: Symbol) -> Bool {
   kotlin_integer_catalog_surface_symbol(sym: sym) ||
     kotlin_float_catalog_surface_symbol(sym: sym) ||
     kotlin_nonnumeric_catalog_surface_symbol(sym: sym)
 }
 
-fn kotlin_integer_inhabitant_node(id: v2.std.node.Symbol, facts: KotlinIntegerPrimitiveFacts) -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+fn kotlin_integer_inhabitant_node(id: Symbol, facts: KotlinIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(name: ^kotlin_inhabitant_field_atom, target: kotlin_atom(id: id)),
       kotlin_named_edge(
@@ -849,31 +848,31 @@ fn kotlin_integer_inhabitant_node(id: v2.std.node.Symbol, facts: KotlinIntegerPr
         target: kotlin_integer_facts_node(facts: facts)
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_inhabitant_int_node() -> v2.std.node.Node {
+fn kotlin_inhabitant_int_node() -> Node {
   kotlin_integer_inhabitant_node(id: ^kotlin_inhabitant_int, facts: kotlin_facts_int)
 }
 
-fn kotlin_declared_inhabitants_root() -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+fn kotlin_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(name: ^kotlin_inhabitant_field_int, target: kotlin_inhabitant_int_node())
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_selection_policy_node() -> v2.std.node.Node {
+fn kotlin_selection_policy_node() -> Node {
   kotlin_inhabitant_int_node()
 }
 
-fn kotlin_param_binding_node(binding: v2.std.node.Symbol) -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+fn kotlin_param_binding_node(binding: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_emitted_field_binding,
@@ -884,25 +883,25 @@ fn kotlin_param_binding_node(binding: v2.std.node.Symbol) -> v2.std.node.Node {
         target: kotlin_inhabitant_int_node()
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_add_fn_signature_arrow() -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
+fn kotlin_add_fn_signature_arrow() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
     children: [
-      v2.std.node.Edge { label: v2.std.node.Positional, target: kotlin_inhabitant_int_node() },
-      v2.std.node.Edge { label: v2.std.node.Positional, target: kotlin_inhabitant_int_node() },
-      v2.std.node.Edge { label: v2.std.node.Positional, target: kotlin_inhabitant_int_node() }
+      Edge { label: Positional, target: kotlin_inhabitant_int_node() },
+      Edge { label: Positional, target: kotlin_inhabitant_int_node() },
+      Edge { label: Positional, target: kotlin_inhabitant_int_node() }
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_return_add_expr_node() -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+fn kotlin_return_add_expr_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(name: ^kotlin_token_plus, target: kotlin_atom(id: ^kotlin_token_plus)),
       kotlin_named_edge(
@@ -914,13 +913,13 @@ fn kotlin_return_add_expr_node() -> v2.std.node.Node {
         target: kotlin_atom(id: ^kotlin_binding_param_y)
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_emitted_add_fn_node() -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+fn kotlin_emitted_add_fn_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_surface_fn_item,
@@ -947,7 +946,7 @@ fn kotlin_emitted_add_fn_node() -> v2.std.node.Node {
         target: kotlin_return_add_expr_node()
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
@@ -955,34 +954,34 @@ fn kotlin_source_text_authority() -> String {
   kotlin_source_text
 }
 
-fn kotlin_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToken) -> v2.std.node.Node {
+fn kotlin_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
 
-  v2.std.compilers.target_model.concrete_syntax_token_to_node(token: token)
+  concrete_syntax_token_to_node(token: token)
 }
 
-fn kotlin_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
-  std.algebra.Cons {
+fn kotlin_serialize_source_prefix_edges() -> List<Edge> {
+  Cons {
     head: kotlin_named_edge(
       name: ^serialize_source_field_source_text,
       target: kotlin_atom(id: ^kotlin_source_literal)
     ),
-    tail: std.algebra.Cons {
+    tail: Cons {
       head: kotlin_named_edge(
         name: ^serialize_source_field_source_grammar,
         target: kotlin_atom(id: ^kotlin_production_fn_add)
       ),
-      tail: std.algebra.Empty
+      tail: Empty
     }
   }
 }
 
-fn kotlin_serialize_source_children() -> List<v2.std.node.Edge> {
-  v2.std.algebra.list_append(
+fn kotlin_serialize_source_children() -> List<Edge> {
+  list_append(
     left: kotlin_serialize_source_prefix_edges(),
     right: [
       kotlin_named_edge(
         name: ^grammar_relation_field_tokens,
-        target: v2.std.grammar.grammar_relation_tokens_node(
+        target: grammar_relation_tokens_node(
           tokens: kotlin_concrete_tokens(),
           token_to_node: kotlin_concrete_token_node
         )
@@ -991,198 +990,198 @@ fn kotlin_serialize_source_children() -> List<v2.std.node.Edge> {
   )
 }
 
-fn kotlin_serialize_source_node() -> v2.std.node.Node {
+fn kotlin_serialize_source_node() -> Node {
   let _authority = kotlin_source_text_authority()
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+  Node {
+    kind: TypeNode { connective: Conj },
     children: kotlin_serialize_source_children(),
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
-  v2.std.grammar.Terminal { token_class: token_class, stamp: v2.std.grammar.StampClass }
+fn kotlin_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampClass }
 }
 
 fn kotlin_concrete_tokens_list(
-  head: v2.std.compilers.target_model.ConcreteSyntaxToken,
-  tail: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
-) -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
-  std.algebra.Cons { head: head, tail: tail }
+  head: ConcreteSyntaxToken,
+  tail: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
+  Cons { head: head, tail: tail }
 }
 
 fn kotlin_grammar_sequence_from_nonempty(
-  head: v2.std.compilers.target_model.ConcreteSyntaxToken,
-  tail: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
-) -> v2.std.grammar.GrammarExpr {
-  v2.std.algebra.fold_list(
+  head: ConcreteSyntaxToken,
+  tail: List<ConcreteSyntaxToken>
+) -> GrammarExpr {
+  fold_list(
     xs: tail,
-    empty: kotlin_grammar_terminal(token_class: v2.std.compilers.target_model.concrete_syntax_token_class(token: head)),
+    empty: kotlin_grammar_terminal(token_class: concrete_syntax_token_class(token: head)),
     cons: fn(acc, token) {
-      v2.std.grammar.Sequence {
+      Sequence {
         left: acc,
-        right: kotlin_grammar_terminal(token_class: v2.std.compilers.target_model.concrete_syntax_token_class(token: token))
+        right: kotlin_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
       }
     }
   )
 }
 
 fn kotlin_grammar_production_from_nonempty(
-  head: v2.std.compilers.target_model.ConcreteSyntaxToken,
-  tail: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
-) -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+  head: ConcreteSyntaxToken,
+  tail: List<ConcreteSyntaxToken>
+) -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_fn_add,
     expression: kotlin_grammar_sequence_from_nonempty(head: head, tail: tail),
     emitted: kotlin_emitted_add_fn_node()
   }
 }
 
-fn kotlin_grammar_production_fn_add() -> v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_fn_add() -> GrammarProduction {
   kotlin_grammar_production_from_nonempty(
     head: kotlin_concrete_token_head,
     tail: kotlin_concrete_token_tail()
   )
 }
 
-fn kotlin_grammar_production_fn_decl() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_fn_decl() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_fn_decl,
     expression: kotlin_grammar_fn_decl_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_fn_item)
   }
 }
 
-fn kotlin_grammar_production_typed_param() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_typed_param() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_typed_param,
     expression: kotlin_grammar_typed_param_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_typed_param)
   }
 }
 
-fn kotlin_grammar_production_param_list() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_param_list() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_param_list,
     expression: kotlin_grammar_param_list_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_param_list)
   }
 }
 
-fn kotlin_grammar_production_type_expr() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_type_expr() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_type_expr,
     expression: kotlin_grammar_type_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_type_expr)
   }
 }
 
-fn kotlin_grammar_production_block() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_block() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_block,
     expression: kotlin_grammar_block_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_block)
   }
 }
 
-fn kotlin_grammar_production_stmt() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_stmt() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_stmt,
     expression: kotlin_grammar_stmt_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_stmt)
   }
 }
 
-fn kotlin_grammar_production_return_stmt() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_return_stmt() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_return_stmt,
     expression: kotlin_grammar_return_stmt_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_return_stmt)
   }
 }
 
-fn kotlin_grammar_production_value_stmt() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_value_stmt() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_value_stmt,
     expression: kotlin_grammar_value_stmt_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_value_stmt)
   }
 }
 
-fn kotlin_grammar_production_if_stmt() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_if_stmt() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_if_stmt,
     expression: kotlin_grammar_if_stmt_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_if_stmt)
   }
 }
 
-fn kotlin_grammar_production_while_stmt() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_while_stmt() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_while_stmt,
     expression: kotlin_grammar_while_stmt_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_while_stmt)
   }
 }
 
-fn kotlin_grammar_production_expr() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_expr() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_expr,
     expression: kotlin_grammar_expr_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_expr)
   }
 }
 
-fn kotlin_grammar_production_binary_expr() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_binary_expr() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_binary_expr,
     expression: kotlin_grammar_binary_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_binary_expr)
   }
 }
 
-fn kotlin_grammar_production_equality_expr() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_equality_expr() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_equality_expr,
     expression: kotlin_grammar_equality_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_equality_expr)
   }
 }
 
-fn kotlin_grammar_production_comparison_expr() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_comparison_expr() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_comparison_expr,
     expression: kotlin_grammar_comparison_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_comparison_expr)
   }
 }
 
-fn kotlin_grammar_production_additive_expr() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_additive_expr() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_additive_expr,
     expression: kotlin_grammar_additive_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_additive_expr)
   }
 }
 
-fn kotlin_grammar_production_multiplicative_expr() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_multiplicative_expr() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_multiplicative_expr,
     expression: kotlin_grammar_multiplicative_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_multiplicative_expr)
   }
 }
 
-fn kotlin_grammar_production_call_expr() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_call_expr() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_call_expr,
     expression: kotlin_grammar_call_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_call_expr)
   }
 }
 
-fn kotlin_grammar_production_primary_expr() -> v2.std.grammar.GrammarProduction {
-  v2.std.grammar.GrammarProduction {
+fn kotlin_grammar_production_primary_expr() -> GrammarProduction {
+  GrammarProduction {
     name: ^kotlin_production_primary_expr,
     expression: kotlin_grammar_primary_expr(),
     emitted: kotlin_grammar_atom(id: ^kotlin_surface_primary_expr)
@@ -1196,15 +1195,15 @@ fn kotlin_grammar_relation_row() -> KotlinGrammarRelationRow {
   }
 }
 
-fn kotlin_grammar_relation_row_node(row: KotlinGrammarRelationRow) -> v2.std.node.Node {
+fn kotlin_grammar_relation_row_node(row: KotlinGrammarRelationRow) -> Node {
   let production = kotlin_grammar_production_from_nonempty(head: row.head, tail: row.tail)
   let tokens = kotlin_concrete_tokens_list(head: row.head, tail: row.tail)
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^grammar_relation_field_production,
-        target: v2.std.grammar.grammar_production_to_node(production: production)
+        target: grammar_production_to_node(production: production)
       ),
       kotlin_named_edge(
         name: ^grammar_relation_field_emitted,
@@ -1212,32 +1211,32 @@ fn kotlin_grammar_relation_row_node(row: KotlinGrammarRelationRow) -> v2.std.nod
       ),
       kotlin_named_edge(
         name: ^grammar_relation_field_tokens,
-        target: v2.std.grammar.grammar_relation_tokens_node(
+        target: grammar_relation_tokens_node(
           tokens: tokens,
           token_to_node: kotlin_concrete_token_node
         )
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_translation_rules_node() -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+fn kotlin_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^kotlin_relation_rule_fn_add,
         target: kotlin_grammar_relation_row_node(row: kotlin_grammar_relation_row())
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_target_model_node() -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+fn kotlin_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       kotlin_named_edge(
         name: ^target_model_edge_selection_policy,
@@ -1256,15 +1255,15 @@ fn kotlin_target_model_node() -> v2.std.node.Node {
         target: kotlin_serialize_source_node()
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn kotlin_binding_spellings() -> Map<v2.std.node.Symbol, String> {
-  v2.std.collection.map_insert(
-    v2.std.collection.map_insert(
-      v2.std.collection.map_insert(
-        v2.std.collection.map_insert(v2.std.collection.empty_map(), ^kotlin_binding_type_int, "Int"),
+fn kotlin_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(empty_map(), ^kotlin_binding_type_int, "Int"),
         ^kotlin_binding_fn_add,
         "add"
       ),
@@ -1276,86 +1275,86 @@ fn kotlin_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   )
 }
 
-fn kotlin_target_model() -> v2.std.compilers.target_model.TargetModel {
-  v2.std.compilers.target_model.TargetModel {
-    produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
+fn kotlin_target_model() -> TargetModel {
+  TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: kotlin_target_model_node(),
     lex: kotlin_lex(),
     binding_spellings: kotlin_binding_spellings(),
-    token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
+    token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: kotlin_source_text_authority(),
-    runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
+    runtime_row: target_emit_host_runtime_row_unconfigured
   }
 }
 
-fn kotlin_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  v2.std.compilers.lexing.TokenRule {
+fn kotlin_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule {
     token_class: token_class,
-    pattern: v2.std.compilers.lexing.LiteralPattern { text: text }
+    pattern: LiteralPattern { text: text }
   }
 }
 
-fn kotlin_keyword_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  v2.std.compilers.lexing.TokenRule {
+fn kotlin_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule {
     token_class: token_class,
-    pattern: v2.std.compilers.lexing.KeywordPattern { text: text }
+    pattern: KeywordPattern { text: text }
   }
 }
 
-fn kotlin_whitespace_trivia_rule() -> v2.std.compilers.lexing.LexRule {
-  v2.std.compilers.lexing.TriviaRule {
-    pattern: v2.std.compilers.lexing.OneOrMorePattern {
-      element: v2.std.compilers.lexing.ChoicePattern {
-        left: v2.std.compilers.lexing.LiteralPattern { text: " " },
-        right: v2.std.compilers.lexing.LiteralPattern { text: "\t" }
+fn kotlin_whitespace_trivia_rule() -> LexRule {
+  TriviaRule {
+    pattern: OneOrMorePattern {
+      element: ChoicePattern {
+        left: LiteralPattern { text: " " },
+        right: LiteralPattern { text: "\t" }
       }
     }
   }
 }
 
-fn kotlin_newline_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  v2.std.compilers.lexing.TokenRule {
+fn kotlin_newline_lex_rule() -> LexRule {
+  TokenRule {
     token_class: ^kotlin_token_nl,
-    pattern: v2.std.compilers.lexing.ChoicePattern {
-      left: v2.std.compilers.lexing.LiteralPattern { text: "\r\n" },
-      right: v2.std.compilers.lexing.ChoicePattern {
-        left: v2.std.compilers.lexing.LiteralPattern { text: "\n" },
-        right: v2.std.compilers.lexing.LiteralPattern { text: "\r" }
+    pattern: ChoicePattern {
+      left: LiteralPattern { text: "\r\n" },
+      right: ChoicePattern {
+        left: LiteralPattern { text: "\n" },
+        right: LiteralPattern { text: "\r" }
       }
     }
   }
 }
 
-fn kotlin_ident_lex_pattern() -> v2.std.compilers.lexing.LexPattern {
-  v2.std.compilers.lexing.SequencePattern {
-    left: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentStartChar },
-    right: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.IdentContinueChar } }
+fn kotlin_ident_lex_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
   }
 }
 
-fn kotlin_ident_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  v2.std.compilers.lexing.TokenRule {
+fn kotlin_ident_lex_rule() -> LexRule {
+  TokenRule {
     token_class: ^kotlin_token_ident,
     pattern: kotlin_ident_lex_pattern()
   }
 }
 
-fn kotlin_int_suffix_pattern() -> v2.std.compilers.lexing.LexPattern {
-  v2.std.compilers.lexing.ChoicePattern {
-    left: v2.std.compilers.lexing.LiteralPattern { text: "UL" },
-    right: v2.std.compilers.lexing.ChoicePattern {
-      left: v2.std.compilers.lexing.LiteralPattern { text: "uL" },
-      right: v2.std.compilers.lexing.ChoicePattern {
-        left: v2.std.compilers.lexing.LiteralPattern { text: "Ul" },
-        right: v2.std.compilers.lexing.ChoicePattern {
-          left: v2.std.compilers.lexing.LiteralPattern { text: "ul" },
-          right: v2.std.compilers.lexing.ChoicePattern {
-            left: v2.std.compilers.lexing.LiteralPattern { text: "U" },
-            right: v2.std.compilers.lexing.ChoicePattern {
-              left: v2.std.compilers.lexing.LiteralPattern { text: "u" },
-              right: v2.std.compilers.lexing.ChoicePattern {
-                left: v2.std.compilers.lexing.LiteralPattern { text: "L" },
-                right: v2.std.compilers.lexing.LiteralPattern { text: "l" }
+fn kotlin_int_suffix_pattern() -> LexPattern {
+  ChoicePattern {
+    left: LiteralPattern { text: "UL" },
+    right: ChoicePattern {
+      left: LiteralPattern { text: "uL" },
+      right: ChoicePattern {
+        left: LiteralPattern { text: "Ul" },
+        right: ChoicePattern {
+          left: LiteralPattern { text: "ul" },
+          right: ChoicePattern {
+            left: LiteralPattern { text: "U" },
+            right: ChoicePattern {
+              left: LiteralPattern { text: "u" },
+              right: ChoicePattern {
+                left: LiteralPattern { text: "L" },
+                right: LiteralPattern { text: "l" }
               }
             }
           }
@@ -1365,31 +1364,31 @@ fn kotlin_int_suffix_pattern() -> v2.std.compilers.lexing.LexPattern {
   }
 }
 
-fn kotlin_decimal_digit_or_separator_pattern() -> v2.std.compilers.lexing.LexPattern {
-  v2.std.compilers.lexing.ChoicePattern {
-    left: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.DigitChar },
-    right: v2.std.compilers.lexing.LiteralPattern { text: "_" }
+fn kotlin_decimal_digit_or_separator_pattern() -> LexPattern {
+  ChoicePattern {
+    left: CharClassPattern { class: DigitChar },
+    right: LiteralPattern { text: "_" }
   }
 }
 
-fn kotlin_nonzero_decimal_digit_pattern() -> v2.std.compilers.lexing.LexPattern {
-  v2.std.compilers.lexing.ChoicePattern {
-    left: v2.std.compilers.lexing.LiteralPattern { text: "1" },
-    right: v2.std.compilers.lexing.ChoicePattern {
-      left: v2.std.compilers.lexing.LiteralPattern { text: "2" },
-      right: v2.std.compilers.lexing.ChoicePattern {
-        left: v2.std.compilers.lexing.LiteralPattern { text: "3" },
-        right: v2.std.compilers.lexing.ChoicePattern {
-          left: v2.std.compilers.lexing.LiteralPattern { text: "4" },
-          right: v2.std.compilers.lexing.ChoicePattern {
-            left: v2.std.compilers.lexing.LiteralPattern { text: "5" },
-            right: v2.std.compilers.lexing.ChoicePattern {
-              left: v2.std.compilers.lexing.LiteralPattern { text: "6" },
-              right: v2.std.compilers.lexing.ChoicePattern {
-                left: v2.std.compilers.lexing.LiteralPattern { text: "7" },
-                right: v2.std.compilers.lexing.ChoicePattern {
-                  left: v2.std.compilers.lexing.LiteralPattern { text: "8" },
-                  right: v2.std.compilers.lexing.LiteralPattern { text: "9" }
+fn kotlin_nonzero_decimal_digit_pattern() -> LexPattern {
+  ChoicePattern {
+    left: LiteralPattern { text: "1" },
+    right: ChoicePattern {
+      left: LiteralPattern { text: "2" },
+      right: ChoicePattern {
+        left: LiteralPattern { text: "3" },
+        right: ChoicePattern {
+          left: LiteralPattern { text: "4" },
+          right: ChoicePattern {
+            left: LiteralPattern { text: "5" },
+            right: ChoicePattern {
+              left: LiteralPattern { text: "6" },
+              right: ChoicePattern {
+                left: LiteralPattern { text: "7" },
+                right: ChoicePattern {
+                  left: LiteralPattern { text: "8" },
+                  right: LiteralPattern { text: "9" }
                 }
               }
             }
@@ -1400,93 +1399,93 @@ fn kotlin_nonzero_decimal_digit_pattern() -> v2.std.compilers.lexing.LexPattern 
   }
 }
 
-fn kotlin_binary_digit_or_separator_pattern() -> v2.std.compilers.lexing.LexPattern {
-  v2.std.compilers.lexing.ChoicePattern {
-    left: v2.std.compilers.lexing.LiteralPattern { text: "0" },
-    right: v2.std.compilers.lexing.ChoicePattern {
-      left: v2.std.compilers.lexing.LiteralPattern { text: "1" },
-      right: v2.std.compilers.lexing.LiteralPattern { text: "_" }
+fn kotlin_binary_digit_or_separator_pattern() -> LexPattern {
+  ChoicePattern {
+    left: LiteralPattern { text: "0" },
+    right: ChoicePattern {
+      left: LiteralPattern { text: "1" },
+      right: LiteralPattern { text: "_" }
     }
   }
 }
 
-fn kotlin_decimal_literal_pattern() -> v2.std.compilers.lexing.LexPattern {
-  v2.std.compilers.lexing.ChoicePattern {
-    left: v2.std.compilers.lexing.SequencePattern {
-      left: v2.std.compilers.lexing.LiteralPattern { text: "0" },
-      right: v2.std.compilers.lexing.OptionalPattern { element: kotlin_int_suffix_pattern() }
+fn kotlin_decimal_literal_pattern() -> LexPattern {
+  ChoicePattern {
+    left: SequencePattern {
+      left: LiteralPattern { text: "0" },
+      right: OptionalPattern { element: kotlin_int_suffix_pattern() }
     },
-    right: v2.std.compilers.lexing.SequencePattern {
+    right: SequencePattern {
       left: kotlin_nonzero_decimal_digit_pattern(),
-      right: v2.std.compilers.lexing.SequencePattern {
-        left: v2.std.compilers.lexing.RepeatPattern { element: kotlin_decimal_digit_or_separator_pattern() },
-        right: v2.std.compilers.lexing.OptionalPattern { element: kotlin_int_suffix_pattern() }
+      right: SequencePattern {
+        left: RepeatPattern { element: kotlin_decimal_digit_or_separator_pattern() },
+        right: OptionalPattern { element: kotlin_int_suffix_pattern() }
       }
     }
   }
 }
 
-fn kotlin_hex_literal_pattern() -> v2.std.compilers.lexing.LexPattern {
-  v2.std.compilers.lexing.SequencePattern {
-    left: v2.std.compilers.lexing.ChoicePattern {
-      left: v2.std.compilers.lexing.LiteralPattern { text: "0x" },
-      right: v2.std.compilers.lexing.LiteralPattern { text: "0X" }
+fn kotlin_hex_literal_pattern() -> LexPattern {
+  SequencePattern {
+    left: ChoicePattern {
+      left: LiteralPattern { text: "0x" },
+      right: LiteralPattern { text: "0X" }
     },
-    right: v2.std.compilers.lexing.SequencePattern {
-      left: v2.std.compilers.lexing.OneOrMorePattern {
-        element: v2.std.compilers.lexing.ChoicePattern {
-          left: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.HexDigitChar },
-          right: v2.std.compilers.lexing.LiteralPattern { text: "_" }
+    right: SequencePattern {
+      left: OneOrMorePattern {
+        element: ChoicePattern {
+          left: CharClassPattern { class: HexDigitChar },
+          right: LiteralPattern { text: "_" }
         }
       },
-      right: v2.std.compilers.lexing.OptionalPattern { element: kotlin_int_suffix_pattern() }
+      right: OptionalPattern { element: kotlin_int_suffix_pattern() }
     }
   }
 }
 
-fn kotlin_binary_literal_pattern() -> v2.std.compilers.lexing.LexPattern {
-  v2.std.compilers.lexing.SequencePattern {
-    left: v2.std.compilers.lexing.ChoicePattern {
-      left: v2.std.compilers.lexing.LiteralPattern { text: "0b" },
-      right: v2.std.compilers.lexing.LiteralPattern { text: "0B" }
+fn kotlin_binary_literal_pattern() -> LexPattern {
+  SequencePattern {
+    left: ChoicePattern {
+      left: LiteralPattern { text: "0b" },
+      right: LiteralPattern { text: "0B" }
     },
-    right: v2.std.compilers.lexing.SequencePattern {
-      left: v2.std.compilers.lexing.OneOrMorePattern { element: kotlin_binary_digit_or_separator_pattern() },
-      right: v2.std.compilers.lexing.OptionalPattern { element: kotlin_int_suffix_pattern() }
+    right: SequencePattern {
+      left: OneOrMorePattern { element: kotlin_binary_digit_or_separator_pattern() },
+      right: OptionalPattern { element: kotlin_int_suffix_pattern() }
     }
   }
 }
 
-fn kotlin_int_literal_pattern() -> v2.std.compilers.lexing.LexPattern {
-  v2.std.compilers.lexing.ChoicePattern {
+fn kotlin_int_literal_pattern() -> LexPattern {
+  ChoicePattern {
     left: kotlin_hex_literal_pattern(),
-    right: v2.std.compilers.lexing.ChoicePattern {
+    right: ChoicePattern {
       left: kotlin_binary_literal_pattern(),
       right: kotlin_decimal_literal_pattern()
     }
   }
 }
 
-fn kotlin_int_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  v2.std.compilers.lexing.TokenRule {
+fn kotlin_int_literal_lex_rule() -> LexRule {
+  TokenRule {
     token_class: ^kotlin_token_int_literal,
     pattern: kotlin_int_literal_pattern()
   }
 }
 
-fn kotlin_string_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  v2.std.compilers.lexing.TokenRule {
+fn kotlin_string_literal_lex_rule() -> LexRule {
+  TokenRule {
     token_class: ^kotlin_token_string_literal,
-    pattern: v2.std.compilers.lexing.DelimitedPattern {
-      open: v2.std.compilers.lexing.LiteralPattern { text: "\"" },
-      body: v2.std.compilers.lexing.RepeatPattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.StringTextChar } },
-      close: v2.std.compilers.lexing.LiteralPattern { text: "\"" }
+    pattern: DelimitedPattern {
+      open: LiteralPattern { text: "\"" },
+      body: RepeatPattern { element: CharClassPattern { class: StringTextChar } },
+      close: LiteralPattern { text: "\"" }
     }
   }
 }
 
-fn kotlin_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
-  v2.std.compilers.lexing.LexRuleSet {
+fn kotlin_lex_rules() -> LexRuleSet {
+  LexRuleSet {
     rules: [
       kotlin_whitespace_trivia_rule(),
       kotlin_newline_lex_rule(),
@@ -1528,529 +1527,529 @@ fn kotlin_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
   }
 }
 
-fn kotlin_lex() -> v2.std.compilers.lexing.LexRules {
-  v2.std.compilers.lexing.ModeledLexRules { root: kotlin_lex_rules() }
+fn kotlin_lex() -> LexRules {
+  ModeledLexRules { root: kotlin_lex_rules() }
 }
 
-fn kotlin_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
-  v2.std.algebra.fold_list(
+fn kotlin_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+  fold_list(
     xs: tokens,
-    empty: std.algebra.Empty,
+    empty: Empty,
     cons: fn(acc, token) {
-      v2.std.algebra.list_snoc_item(
+      list_snoc_item(
         xs: acc,
-        item: v2.std.grammar.grammar_formal_terminal(identity: v2.std.compilers.target_model.concrete_syntax_token_class(token: token))
+        item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token))
       )
     }
   )
 }
 
-fn kotlin_formal_production_fn_add() -> v2.std.grammar.FormalProduction {
-  v2.std.grammar.grammar_formal_production(
+fn kotlin_formal_production_fn_add() -> FormalProduction {
+  grammar_formal_production(
     lhs: ^kotlin_production_fn_add,
     rhs: kotlin_formal_rhs_from_tokens(tokens: kotlin_concrete_tokens())
   )
 }
 
-fn kotlin_formal_productions() -> List<v2.std.grammar.FormalProduction> {
+fn kotlin_formal_productions() -> List<FormalProduction> {
   [
-    v2.std.grammar.grammar_formal_production(lhs: ^kotlin_production_type_expr, rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_ident)]),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(lhs: ^kotlin_production_type_expr, rhs: [grammar_formal_terminal(identity: ^kotlin_token_ident)]),
+    grammar_formal_production(
       lhs: ^kotlin_production_typed_param,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_ident),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_colon),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_type_expr)
+        grammar_formal_terminal(identity: ^kotlin_token_ident),
+        grammar_formal_terminal(identity: ^kotlin_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_type_expr)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(lhs: ^kotlin_production_param_list, rhs: []),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(lhs: ^kotlin_production_param_list, rhs: []),
+    grammar_formal_production(
       lhs: ^kotlin_production_param_list,
-      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_typed_param)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_typed_param)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_param_list,
       rhs: [
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_typed_param),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_comma),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_typed_param),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_param_list_suffix)
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_typed_param),
+        grammar_formal_terminal(identity: ^kotlin_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_typed_param),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_param_list_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(lhs: ^kotlin_production_param_list_suffix, rhs: []),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(lhs: ^kotlin_production_param_list_suffix, rhs: []),
+    grammar_formal_production(
       lhs: ^kotlin_production_param_list_suffix,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_comma),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_typed_param),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_param_list_suffix)
+        grammar_formal_terminal(identity: ^kotlin_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_typed_param),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_param_list_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(lhs: ^kotlin_production_primary_expr, rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_ident)]),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(lhs: ^kotlin_production_primary_expr, rhs: [grammar_formal_terminal(identity: ^kotlin_token_ident)]),
+    grammar_formal_production(
       lhs: ^kotlin_production_primary_expr,
-      rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_int_literal)]
+      rhs: [grammar_formal_terminal(identity: ^kotlin_token_int_literal)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_primary_expr,
-      rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_string_literal)]
+      rhs: [grammar_formal_terminal(identity: ^kotlin_token_string_literal)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_primary_expr,
-      rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_true)]
+      rhs: [grammar_formal_terminal(identity: ^kotlin_token_kw_true)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_primary_expr,
-      rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_false)]
+      rhs: [grammar_formal_terminal(identity: ^kotlin_token_kw_false)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_primary_expr,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_lparen),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_rparen)
+        grammar_formal_terminal(identity: ^kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr),
+        grammar_formal_terminal(identity: ^kotlin_token_rparen)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(lhs: ^kotlin_production_expr_list, rhs: []),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(lhs: ^kotlin_production_expr_list, rhs: []),
+    grammar_formal_production(
       lhs: ^kotlin_production_expr_list,
-      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_expr_list,
       rhs: [
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_comma),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr_list_suffix)
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr),
+        grammar_formal_terminal(identity: ^kotlin_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr_list_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(lhs: ^kotlin_production_expr_list_suffix, rhs: []),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(lhs: ^kotlin_production_expr_list_suffix, rhs: []),
+    grammar_formal_production(
       lhs: ^kotlin_production_expr_list_suffix,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_comma),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr_list_suffix)
+        grammar_formal_terminal(identity: ^kotlin_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr_list_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_call_expr,
-      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_primary_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_primary_expr)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_call_expr,
       rhs: [
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_primary_expr),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_lparen),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr_list),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_rparen),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_call_suffix)
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_primary_expr),
+        grammar_formal_terminal(identity: ^kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr_list),
+        grammar_formal_terminal(identity: ^kotlin_token_rparen),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_call_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(lhs: ^kotlin_production_call_suffix, rhs: []),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(lhs: ^kotlin_production_call_suffix, rhs: []),
+    grammar_formal_production(
       lhs: ^kotlin_production_call_suffix,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_lparen),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr_list),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_rparen),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_call_suffix)
+        grammar_formal_terminal(identity: ^kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr_list),
+        grammar_formal_terminal(identity: ^kotlin_token_rparen),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_call_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_multiplicative_expr,
-      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_call_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_call_expr)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_multiplicative_expr,
       rhs: [
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_call_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_multiplicative_suffix)
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_call_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_multiplicative_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(lhs: ^kotlin_production_multiplicative_suffix, rhs: []),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(lhs: ^kotlin_production_multiplicative_suffix, rhs: []),
+    grammar_formal_production(
       lhs: ^kotlin_production_multiplicative_suffix,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_star),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_call_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_multiplicative_suffix)
+        grammar_formal_terminal(identity: ^kotlin_token_star),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_call_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_multiplicative_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_multiplicative_suffix,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_slash),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_call_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_multiplicative_suffix)
+        grammar_formal_terminal(identity: ^kotlin_token_slash),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_call_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_multiplicative_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_multiplicative_suffix,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_percent),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_call_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_multiplicative_suffix)
+        grammar_formal_terminal(identity: ^kotlin_token_percent),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_call_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_multiplicative_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_additive_expr,
-      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_multiplicative_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_multiplicative_expr)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_additive_expr,
       rhs: [
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_multiplicative_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_suffix)
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_multiplicative_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(lhs: ^kotlin_production_additive_suffix, rhs: []),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(lhs: ^kotlin_production_additive_suffix, rhs: []),
+    grammar_formal_production(
       lhs: ^kotlin_production_additive_suffix,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_plus),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_multiplicative_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_suffix)
+        grammar_formal_terminal(identity: ^kotlin_token_plus),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_multiplicative_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_additive_suffix,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_minus),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_multiplicative_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_suffix)
+        grammar_formal_terminal(identity: ^kotlin_token_minus),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_multiplicative_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_comparison_expr,
-      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_expr)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_comparison_expr,
       rhs: [
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_suffix)
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(lhs: ^kotlin_production_comparison_suffix, rhs: []),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(lhs: ^kotlin_production_comparison_suffix, rhs: []),
+    grammar_formal_production(
       lhs: ^kotlin_production_comparison_suffix,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_lt),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_suffix)
+        grammar_formal_terminal(identity: ^kotlin_token_lt),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_comparison_suffix,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_gt),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_suffix)
+        grammar_formal_terminal(identity: ^kotlin_token_gt),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_comparison_suffix,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_lt_eq),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_suffix)
+        grammar_formal_terminal(identity: ^kotlin_token_lt_eq),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_comparison_suffix,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_gt_eq),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_suffix)
+        grammar_formal_terminal(identity: ^kotlin_token_gt_eq),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_additive_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_equality_expr,
-      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_expr)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_equality_expr,
       rhs: [
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_equality_suffix)
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_equality_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(lhs: ^kotlin_production_equality_suffix, rhs: []),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(lhs: ^kotlin_production_equality_suffix, rhs: []),
+    grammar_formal_production(
       lhs: ^kotlin_production_equality_suffix,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_eq_eq),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_equality_suffix)
+        grammar_formal_terminal(identity: ^kotlin_token_eq_eq),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_equality_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_equality_suffix,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_bang_eq),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_equality_suffix)
+        grammar_formal_terminal(identity: ^kotlin_token_bang_eq),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_comparison_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_equality_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_binary_expr,
-      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_equality_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_equality_expr)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_expr,
-      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_binary_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_binary_expr)]
     ),
-    v2.std.grammar.grammar_formal_production(lhs: ^kotlin_production_return_stmt, rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_return)]),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(lhs: ^kotlin_production_return_stmt, rhs: [grammar_formal_terminal(identity: ^kotlin_token_kw_return)]),
+    grammar_formal_production(
       lhs: ^kotlin_production_return_stmt,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_return),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr)
+        grammar_formal_terminal(identity: ^kotlin_token_kw_return),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_value_stmt,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_val),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_ident)
+        grammar_formal_terminal(identity: ^kotlin_token_kw_val),
+        grammar_formal_terminal(identity: ^kotlin_token_ident)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_value_stmt,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_var),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_ident)
+        grammar_formal_terminal(identity: ^kotlin_token_kw_var),
+        grammar_formal_terminal(identity: ^kotlin_token_ident)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_value_stmt,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_val),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_ident),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_colon),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_type_expr)
+        grammar_formal_terminal(identity: ^kotlin_token_kw_val),
+        grammar_formal_terminal(identity: ^kotlin_token_ident),
+        grammar_formal_terminal(identity: ^kotlin_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_type_expr)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_value_stmt,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_var),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_ident),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_colon),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_type_expr)
+        grammar_formal_terminal(identity: ^kotlin_token_kw_var),
+        grammar_formal_terminal(identity: ^kotlin_token_ident),
+        grammar_formal_terminal(identity: ^kotlin_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_type_expr)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_value_stmt,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_val),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_ident),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_equal),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr)
+        grammar_formal_terminal(identity: ^kotlin_token_kw_val),
+        grammar_formal_terminal(identity: ^kotlin_token_ident),
+        grammar_formal_terminal(identity: ^kotlin_token_equal),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_value_stmt,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_var),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_ident),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_equal),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr)
+        grammar_formal_terminal(identity: ^kotlin_token_kw_var),
+        grammar_formal_terminal(identity: ^kotlin_token_ident),
+        grammar_formal_terminal(identity: ^kotlin_token_equal),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_value_stmt,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_val),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_ident),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_colon),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_type_expr),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_equal),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr)
+        grammar_formal_terminal(identity: ^kotlin_token_kw_val),
+        grammar_formal_terminal(identity: ^kotlin_token_ident),
+        grammar_formal_terminal(identity: ^kotlin_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_type_expr),
+        grammar_formal_terminal(identity: ^kotlin_token_equal),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_value_stmt,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_var),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_ident),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_colon),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_type_expr),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_equal),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr)
+        grammar_formal_terminal(identity: ^kotlin_token_kw_var),
+        grammar_formal_terminal(identity: ^kotlin_token_ident),
+        grammar_formal_terminal(identity: ^kotlin_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_type_expr),
+        grammar_formal_terminal(identity: ^kotlin_token_equal),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_if_stmt,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_if),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_lparen),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_rparen),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_block)
+        grammar_formal_terminal(identity: ^kotlin_token_kw_if),
+        grammar_formal_terminal(identity: ^kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr),
+        grammar_formal_terminal(identity: ^kotlin_token_rparen),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_block)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_if_stmt,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_if),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_lparen),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_rparen),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_block),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_else),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_block)
+        grammar_formal_terminal(identity: ^kotlin_token_kw_if),
+        grammar_formal_terminal(identity: ^kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr),
+        grammar_formal_terminal(identity: ^kotlin_token_rparen),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_block),
+        grammar_formal_terminal(identity: ^kotlin_token_kw_else),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_block)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_if_stmt,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_if),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_lparen),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_rparen),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_block),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_else),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_if_stmt)
+        grammar_formal_terminal(identity: ^kotlin_token_kw_if),
+        grammar_formal_terminal(identity: ^kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr),
+        grammar_formal_terminal(identity: ^kotlin_token_rparen),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_block),
+        grammar_formal_terminal(identity: ^kotlin_token_kw_else),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_if_stmt)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_while_stmt,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_while),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_lparen),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_rparen),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_block)
+        grammar_formal_terminal(identity: ^kotlin_token_kw_while),
+        grammar_formal_terminal(identity: ^kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr),
+        grammar_formal_terminal(identity: ^kotlin_token_rparen),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_block)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_stmt,
-      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_return_stmt)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_return_stmt)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_stmt,
-      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_value_stmt)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_value_stmt)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_stmt,
-      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_if_stmt)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_if_stmt)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_stmt,
-      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_while_stmt)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_while_stmt)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_stmt,
-      rhs: [v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_expr)]
     ),
-    v2.std.grammar.grammar_formal_production(lhs: ^kotlin_production_stmt_list, rhs: []),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(lhs: ^kotlin_production_stmt_list, rhs: []),
+    grammar_formal_production(
       lhs: ^kotlin_production_stmt_list,
       rhs: [
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_stmt),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_stmt_tail_suffix),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_stmt_sep_opt)
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_stmt),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_stmt_tail_suffix),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_stmt_sep_opt)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(lhs: ^kotlin_production_stmt_tail_suffix, rhs: []),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(lhs: ^kotlin_production_stmt_tail_suffix, rhs: []),
+    grammar_formal_production(
       lhs: ^kotlin_production_stmt_tail_suffix,
       rhs: [
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_stmt_tail),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_stmt_tail_suffix)
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_stmt_tail),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_stmt_tail_suffix)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_stmt_tail,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_semicolon),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_stmt)
+        grammar_formal_terminal(identity: ^kotlin_token_semicolon),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_stmt)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_stmt_tail,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_nl),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_stmt)
+        grammar_formal_terminal(identity: ^kotlin_token_nl),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_stmt)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(lhs: ^kotlin_production_stmt_sep_opt, rhs: []),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(lhs: ^kotlin_production_stmt_sep_opt, rhs: []),
+    grammar_formal_production(
       lhs: ^kotlin_production_stmt_sep_opt,
-      rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_semicolon)]
+      rhs: [grammar_formal_terminal(identity: ^kotlin_token_semicolon)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_stmt_sep_opt,
-      rhs: [v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_nl)]
+      rhs: [grammar_formal_terminal(identity: ^kotlin_token_nl)]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_block,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_lbrace),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_stmt_list),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_rbrace)
+        grammar_formal_terminal(identity: ^kotlin_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_stmt_list),
+        grammar_formal_terminal(identity: ^kotlin_token_rbrace)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_fn_decl,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_fun),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_ident),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_lparen),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_param_list),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_rparen),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_block)
+        grammar_formal_terminal(identity: ^kotlin_token_kw_fun),
+        grammar_formal_terminal(identity: ^kotlin_token_ident),
+        grammar_formal_terminal(identity: ^kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_param_list),
+        grammar_formal_terminal(identity: ^kotlin_token_rparen),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_block)
       ]
     ),
-    v2.std.grammar.grammar_formal_production(
+    grammar_formal_production(
       lhs: ^kotlin_production_fn_decl,
       rhs: [
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_kw_fun),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_ident),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_lparen),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_param_list),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_rparen),
-        v2.std.grammar.grammar_formal_terminal(identity: ^kotlin_token_colon),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_type_expr),
-        v2.std.grammar.grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_block)
+        grammar_formal_terminal(identity: ^kotlin_token_kw_fun),
+        grammar_formal_terminal(identity: ^kotlin_token_ident),
+        grammar_formal_terminal(identity: ^kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_param_list),
+        grammar_formal_terminal(identity: ^kotlin_token_rparen),
+        grammar_formal_terminal(identity: ^kotlin_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_type_expr),
+        grammar_formal_nonterminal_occurrence(identity: ^kotlin_production_block)
       ]
     ),
     kotlin_formal_production_fn_add()
   ]
 }
 
-fn kotlin_grammar_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
+fn kotlin_grammar_atom(id: Symbol) -> Node {
   kotlin_atom(id: id)
 }
 
-fn kotlin_grammar_nonterminal(production: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
-  v2.std.grammar.Nonterminal { production: production }
+fn kotlin_grammar_nonterminal(production: Symbol) -> GrammarExpr {
+  Nonterminal { production: production }
 }
 
-fn kotlin_grammar_sequence(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  v2.std.grammar.Sequence { left: left, right: right }
+fn kotlin_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
 }
 
-fn kotlin_grammar_choice(left: v2.std.grammar.GrammarExpr, right: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  v2.std.grammar.Choice { left: left, right: right }
+fn kotlin_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Choice { left: left, right: right }
 }
 
-fn kotlin_grammar_optional(element: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  v2.std.grammar.Optional { element: element }
+fn kotlin_grammar_optional(element: GrammarExpr) -> GrammarExpr {
+  Optional { element: element }
 }
 
-fn kotlin_grammar_repeat(element: v2.std.grammar.GrammarExpr) -> v2.std.grammar.GrammarExpr {
-  v2.std.grammar.Repeat { element: element }
+fn kotlin_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
+  Repeat { element: element }
 }
 
-fn kotlin_grammar_type_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_type_expr() -> GrammarExpr {
   kotlin_grammar_terminal(token_class: ^kotlin_token_ident)
 }
 
-fn kotlin_grammar_typed_param_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_typed_param_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_terminal(token_class: ^kotlin_token_ident),
     right: kotlin_grammar_sequence(
@@ -2060,7 +2059,7 @@ fn kotlin_grammar_typed_param_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_param_list_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_param_list_expr() -> GrammarExpr {
   kotlin_grammar_optional(
     element: kotlin_grammar_sequence(
       left: kotlin_grammar_nonterminal(production: ^kotlin_production_typed_param),
@@ -2074,7 +2073,7 @@ fn kotlin_grammar_param_list_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_expr_list_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_expr_list_expr() -> GrammarExpr {
   kotlin_grammar_optional(
     element: kotlin_grammar_sequence(
       left: kotlin_grammar_nonterminal(production: ^kotlin_production_expr),
@@ -2088,7 +2087,7 @@ fn kotlin_grammar_expr_list_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_primary_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_primary_expr() -> GrammarExpr {
   kotlin_grammar_choice(
     left: kotlin_grammar_terminal(token_class: ^kotlin_token_ident),
     right: kotlin_grammar_choice(
@@ -2113,7 +2112,7 @@ fn kotlin_grammar_primary_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_call_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_call_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_nonterminal(production: ^kotlin_production_primary_expr),
     right: kotlin_grammar_repeat(
@@ -2128,14 +2127,14 @@ fn kotlin_grammar_call_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_equality_operator_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_equality_operator_expr() -> GrammarExpr {
   kotlin_grammar_choice(
     left: kotlin_grammar_terminal(token_class: ^kotlin_token_eq_eq),
     right: kotlin_grammar_terminal(token_class: ^kotlin_token_bang_eq)
   )
 }
 
-fn kotlin_grammar_comparison_operator_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_comparison_operator_expr() -> GrammarExpr {
   kotlin_grammar_choice(
     left: kotlin_grammar_terminal(token_class: ^kotlin_token_lt),
     right: kotlin_grammar_choice(
@@ -2148,14 +2147,14 @@ fn kotlin_grammar_comparison_operator_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_additive_operator_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_additive_operator_expr() -> GrammarExpr {
   kotlin_grammar_choice(
     left: kotlin_grammar_terminal(token_class: ^kotlin_token_plus),
     right: kotlin_grammar_terminal(token_class: ^kotlin_token_minus)
   )
 }
 
-fn kotlin_grammar_multiplicative_operator_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_multiplicative_operator_expr() -> GrammarExpr {
   kotlin_grammar_choice(
     left: kotlin_grammar_terminal(token_class: ^kotlin_token_star),
     right: kotlin_grammar_choice(
@@ -2165,11 +2164,11 @@ fn kotlin_grammar_multiplicative_operator_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_binary_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_binary_expr() -> GrammarExpr {
   kotlin_grammar_nonterminal(production: ^kotlin_production_equality_expr)
 }
 
-fn kotlin_grammar_equality_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_equality_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_nonterminal(production: ^kotlin_production_comparison_expr),
     right: kotlin_grammar_repeat(
@@ -2181,7 +2180,7 @@ fn kotlin_grammar_equality_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_comparison_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_comparison_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_nonterminal(production: ^kotlin_production_additive_expr),
     right: kotlin_grammar_repeat(
@@ -2193,7 +2192,7 @@ fn kotlin_grammar_comparison_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_additive_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_additive_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_nonterminal(production: ^kotlin_production_multiplicative_expr),
     right: kotlin_grammar_repeat(
@@ -2205,7 +2204,7 @@ fn kotlin_grammar_additive_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_multiplicative_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_multiplicative_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_nonterminal(production: ^kotlin_production_call_expr),
     right: kotlin_grammar_repeat(
@@ -2217,11 +2216,11 @@ fn kotlin_grammar_multiplicative_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_expr_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_expr_expr() -> GrammarExpr {
   kotlin_grammar_nonterminal(production: ^kotlin_production_binary_expr)
 }
 
-fn kotlin_grammar_return_stmt_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_return_stmt_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_terminal(token_class: ^kotlin_token_kw_return),
     right: kotlin_grammar_optional(
@@ -2230,7 +2229,7 @@ fn kotlin_grammar_return_stmt_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_value_stmt_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_value_stmt_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_choice(
       left: kotlin_grammar_terminal(token_class: ^kotlin_token_kw_val),
@@ -2256,7 +2255,7 @@ fn kotlin_grammar_value_stmt_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_if_stmt_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_if_stmt_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_terminal(token_class: ^kotlin_token_kw_if),
     right: kotlin_grammar_sequence(
@@ -2283,7 +2282,7 @@ fn kotlin_grammar_if_stmt_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_while_stmt_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_while_stmt_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_terminal(token_class: ^kotlin_token_kw_while),
     right: kotlin_grammar_sequence(
@@ -2299,7 +2298,7 @@ fn kotlin_grammar_while_stmt_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_stmt_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_stmt_expr() -> GrammarExpr {
   kotlin_grammar_choice(
     left: kotlin_grammar_nonterminal(production: ^kotlin_production_return_stmt),
     right: kotlin_grammar_choice(
@@ -2315,21 +2314,21 @@ fn kotlin_grammar_stmt_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_stmt_separator_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_stmt_separator_expr() -> GrammarExpr {
   kotlin_grammar_choice(
     left: kotlin_grammar_terminal(token_class: ^kotlin_token_semicolon),
     right: kotlin_grammar_terminal(token_class: ^kotlin_token_nl)
   )
 }
 
-fn kotlin_grammar_stmt_tail_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_stmt_tail_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_stmt_separator_expr(),
     right: kotlin_grammar_nonterminal(production: ^kotlin_production_stmt)
   )
 }
 
-fn kotlin_grammar_stmt_list_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_stmt_list_expr() -> GrammarExpr {
   kotlin_grammar_optional(
     element: kotlin_grammar_sequence(
       left: kotlin_grammar_nonterminal(production: ^kotlin_production_stmt),
@@ -2341,7 +2340,7 @@ fn kotlin_grammar_stmt_list_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_block_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_block_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_terminal(token_class: ^kotlin_token_lbrace),
     right: kotlin_grammar_sequence(
@@ -2351,7 +2350,7 @@ fn kotlin_grammar_block_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_fn_decl_expr() -> v2.std.grammar.GrammarExpr {
+fn kotlin_grammar_fn_decl_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_terminal(token_class: ^kotlin_token_kw_fun),
     right: kotlin_grammar_sequence(
@@ -2378,7 +2377,7 @@ fn kotlin_grammar_fn_decl_expr() -> v2.std.grammar.GrammarExpr {
   )
 }
 
-fn kotlin_grammar_root() -> v2.std.grammar.GrammarRoot {
+fn kotlin_grammar_root() -> GrammarRoot {
   let start = kotlin_grammar_production_fn_add()
   let fn_decl = kotlin_grammar_production_fn_decl()
   let typed_param = kotlin_grammar_production_typed_param()
@@ -2398,7 +2397,7 @@ fn kotlin_grammar_root() -> v2.std.grammar.GrammarRoot {
   let multiplicative_expr = kotlin_grammar_production_multiplicative_expr()
   let call_expr = kotlin_grammar_production_call_expr()
   let primary_expr = kotlin_grammar_production_primary_expr()
-  v2.std.grammar.GrammarRoot {
+  GrammarRoot {
     start: ^kotlin_production_fn_decl,
     productions: [
       start,
@@ -2421,27 +2420,27 @@ fn kotlin_grammar_root() -> v2.std.grammar.GrammarRoot {
       call_expr,
       primary_expr
     ],
-    sync_tokens: v2.std.grammar.grammar_empty_sync_tokens()
+    sync_tokens: grammar_empty_sync_tokens()
   }
 }
 
-fn kotlin_grammar() -> v2.std.grammar.ParseGrammar {
-  v2.std.grammar.ModeledGrammar { root: kotlin_grammar_root() }
+fn kotlin_grammar() -> ParseGrammar {
+  ModeledGrammar { root: kotlin_grammar_root() }
 }
 
-fn kotlin_lex_token_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
-  v2.std.compilers.lexing.lex_rule_set_token_class_member(
+fn kotlin_lex_token_symbol(sym: Symbol) -> Bool {
+  lex_rule_set_token_class_member(
     rules: kotlin_lex_rules(),
     token_class: sym
   )
 }
 
-fn kotlin_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
-  std.types.Set {
+fn kotlin_language_model_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       kotlin_catalog_surface_symbol(sym: sym) ||
         kotlin_lex_token_symbol(sym: sym) ||
-        v2.std.grammar.grammar_carries_symbol(grammar: kotlin_grammar(), sym: sym) ||
+        grammar_carries_symbol(grammar: kotlin_grammar(), sym: sym) ||
         sym == ^kotlin_surface_fn_item ||
         sym == ^kotlin_production_fn_add ||
         sym == ^kotlin_source_literal ||
@@ -2453,18 +2452,18 @@ fn kotlin_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
   }
 }
 
-fn kotlin_model_core() -> v2.std.model_core.ModelCore {
-  v2.std.model_core.ModelCore {
+fn kotlin_model_core() -> ModelCore {
+  ModelCore {
     primitives: kotlin_primitive_fact_bundles(),
     inhabitance: kotlin_model_core_inhabitance_decls(),
     laws: [],
-    effects: v2.std.model_core.EffectSemanticsDecl { operations: [] },
-    partiality: v2.std.model_core.PartialitySemanticsDecl { operations: [] }
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
   }
 }
 
-fn kotlin_language_model() -> v2.std.language_model.LanguageModel {
-  v2.std.language_model.LanguageModel {
+fn kotlin_language_model() -> LanguageModel {
+  LanguageModel {
     lex: kotlin_lex(),
     grammar: kotlin_grammar(),
     language_identity: ^kotlin_language_model_surface_id,

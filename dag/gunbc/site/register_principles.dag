@@ -1,4 +1,0 @@
-module gunbc.site.register_principles
-
-
-data site_principles_facade_note: String = "L5 instance façade — authority is gunbc.design.principles (Phase-A lift). Import gunbc.design.principles directly."

@@ -1,6 +1,5 @@
 module gunbc.fleet_physical_inventory
 
-
 // SPATIAL-0 owned inventory bindings: extdeps rows cite vendor facts; this module binds allocated
 // PhysicalAssetIdentity and HostIdentity instances to catalog declarations and rack residence.
 // Mounting/shelf/U position stay UNOBSERVED until read or supplied. Amazon order IDs/URLs are
@@ -8,30 +7,29 @@ module gunbc.fleet_physical_inventory
 // of 18U is arithmetic on catalog rack_units plus operator-declared 1U shelf for the desktop
 // switch, not an observation. Raspberry Pi catalog identity remains unauthored until exact
 // model/revision is observed.
-data operator_site: product.placement_supply.SiteIdentity = "operator-lab" as product.placement_supply.SiteIdentity
-data rack_01: product.placement_supply.RackIdentity = "rack-01" as product.placement_supply.RackIdentity
+data operator_site: SiteIdentity = "operator-lab" as SiteIdentity
+data rack_01: RackIdentity = "rack-01" as RackIdentity
 
-data operator_physical_site: product.placement_supply.PhysicalSite = product.placement_supply.PhysicalSite {
+data operator_physical_site: PhysicalSite = PhysicalSite {
   identity: operator_site,
   racks: [rack_01],
 }
 
-data nominal_rackmount_units_declared: std.measure.RackUnit = rack_unit(14)
-data operator_switch_shelf_units: std.measure.RackUnit = rack_unit(1)
+data nominal_rackmount_units_declared: RackUnit = rack_unit(14)
+data operator_switch_shelf_units: RackUnit = rack_unit(1)
 
-data chassis_srv1: product.placement_supply.PhysicalAssetIdentity = "chassis-srv1" as product.placement_supply.PhysicalAssetIdentity
-data chassis_srv2: product.placement_supply.PhysicalAssetIdentity = "chassis-srv2" as product.placement_supply.PhysicalAssetIdentity
-data chassis_srv3: product.placement_supply.PhysicalAssetIdentity = "chassis-srv3" as product.placement_supply.PhysicalAssetIdentity
-data chassis_srv4: product.placement_supply.PhysicalAssetIdentity = "chassis-srv4" as product.placement_supply.PhysicalAssetIdentity
-data chassis_srv5_placeholder: product.placement_supply.PhysicalAssetIdentity = "chassis-srv5-placeholder" as product.placement_supply.PhysicalAssetIdentity
-data chassis_srv6_placeholder: product.placement_supply.PhysicalAssetIdentity = "chassis-srv6-placeholder" as product.placement_supply.PhysicalAssetIdentity
-data switch_01: product.placement_supply.PhysicalAssetIdentity = "switch-01" as product.placement_supply.PhysicalAssetIdentity
-data pdu_01: product.placement_supply.PhysicalAssetIdentity = "pdu-01" as product.placement_supply.PhysicalAssetIdentity
-data pi_controller: product.placement_supply.PhysicalAssetIdentity = "pi-controller" as product.placement_supply.PhysicalAssetIdentity
-
+data chassis_srv1: PhysicalAssetIdentity = "chassis-srv1" as PhysicalAssetIdentity
+data chassis_srv2: PhysicalAssetIdentity = "chassis-srv2" as PhysicalAssetIdentity
+data chassis_srv3: PhysicalAssetIdentity = "chassis-srv3" as PhysicalAssetIdentity
+data chassis_srv4: PhysicalAssetIdentity = "chassis-srv4" as PhysicalAssetIdentity
+data chassis_srv5_placeholder: PhysicalAssetIdentity = "chassis-srv5-placeholder" as PhysicalAssetIdentity
+data chassis_srv6_placeholder: PhysicalAssetIdentity = "chassis-srv6-placeholder" as PhysicalAssetIdentity
+data switch_01: PhysicalAssetIdentity = "switch-01" as PhysicalAssetIdentity
+data pdu_01: PhysicalAssetIdentity = "pdu-01" as PhysicalAssetIdentity
+data pi_controller: PhysicalAssetIdentity = "pi-controller" as PhysicalAssetIdentity
 
 // THE SIX host_srv ROWS THAT STOOD HERE WERE A SECOND AUTHORING OF AN IDENTITY THAT ALREADY HAD ONE.
-// They declared "srv1" through "srv6" as product.placement_supply.HostIdentity, byte-for-byte the values
+// They declared "srv1" through "srv6" as HostIdentity, byte-for-byte the values
 // gunbc.fleet_intent_network already declares as operator_host_srv1 through operator_host_srv6.
 // Two names, one concept, one set of values -- the section 3 nicknaming violation, and the reason
 // nothing ever caught it is that the two agreed EXACTLY. Any check anyone thought to write would
@@ -39,7 +37,7 @@ data pi_controller: product.placement_supply.PhysicalAssetIdentity = "pi-control
 // comparison, and these two authorings were never once in the same scope, so no site existed at
 // which the duplication could have been noticed at all.
 //
-// THE BRAND DID NOT HELP, AND THE REASON IS SHARPER THAN THE BRAND BEING WEAK. product.placement_supply.HostIdentity is a
+// THE BRAND DID NOT HELP, AND THE REASON IS SHARPER THAN THE BRAND BEING WEAK. HostIdentity is a
 // branded NonEmptyStr and BOTH authorings used it. A brand constrains what a value IS; it cannot
 // require that a value be authored ONCE, because nothing compels a would-be author to reach for an
 // existing declaration rather than write a new one of the same type. The brand made both
@@ -49,9 +47,9 @@ data pi_controller: product.placement_supply.PhysicalAssetIdentity = "pi-control
 // containment, cooling realizations, and DIMM and processor expectations BY host -- the identity is
 // an INDEX into this module's facts, never a fact this module establishes. That is why the repoint
 // is mechanical and why no verdict moves: nothing here reads a property OF the identity.
-data srv1_chassis_asset: product.placement_supply.PhysicalAsset = product.placement_supply.PhysicalAsset {
+data srv1_chassis_asset: PhysicalAsset = PhysicalAsset {
   identity: chassis_srv1,
-  catalog: std.decl_ref.DeclarationRef {
+  catalog: DeclarationRef {
     module_path: "extdeps.chassis.rosewill",
     decl_name: "rosewill_rsv_r4000u_catalog",
     field: WholeDeclaration,
@@ -60,9 +58,9 @@ data srv1_chassis_asset: product.placement_supply.PhysicalAsset = product.placem
   procurement: none,
 }
 
-data switch_01_asset: product.placement_supply.PhysicalAsset = product.placement_supply.PhysicalAsset {
+data switch_01_asset: PhysicalAsset = PhysicalAsset {
   identity: switch_01,
-  catalog: std.decl_ref.DeclarationRef {
+  catalog: DeclarationRef {
     module_path: "extdeps.network.tp_link",
     decl_name: "tp_link_tl_sg1024s_catalog",
     field: WholeDeclaration,
@@ -71,9 +69,9 @@ data switch_01_asset: product.placement_supply.PhysicalAsset = product.placement
   procurement: none,
 }
 
-data pdu_01_asset: product.placement_supply.PhysicalAsset = product.placement_supply.PhysicalAsset {
+data pdu_01_asset: PhysicalAsset = PhysicalAsset {
   identity: pdu_01,
-  catalog: std.decl_ref.DeclarationRef {
+  catalog: DeclarationRef {
     module_path: "extdeps.power.eaton_tripp_lite",
     decl_name: "eaton_tripp_lite_rs_1215_family_catalog",
     field: WholeDeclaration,
@@ -82,10 +80,10 @@ data pdu_01_asset: product.placement_supply.PhysicalAsset = product.placement_su
   procurement: none,
 }
 
-data rack_01_unobserved_residence: product.placement_supply.RackResidence = RackResidenceUnobserved
+data rack_01_unobserved_residence: RackResidence = RackResidenceUnobserved
 
-data fleet_host_spatial_facts: List<product.placement_supply.HostSpatialFacts> = [
-  product.placement_supply.HostSpatialFacts {
+data fleet_host_spatial_facts: List<HostSpatialFacts> = [
+  HostSpatialFacts {
     host: operator_host_srv1,
     asset: chassis_srv1,
     residence: rack_01_unobserved_residence,
@@ -93,7 +91,7 @@ data fleet_host_spatial_facts: List<product.placement_supply.HostSpatialFacts> =
     relay: RelayIncapable,
     bootstrap_need: BootstrapNotNeeded,
   },
-  product.placement_supply.HostSpatialFacts {
+  HostSpatialFacts {
     host: operator_host_srv2,
     asset: chassis_srv2,
     residence: rack_01_unobserved_residence,
@@ -101,7 +99,7 @@ data fleet_host_spatial_facts: List<product.placement_supply.HostSpatialFacts> =
     relay: RelayUnprovisioned,
     bootstrap_need: BootstrapNotNeeded,
   },
-  product.placement_supply.HostSpatialFacts {
+  HostSpatialFacts {
     host: operator_host_srv3,
     asset: chassis_srv3,
     residence: rack_01_unobserved_residence,
@@ -109,7 +107,7 @@ data fleet_host_spatial_facts: List<product.placement_supply.HostSpatialFacts> =
     relay: RelayUnprovisioned,
     bootstrap_need: BootstrapNotNeeded,
   },
-  product.placement_supply.HostSpatialFacts {
+  HostSpatialFacts {
     host: operator_host_srv4,
     asset: chassis_srv4,
     residence: rack_01_unobserved_residence,
@@ -117,7 +115,7 @@ data fleet_host_spatial_facts: List<product.placement_supply.HostSpatialFacts> =
     relay: RelayUnprovisioned,
     bootstrap_need: BootstrapNotNeeded,
   },
-  product.placement_supply.HostSpatialFacts {
+  HostSpatialFacts {
     host: operator_host_srv5,
     asset: chassis_srv5_placeholder,
     residence: rack_01_unobserved_residence,
@@ -125,7 +123,7 @@ data fleet_host_spatial_facts: List<product.placement_supply.HostSpatialFacts> =
     relay: RelayUnprovisioned,
     bootstrap_need: BootstrapNeeded,
   },
-  product.placement_supply.HostSpatialFacts {
+  HostSpatialFacts {
     host: operator_host_srv6,
     asset: chassis_srv6_placeholder,
     residence: rack_01_unobserved_residence,
@@ -146,12 +144,12 @@ data srv1_measured_wireless_note: String = "srv1 fleet controller measured Wirel
 // containment arm every other host component uses. product.cooling_qualification consumes these
 // rows to reach a catalog verdict, and gunbc.bmc_fan_converge requires that verdict before any
 // host may claim a thermally qualified fan configuration.
-data cooler_srv3: product.placement_supply.PhysicalAssetIdentity = "cooler-srv3" as product.placement_supply.PhysicalAssetIdentity
-data cooler_srv4: product.placement_supply.PhysicalAssetIdentity = "cooler-srv4" as product.placement_supply.PhysicalAssetIdentity
+data cooler_srv3: PhysicalAssetIdentity = "cooler-srv3" as PhysicalAssetIdentity
+data cooler_srv4: PhysicalAssetIdentity = "cooler-srv4" as PhysicalAssetIdentity
 
-data srv3_cooler_asset: product.placement_supply.PhysicalAsset = product.placement_supply.PhysicalAsset {
+data srv3_cooler_asset: PhysicalAsset = PhysicalAsset {
   identity: cooler_srv3,
-  catalog: std.decl_ref.DeclarationRef {
+  catalog: DeclarationRef {
     module_path: "extdeps.cooling.dynatron",
     decl_name: "dynatron_w1_catalog",
     field: WholeDeclaration,
@@ -160,9 +158,9 @@ data srv3_cooler_asset: product.placement_supply.PhysicalAsset = product.placeme
   procurement: none,
 }
 
-data srv4_cooler_asset: product.placement_supply.PhysicalAsset = product.placement_supply.PhysicalAsset {
+data srv4_cooler_asset: PhysicalAsset = PhysicalAsset {
   identity: cooler_srv4,
-  catalog: std.decl_ref.DeclarationRef {
+  catalog: DeclarationRef {
     module_path: "extdeps.cooling.dynatron",
     decl_name: "dynatron_w1_catalog",
     field: WholeDeclaration,
@@ -171,24 +169,24 @@ data srv4_cooler_asset: product.placement_supply.PhysicalAsset = product.placeme
   procurement: none,
 }
 
-data installed_cooler_containments: List<product.placement_supply.PhysicalContainment> = [
-  product.placement_supply.HostContainsComponent { host: operator_host_srv3, component: cooler_srv3 },
-  product.placement_supply.HostContainsComponent { host: operator_host_srv4, component: cooler_srv4 },
+data installed_cooler_containments: List<PhysicalContainment> = [
+  HostContainsComponent { host: operator_host_srv3, component: cooler_srv3 },
+  HostContainsComponent { host: operator_host_srv4, component: cooler_srv4 },
 ]
 
 // srv1/srv2 carry no cooler asset row: their installed cooling is UNOBSERVED — not absent, and
 // not assumed compatible. installed_cooling_verdict_for_host reaches InstalledCoolingUnobserved
 // for them, which admits fan observation and refuses thermal qualification, so the coverage
 // obligation stays loud instead of defaulting to a pass.
-data installed_cooling_realizations: List<product.cooling_qualification.InstalledCoolingRealization> = [
-  product.cooling_qualification.InstalledCoolingRealization {
+data installed_cooling_realizations: List<InstalledCoolingRealization> = [
+  InstalledCoolingRealization {
     host: operator_host_srv3,
     cooler_asset: cooler_srv3,
     cooler: dynatron_w1_catalog,
     processor: altra_max_m12830_catalog,
     baseboard_model: srv3_baseboard.catalog.model,
   },
-  product.cooling_qualification.InstalledCoolingRealization {
+  InstalledCoolingRealization {
     host: operator_host_srv4,
     cooler_asset: cooler_srv4,
     cooler: dynatron_w1_catalog,
@@ -197,7 +195,7 @@ data installed_cooling_realizations: List<product.cooling_qualification.Installe
   },
 ]
 
-data rack_01_catalog_units: std.measure.RackUnit = extdeps.rack.navepoint.navepoint_18u_open_frame_catalog.rack_units
+data rack_01_catalog_units: RackUnit = navepoint_18u_open_frame_catalog.rack_units
 
 // measure_add<Q, S> admits only operands of the SAME quantity and scale, so this sum is
 // dimensionally checked by construction — a Millimeter or a bare count cannot enter it.
@@ -207,8 +205,8 @@ fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
       a: measure_add(
         a: measure_add(
           a: measure_add(
-            a: extdeps.chassis.rosewill.rosewill_rsv_r4000u_catalog.rack_units,
-            b: extdeps.chassis.rosewill.rosewill_rsv_r4000u_catalog.rack_units,
+            a: rosewill_rsv_r4000u_catalog.rack_units,
+            b: rosewill_rsv_r4000u_catalog.rack_units,
           ),
           b: rosewill_rsv_z2600u_catalog.rack_units,
         ),
@@ -216,76 +214,115 @@ fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
       ),
       b: operator_switch_shelf_units,
     ),
-    b: extdeps.power.eaton_tripp_lite.eaton_tripp_lite_rs_1215_family_catalog.rack_units,
+    b: eaton_tripp_lite_rs_1215_family_catalog.rack_units,
   )
-  declared == nominal_rackmount_units_declared && rack_01_catalog_units == extdeps.rack.navepoint.navepoint_18u_open_frame_catalog.rack_units
+  declared == nominal_rackmount_units_declared && rack_01_catalog_units == navepoint_18u_open_frame_catalog.rack_units
 }
 
 // ---------------------------------------------------------------------------
 // INSTALLED DIMM AND PROCESSOR BILLS OF MATERIALS: what is expected, what has
 // actually been observed, and the refusal between them.
 //
-// The expectation below is the operator's stated belief that all four hosts
-// carry an eight-stick population of the SK Hynix part already cited in
-// extdeps.memory.sk_hynix. It is authored as an expectation and nothing else:
-// no PhysicalAsset row binds an installed DIMM here, because binding an asset
-// would assert that somebody read a part number off a slot, and for the
-// per-slot grain nobody has.
+// The expectations below are the operator's stated belief about each host's
+// population, and they are NO LONGER UNIFORM: srv1, srv3 and srv4 expect the
+// eight-stick Samsung population cited in extdeps.memory.samsung, while srv2
+// alone still expects the SK Hynix part, because its 64 GiB install failed
+// memory training and was reverted. They are authored as expectations and
+// nothing else: no PhysicalAsset row binds an installed DIMM here, because
+// binding an asset would assert that somebody read a part number off a slot,
+// and for the per-slot grain nobody has.
 //
-// THE EXPECTATION IS ALREADY REFUTED ON ONE HOST, and that is the mechanism
-// working rather than an authoring error. srv1 and srv2 confirm it against
-// their 2026-07-16 BMC Redfish populations; srv3's population from the same
-// read is seven HMA82GR7AFR8N-VK plus one HMA82GR7AFR4N-VK, so the uniform
-// expectation reaches DimmPopulationRefused with the exact part difference
-// named. The rows stay as authored rather than being quietly edited to match
-// srv3, because an expectation rewritten to fit the observation records
-// nothing and would have made this divergence invisible.
+// THIS BLOCK PREVIOUSLY DESCRIBED A UNIFORM HYNIX EXPECTATION REFUTED ON srv3
+// BY A 7+1 MIXED POPULATION. That was true of the 2026-07-16 reads and is now
+// history: the 2026-08-22 upgrade replaced srv3's mixed population outright.
+// The description is corrected rather than kept beside the new rows, because
+// prose that contradicts the rows under it is what the next reader believes.
+//
+// The rows are still never edited to match an observation. An expectation
+// rewritten to fit what was seen records nothing and makes a divergence
+// invisible; when the fleet moved, the expectations moved because the OPERATOR
+// changed what is expected, not because the observation disagreed.
 // ---------------------------------------------------------------------------
 
-data fleet_dimm_expectations: List<product.installed_bom_reconcile.HostDimmExpectation> = [
-  product.installed_bom_reconcile.HostDimmExpectation { host: operator_host_srv1, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
-  product.installed_bom_reconcile.HostDimmExpectation { host: operator_host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
-  product.installed_bom_reconcile.HostDimmExpectation { host: operator_host_srv3, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
-  product.installed_bom_reconcile.HostDimmExpectation { host: operator_host_srv4, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+// TWO SRV1 ROWS HAD TO BE EDITED TO MOVE ONE FACT, AND THAT IS A REPORTED DEFECT RATHER THAN A
+// REPAIRED ONE (2026-08-22). This list and the inline expectations inside fleet_dimm_verdicts
+// below are byte-identical copies of the same four expectations, and no PRODUCTION consumer reads
+// this list -- the live reconcile reads the inline copies. So the copies drift independently, and
+// the 2026-08-22 srv1 upgrade was landed against the verdict copies while this one kept naming the
+// Hynix part. Review caught it; the closure compile could not, because a stale-but-well-typed
+// catalog reference is a data disagreement rather than a type error.
+//
+// A DRIFT WITNESS CANNOT BE WRITTEN AGAINST THE VERDICTS, and that is the strongest argument for
+// fixing this by construction. The obvious cheap guard -- assert each row here equals the inline
+// copy -- has nothing to compare against: dimm_reconcile_verdict CONSUMES its expectation, and
+// DimmReconcileVerdict retains only host, counts and discrepancies, so the inline expectation is
+// not recoverable from fleet_dimm_verdicts by any reader. Validation is not merely weaker than
+// construction here; it is unavailable.
+//
+// NOT DISSOLVED HERE, DELIBERATELY. The construction fix is to derive the verdicts FROM this list
+// so srv1 has one row and the drift has no representation (DESIGN 5). That is the right change
+// and it is not this one: the module uses no map or pipeline idiom anywhere, so deriving would
+// mean introducing one on judgement, and an unconsumed declaration in this corpus may still be
+// read by a lens over the Node tree, which a name grep cannot rule out.
+//
+// AND A THIRD OBSTACLE, WHICH IS THE ONE THAT ACTUALLY DECIDES THE SHAPE: deriving the verdicts
+// means joining each expectation to its observation BY HOST, so the join needs an arm for a host
+// with no matching observation -- and the two candidate arms already in DimmReconcileVerdict are
+// both wrong for it. DimmObservationAbsent says an observation was sought and the host has none;
+// a lookup that found no row says the join could not be performed. Those have different owners and
+// opposite repairs, and collapsing them is exactly the not-applicable-versus-malformed conflation
+// DESIGN names -- an arm downstream of a lookup that returned Absent is not-applicable and needs
+// its own reason. So the join wants a new typed arm, which is a modeling decision about the
+// product-layer reconcile type and not a mechanical rewrite of this module.
+//
+// Three questions want an answer before the fork is removed, and none is answerable from inside
+// this diff.
+data fleet_dimm_expectations: List<HostDimmExpectation> = [
+  HostDimmExpectation { host: operator_host_srv1, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 },
+  HostDimmExpectation { host: operator_host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+  HostDimmExpectation { host: operator_host_srv3, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 },
+  HostDimmExpectation { host: operator_host_srv4, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 },
 ]
 
-data srv1_dimm_observation: product.installed_bom_reconcile.HostDimmObservation = product.installed_bom_reconcile.DimmPopulationObserved {
+data srv1_dimm_observation: HostDimmObservation = DimmPopulationObserved {
   host: operator_host_srv1,
   rows: srv1_memory_population.rows,
 }
 
-data srv2_dimm_observation: product.installed_bom_reconcile.HostDimmObservation = product.installed_bom_reconcile.DimmPopulationObserved {
+data srv2_dimm_observation: HostDimmObservation = DimmPopulationObserved {
   host: operator_host_srv2,
   rows: srv2_memory_population.rows,
 }
 
-data srv3_dimm_observation: product.installed_bom_reconcile.HostDimmObservation = product.installed_bom_reconcile.DimmPopulationObserved {
+data srv3_dimm_observation: HostDimmObservation = DimmPopulationObserved {
   host: operator_host_srv3,
   rows: srv3_memory_population.rows,
 }
 
-data srv4_dimm_observation: product.installed_bom_reconcile.HostDimmObservation = product.installed_bom_reconcile.DimmObservationAbsent {
+data srv4_dimm_observation: HostDimmObservation = DimmPopulationObserved {
   host: operator_host_srv4,
-  cause: "no per-DIMM read of srv4 exists at either grain: the BMC Redfish read of 192.168.1.195 was never authenticated (gunbc.fleet_intent srv4_memory_population_deferral) and no dmidecode receipt has been supplied",
+  rows: srv4_memory_population.rows,
 }
 
-data fleet_dimm_verdicts: List<product.installed_bom_reconcile.DimmReconcileVerdict> = [
-  dimm_reconcile_verdict(
-    expectation: product.installed_bom_reconcile.HostDimmExpectation { host: operator_host_srv1, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
-    observation: srv1_dimm_observation,
-  ),
-  dimm_reconcile_verdict(
-    expectation: product.installed_bom_reconcile.HostDimmExpectation { host: operator_host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
-    observation: srv2_dimm_observation,
-  ),
-  dimm_reconcile_verdict(
-    expectation: product.installed_bom_reconcile.HostDimmExpectation { host: operator_host_srv3, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
-    observation: srv3_dimm_observation,
-  ),
-  dimm_reconcile_verdict(
-    expectation: product.installed_bom_reconcile.HostDimmExpectation { host: operator_host_srv4, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
-    observation: srv4_dimm_observation,
-  ),
+// EACH HOST'S EXPECTATION IS NAMED because it has more than one consumer. It was previously
+// inline in fleet_dimm_verdicts below, and the witness that reads these same live observations
+// re-authored its own copy -- so when srv1's population moved from Hynix to Samsung, the
+// production row moved and the witness copy did not, and the required floor went red on two
+// claims whose subject had not changed at all. A second authoring of one fact is the defect;
+// naming the row is what removes the place for the copy to live.
+data srv1_dimm_expectation: HostDimmExpectation = HostDimmExpectation { host: operator_host_srv1, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 }
+
+data srv2_dimm_expectation: HostDimmExpectation = HostDimmExpectation { host: operator_host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 }
+
+data srv3_dimm_expectation: HostDimmExpectation = HostDimmExpectation { host: operator_host_srv3, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 }
+
+data srv4_dimm_expectation: HostDimmExpectation = HostDimmExpectation { host: operator_host_srv4, catalog: m393a8g40d40_crb0q_catalog, stick_count: 8 }
+
+data fleet_dimm_verdicts: List<DimmReconcileVerdict> = [
+  dimm_reconcile_verdict(expectation: srv1_dimm_expectation, observation: srv1_dimm_observation),
+  dimm_reconcile_verdict(expectation: srv2_dimm_expectation, observation: srv2_dimm_observation),
+  dimm_reconcile_verdict(expectation: srv3_dimm_expectation, observation: srv3_dimm_observation),
+  dimm_reconcile_verdict(expectation: srv4_dimm_expectation, observation: srv4_dimm_observation),
 ]
 
 // THE PROCESSOR HALF IS UNOBSERVED ON EVERY HOST. gunbc.fleet_intent's
@@ -294,86 +331,113 @@ data fleet_dimm_verdicts: List<product.installed_bom_reconcile.DimmReconcileVerd
 // modeled intent rather than a per-host reading of what is in the socket. The
 // four rows below say so, and they are what a dmidecode -t processor receipt
 // dissolves.
-data fleet_processor_expectations: List<product.installed_bom_reconcile.HostProcessorExpectation> = [
-  product.installed_bom_reconcile.HostProcessorExpectation { host: operator_host_srv1, catalog: altra_max_m12830_catalog },
-  product.installed_bom_reconcile.HostProcessorExpectation { host: operator_host_srv2, catalog: altra_max_m12830_catalog },
-  product.installed_bom_reconcile.HostProcessorExpectation { host: operator_host_srv3, catalog: altra_max_m12830_catalog },
-  product.installed_bom_reconcile.HostProcessorExpectation { host: operator_host_srv4, catalog: altra_max_m12830_catalog },
+data fleet_processor_expectations: List<HostProcessorExpectation> = [
+  HostProcessorExpectation { host: operator_host_srv1, catalog: altra_max_m12830_catalog },
+  HostProcessorExpectation { host: operator_host_srv2, catalog: altra_max_m12830_catalog },
+  HostProcessorExpectation { host: operator_host_srv3, catalog: altra_max_m12830_catalog },
+  HostProcessorExpectation { host: operator_host_srv4, catalog: altra_max_m12830_catalog },
 ]
 
-data fleet_processor_observation_absent_cause: std.types.NonEmptyStr = "no per-host processor reading exists: the fleet processor is modeled intent (gunbc.fleet_intent fleet_intent_cpu) and no dmidecode -t processor receipt has been supplied"
+data fleet_processor_observation_absent_cause: NonEmptyStr = "no per-host processor reading exists: the fleet processor is modeled intent (gunbc.fleet_intent fleet_intent_cpu) and no dmidecode -t processor receipt has been supplied"
 
-data fleet_processor_observations: List<product.installed_bom_reconcile.HostProcessorObservation> = [
-  product.installed_bom_reconcile.ProcessorObservationAbsent { host: operator_host_srv1, cause: fleet_processor_observation_absent_cause },
-  product.installed_bom_reconcile.ProcessorObservationAbsent { host: operator_host_srv2, cause: fleet_processor_observation_absent_cause },
-  product.installed_bom_reconcile.ProcessorObservationAbsent { host: operator_host_srv3, cause: fleet_processor_observation_absent_cause },
-  product.installed_bom_reconcile.ProcessorObservationAbsent { host: operator_host_srv4, cause: fleet_processor_observation_absent_cause },
+data fleet_processor_observations: List<HostProcessorObservation> = [
+  ProcessorObservationAbsent { host: operator_host_srv1, cause: fleet_processor_observation_absent_cause },
+  ProcessorObservationAbsent { host: operator_host_srv2, cause: fleet_processor_observation_absent_cause },
+  ProcessorObservationAbsent { host: operator_host_srv3, cause: fleet_processor_observation_absent_cause },
+  ProcessorObservationAbsent { host: operator_host_srv4, cause: fleet_processor_observation_absent_cause },
 ]
 
-data fleet_processor_verdicts: List<product.installed_bom_reconcile.ProcessorReconcileVerdict> = [
+data fleet_processor_verdicts: List<ProcessorReconcileVerdict> = [
   processor_reconcile_verdict(
-    expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: operator_host_srv1, catalog: altra_max_m12830_catalog },
-    observation: product.installed_bom_reconcile.ProcessorObservationAbsent { host: operator_host_srv1, cause: fleet_processor_observation_absent_cause },
+    expectation: HostProcessorExpectation { host: operator_host_srv1, catalog: altra_max_m12830_catalog },
+    observation: ProcessorObservationAbsent { host: operator_host_srv1, cause: fleet_processor_observation_absent_cause },
   ),
   processor_reconcile_verdict(
-    expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: operator_host_srv2, catalog: altra_max_m12830_catalog },
-    observation: product.installed_bom_reconcile.ProcessorObservationAbsent { host: operator_host_srv2, cause: fleet_processor_observation_absent_cause },
+    expectation: HostProcessorExpectation { host: operator_host_srv2, catalog: altra_max_m12830_catalog },
+    observation: ProcessorObservationAbsent { host: operator_host_srv2, cause: fleet_processor_observation_absent_cause },
   ),
   processor_reconcile_verdict(
-    expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: operator_host_srv3, catalog: altra_max_m12830_catalog },
-    observation: product.installed_bom_reconcile.ProcessorObservationAbsent { host: operator_host_srv3, cause: fleet_processor_observation_absent_cause },
+    expectation: HostProcessorExpectation { host: operator_host_srv3, catalog: altra_max_m12830_catalog },
+    observation: ProcessorObservationAbsent { host: operator_host_srv3, cause: fleet_processor_observation_absent_cause },
   ),
   processor_reconcile_verdict(
-    expectation: product.installed_bom_reconcile.HostProcessorExpectation { host: operator_host_srv4, catalog: altra_max_m12830_catalog },
-    observation: product.installed_bom_reconcile.ProcessorObservationAbsent { host: operator_host_srv4, cause: fleet_processor_observation_absent_cause },
+    expectation: HostProcessorExpectation { host: operator_host_srv4, catalog: altra_max_m12830_catalog },
+    observation: ProcessorObservationAbsent { host: operator_host_srv4, cause: fleet_processor_observation_absent_cause },
   ),
 ]
 
 // ---------------------------------------------------------------------------
-// THE 64 GiB DIMM LOT: thirty-two sticks, in transit, part number unread.
+// THE 64 GiB DIMM LOT: thirty-two sticks, delivered, part number read.
 //
-// The lot goes on the ledger before anybody has read its part number, because
-// the supply commitment is real now and a planner that could not see it would
-// keep treating the current populations as the fleet's memory ceiling. What
-// the lot does NOT do is claim anything nobody has established: the catalog
-// identity is CatalogRowUnread with the read obligation stated, the landed
-// cost is LandedCostUnsettled because the lot has not settled, and the receipt
-// is ReceiptHeldPrivately per the operator's 2026-08-19 ruling that purchase
-// provenance and money are private-tree facts. No price and no order identity
-// appear here, and after the landed-cost split in product.inventory there is
-// no field for either to hide in.
+// The lot went on the ledger before anybody had read its part number, because
+// the supply commitment was real then and a planner that could not see it would
+// have kept treating the old populations as the fleet's memory ceiling. THE READ
+// OBLIGATION IS NOW DISCHARGED: the sticks arrived, the label was read, and the
+// cited catalog row exists, so the catalog identity is CatalogRowExact naming
+// extdeps.memory.samsung m393a8g40d40_crb0q_catalog. What the lot still does NOT
+// claim is anything nobody has established: the landed cost is LandedCostUnsettled
+// because the lot has not settled, and the receipt is ReceiptHeldPrivately per the
+// operator's 2026-08-19 ruling that purchase provenance and money are private-tree
+// facts. No price and no order identity appear here, and after the landed-cost
+// split in product.inventory there is no field for either to hide in.
 //
-// THE LEDGER HAS EXACTLY ONE EVENT, AND THE MISSING ONES ARE THE POINT. The
-// intended split is eight sticks per host, but a reservation in this ledger
-// moves stock out of Available, and nothing is Available: thirty-two units sit
-// in AwaitingReceipt until a LotReceived and a QuantityQualified say otherwise.
-// So authoring four QuantityReserved events today would be refused by the
-// ledger - correctly, because they would assert that stock on hand had been
-// allocated when the stock is on a truck. The per-host figures are therefore
-// carried as an INTENT below, which is what they actually are, and they become
-// reservations through ordinary ledger events when the sticks arrive.
+// CatalogRowExact MEANS 'CITED', NOT 'RESOLVED' -- see product.inventory
+// catalog_ref_resolution_is_unchecked_note. The DeclarationRef below was checked
+// against the tree by hand when it was authored; nothing in the substrate checks
+// it, and that stays true until feature:cited-symbol-resolution lands.
+//
+// THE LEDGER RECORDS RECEIPT AND STOPS THERE, AND THE REMAINING GAP IS DECLARED
+// RATHER THAN GUESSED. All thirty-two sticks arrived, so LotReceived is authored:
+// modeling delivered hardware as AwaitingReceipt was a known-false state, and a
+// known-false state does not become acceptable by being annotated. What is NOT
+// yet recorded is qualification and installation -- eight sticks in each of srv1,
+// srv3 and srv4, and srv2's eight installed, failed and removed -- so the balance
+// reports thirty-two received and unqualified, which is conservative and true:
+// no stick carries a recorded qualification event, whatever three hosts are
+// currently doing with them.
+//
+// THOSE EVENTS ARE NOT AUTHORED HERE, for two reasons that are obligations and
+// not preferences. QuantityInstalled requires a PhysicalAssetIdentity per stick;
+// the Redfish reads observed eight distinct serials per host but this session did
+// not record them, so authoring the event would mean minting identities for
+// physical objects whose real identifiers exist and were not captured -- inventing
+// what could have been read (DESIGN section 5). And srv2's eight sticks have no
+// established disposition: a host that fails training does not make its modules
+// defective, so whether they are available spare or quarantined-for-srv2 is an
+// operator judgment about parts nobody has retested, not something to infer from
+// the host's failure. QuantityQualified's split depends on that same answer.
+//
+// DISSOLVE-ON: one Redfish read per upgraded host capturing per-DIMM SerialNumber,
+// plus an operator disposition for srv2's eight. Until then the per-host figures
+// stay an INTENT below, which is what they still are -- the intent was met for
+// three hosts and not the fourth, and the ledger says so by being silent rather
+// than by asserting a reservation nobody can back.
 // ---------------------------------------------------------------------------
 
-data fleet_lot_allocation_seed: product.inventory.InventoryLotAllocator = inventory_lot_allocator_initial()
+data fleet_lot_allocation_seed: InventoryLotAllocator = inventory_lot_allocator_initial()
 
-data dimm_lot_64gib_32x_identity: product.inventory.InventoryLotIdentity = mint_inventory_lot_identity(alloc: fleet_lot_allocation_seed).id
+data dimm_lot_64gib_32x_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: fleet_lot_allocation_seed).id
 
-data fleet_lot_allocator_after_dimm_lot: product.inventory.InventoryLotAllocator = mint_inventory_lot_identity(alloc: fleet_lot_allocation_seed).alloc
+data fleet_lot_allocator_after_dimm_lot: InventoryLotAllocator = mint_inventory_lot_identity(alloc: fleet_lot_allocation_seed).alloc
 
-data dimm_lot_64gib_32x: product.inventory.ProcurementLot = product.inventory.ProcurementLot {
+data dimm_lot_64gib_32x: ProcurementLot = ProcurementLot {
   identity: dimm_lot_64gib_32x_identity,
   receipt: ReceiptHeldPrivately,
-  catalog: product.inventory.CatalogRowUnread {
-    observed_family: "64 GiB DDR4 DIMM, exact vendor and part unread" as std.types.NonEmptyStr,
-    read_obligation: "read the manufacturer and exact part number off the delivered sticks or the order confirmation, author the cited DramModuleCatalogRow in extdeps.memory against the manufacturer datasheet with the part number decomposed onto chip_width, rank_count and buffering, then replace this arm with CatalogRowExact naming that row" as std.types.NonEmptyStr,
+  catalog: CatalogRowExact {
+    row: DeclarationRef {
+      module_path: "extdeps.memory.samsung",
+      decl_name: "m393a8g40d40_crb0q_catalog",
+      field: WholeDeclaration,
+    },
   },
-  display_label: "64 GiB DIMM lot, 32 sticks, fleet memory uplift" as std.types.NonEmptyStr,
+  display_label: "64 GiB DIMM lot, 32 sticks, fleet memory uplift" as NonEmptyStr,
   quantity_acquired: 32,
   landed_cost: LandedCostUnsettled,
 }
 
-data dimm_lot_64gib_32x_ledger: List<product.inventory.InventoryEvent> = [
-  product.inventory.LotAcquired { lot: dimm_lot_64gib_32x_identity },
+data dimm_lot_64gib_32x_ledger: List<InventoryEvent> = [
+  LotAcquired { lot: dimm_lot_64gib_32x_identity },
+  LotReceived { lot: dimm_lot_64gib_32x_identity, quantity: 32 },
 ]
 
 // The intended destination of the lot, one row per host. This is an INTENT and
@@ -382,9 +446,9 @@ data dimm_lot_64gib_32x_ledger: List<product.inventory.InventoryEvent> = [
 // typed fact rather than prose, and it is discharged - not restated - by the
 // QuantityReserved events that follow receipt and qualification.
 type FleetLotAllocationIntent {
-  lot: product.inventory.InventoryLotIdentity
-  host: product.placement_supply.HostIdentity
-  intended_quantity: std.nat.Nat
+  lot: InventoryLotIdentity
+  host: HostIdentity
+  intended_quantity: Nat
 }
 
 data dimm_lot_64gib_32x_intended_allocation: List<FleetLotAllocationIntent> = [
@@ -394,7 +458,7 @@ data dimm_lot_64gib_32x_intended_allocation: List<FleetLotAllocationIntent> = [
   FleetLotAllocationIntent { lot: dimm_lot_64gib_32x_identity, host: operator_host_srv4, intended_quantity: 8 },
 ]
 
-fn intended_allocation_total(rows: List<FleetLotAllocationIntent>) -> std.nat.Nat {
+fn intended_allocation_total(rows: List<FleetLotAllocationIntent>) -> Nat {
   if rows.length() == 0 {
     0
   } else {

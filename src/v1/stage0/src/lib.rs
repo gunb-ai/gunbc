@@ -140,6 +140,7 @@ pub mod v1_rt;
 pub mod v1_std_core;
 pub mod v1_test_non_ascii_perf_fixture;
 pub mod v1_tests_claim_checkpoint_identity_keying_witness_test;
+pub mod v1_tests_claim_transport_roster_closure_witness_test;
 pub mod wt_a;
 pub mod wt_b;
 pub mod wt_common;

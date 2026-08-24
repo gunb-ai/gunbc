@@ -161,7 +161,7 @@ pub fn semver_identifier_label(id: Rc<SemVerIdentifier>) -> String {
 pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> String {
     Rc::new({
         let mut __result = Vec::new();
-        for id in ids.clone().iter().cloned() {
+        for id in ids.iter().cloned() {
             __result.push(semver_identifier_label(id.clone()));
         }
         __result

@@ -10,6 +10,7 @@ data mod_ddr4_32g_1rx8: extdeps.memory.types.DramModuleCatalogRow = extdeps.memo
   data_rate_mts: 3200,
   ecc: true,
   buffering: Registered,
+  die_stacking: MonolithicDie,
   chip_width: bit_width(count: 8),
   rank_count: 1,
 }
@@ -22,6 +23,7 @@ data mod_ddr5_32g_1rx8: extdeps.memory.types.DramModuleCatalogRow = extdeps.memo
   data_rate_mts: 4800,
   ecc: true,
   buffering: Registered,
+  die_stacking: MonolithicDie,
   chip_width: bit_width(count: 8),
   rank_count: 1,
 }

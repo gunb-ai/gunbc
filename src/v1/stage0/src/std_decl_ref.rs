@@ -105,8 +105,7 @@ pub fn declaration_ref_in_list(
     target: Rc<DeclarationRef>,
     refs: Rc<Vec<Rc<DeclarationRef>>>,
 ) -> bool {
-    refs.clone()
-        .iter()
+    refs.iter()
         .cloned()
         .fold(false, |acc: bool, r: Rc<DeclarationRef>| {
             (acc || declaration_ref_eq(target.clone(), r.clone()))

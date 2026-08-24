@@ -1,6 +1,5 @@
 module test.claim.runner_lifecycle
 
-
 test fn witness_add_sequence_caps_before_start() -> Bool {
   runner_slot_caps_precede_start()
     && runner_slot_add_step_index(step: AddStepMemoryCaps) == 8
@@ -12,7 +11,7 @@ test fn witness_add_sequence_caps_before_start() -> Bool {
 test fn witness_disk_preflight_sufficient_at_apply_width() -> Bool {
   let required = runner_width_disk_required(requested_width: 6)
   let free = byte_size(byte_size_count(b: required) + 1)
-  match runner_width_disk_preflight(requested_width: 6, disk: gunbc.host_disk_observation.DiskObserved { free_bytes: free, observed_on: "srv4" as std.types.NonEmptyStr }) {
+  match runner_width_disk_preflight(requested_width: 6, disk: DiskObserved { free_bytes: free, observed_on: "srv4" as NonEmptyStr }) {
     DiskHeadroomSufficient { requested_width: w, required: r, observed_free: o } =>
       w == 6 && byte_size_count(b: r) == byte_size_count(b: required) && byte_size_count(b: o) > byte_size_count(b: r)
     DiskHeadroomInsufficient { requested_width: _, required: _, observed_free: _ } => false
@@ -23,7 +22,7 @@ test fn witness_disk_preflight_sufficient_at_apply_width() -> Bool {
 test fn witness_disk_preflight_insufficient_refuses_not_fallback() -> Bool {
   let required = runner_width_disk_required(requested_width: 6)
   let free = byte_size(byte_size_count(b: required) - 1)
-  match runner_width_disk_preflight(requested_width: 6, disk: gunbc.host_disk_observation.DiskObserved { free_bytes: free, observed_on: "srv4" as std.types.NonEmptyStr }) {
+  match runner_width_disk_preflight(requested_width: 6, disk: DiskObserved { free_bytes: free, observed_on: "srv4" as NonEmptyStr }) {
     DiskHeadroomInsufficient { requested_width: w, required: r, observed_free: o } =>
       w == 6 && byte_size_count(b: o) < byte_size_count(b: r)
     DiskHeadroomSufficient { requested_width: _, required: _, observed_free: _ } => false
@@ -34,7 +33,7 @@ test fn witness_disk_preflight_insufficient_refuses_not_fallback() -> Bool {
 test fn witness_disk_preflight_unobservable_refuses_not_width_five() -> Bool {
   match runner_width_disk_preflight(
     requested_width: 6,
-    disk: gunbc.host_disk_observation.DiskUnobserved { reason: "df producer scaffold" },
+    disk: DiskUnobserved { reason: "df producer scaffold" },
   ) {
     DiskHeadroomUnobserved { requested_width: w, reason: _ } => w == 6
     DiskHeadroomSufficient { requested_width: _, required: _, observed_free: _ } => false
@@ -42,7 +41,7 @@ test fn witness_disk_preflight_unobservable_refuses_not_width_five() -> Bool {
   }
     && match runner_width_disk_preflight(
       requested_width: 6,
-      disk: gunbc.host_disk_observation.DiskObservationRefused { detail: "reach refused" as std.types.NonEmptyStr },
+      disk: DiskObservationRefused { detail: "reach refused" as NonEmptyStr },
     ) {
       DiskHeadroomUnobserved { requested_width: w, reason: r } => w == 6 && string_contains(s: r, pattern: "reach refused")
       DiskHeadroomSufficient { requested_width: _, required: _, observed_free: _ } => false
@@ -50,16 +49,20 @@ test fn witness_disk_preflight_unobservable_refuses_not_width_five() -> Bool {
     }
 }
 
-test fn witness_srv3_srv4_committed_width_six() -> Bool {
-  gunbc_runner_slot_allocation_srv3.slots_per_host == 6
-    && gunbc_runner_slot_allocation_srv4.slots_per_host == 6
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 6
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 6
+// RENAMED 2026-08-23: the width is 21, not six. The two hosts still agree with each other and with
+// gunbc_runner_slots_per_host, which is what this row actually checks -- that the materialized
+// per-host allocation rows and the function that derives width have not drifted apart. Naming the
+// number in the test's own identity meant the name went stale the moment the fleet's memory did.
+test fn witness_srv3_srv4_committed_width_agrees_with_the_derivation() -> Bool {
+  gunbc_runner_slot_allocation_srv3.slots_per_host == 21
+    && gunbc_runner_slot_allocation_srv4.slots_per_host == 21
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 21
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 21
 }
 
 test fn witness_host_capacity_receipt_converged_shape() -> Bool {
   let w = 3
-  let receipt = gunbc.runner_lifecycle.HostRunnerCapacityReceipt {
+  let receipt = HostRunnerCapacityReceipt {
     host: operator_host_srv3,
     requested_width: w,
     materialized_count: w,
@@ -73,7 +76,7 @@ test fn witness_host_capacity_receipt_converged_shape() -> Bool {
 
 test fn witness_RED_host_capacity_receipt_one_count_short_does_not_converge() -> Bool {
   let w = 3
-  !host_runner_capacity_converged(receipt: gunbc.runner_lifecycle.HostRunnerCapacityReceipt {
+  !host_runner_capacity_converged(receipt: HostRunnerCapacityReceipt {
     host: operator_host_srv3,
     requested_width: w,
     materialized_count: w,
@@ -82,7 +85,7 @@ test fn witness_RED_host_capacity_receipt_one_count_short_does_not_converge() ->
     online_count: w - 1,
     slots: [],
   })
-    && !host_runner_capacity_converged(receipt: gunbc.runner_lifecycle.HostRunnerCapacityReceipt {
+    && !host_runner_capacity_converged(receipt: HostRunnerCapacityReceipt {
       host: operator_host_srv3,
       requested_width: w,
       materialized_count: w - 1,
@@ -94,7 +97,7 @@ test fn witness_RED_host_capacity_receipt_one_count_short_does_not_converge() ->
 }
 
 test fn witness_slot_identity_formats_zero_padded_unit() -> Bool {
-  let slot = gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
+  let slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
   runner_slot_instance_name(slot: slot) == "srv3-06"
     && runner_slot_unit_name(slot: slot) == "actions-runner@srv3-06.service"
 }
@@ -120,4 +123,36 @@ test fn the_fabric_slot_cannot_be_registered_and_the_gate_is_not_vacuous() -> Bo
   !sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv3, slot_index: 6))
     && sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv4, slot_index: 6))
     && sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: operator_host_srv3, slot_index: 5))
+}
+
+// THE COLLISION ROW. Before the suffix fork was dissolved, runner_incarnation enumerated indices 1
+// through 8 and returned the literal "00" for everything above, while the other four sites derived
+// the pad. So at index 9 the fleet had two answers -- srv3-09 and srv3-00 -- and worse, EVERY index
+// above 8 produced that same "00", meaning two distinct slots would contend for one registration in
+// the GitHub runner namespace. This row goes red against the enumerator and green against the
+// derived rule, and it is written at 9 because that is the first index where they differed.
+test fn the_incarnation_name_agrees_with_the_slot_name_above_the_old_enumerated_range() -> Bool {
+  let slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 9 }
+  (runner_slot_incarnation(host: operator_host_srv3, slot_index: 9, unit_active: true).registration_name as String)
+    == runner_slot_instance_name(slot: slot)
+    && runner_slot_instance_name(slot: slot) == "srv3-09"
+}
+
+// NON-COLLISION, STATED AS THE PROPERTY RATHER THAN AS TWO SAMPLES. Two different indices above the
+// old enumerated range must not share a name. Under the enumerator both were "00"; under the derived
+// rule they differ. Without this row the one above is satisfied by any function that happens to
+// return "srv3-09" at 9, including another bucket with one more arm.
+test fn two_indices_above_the_old_range_do_not_share_a_registration_name() -> Bool {
+  runner_slot_index_suffix(index: 9) != runner_slot_index_suffix(index: 10)
+    && runner_slot_index_suffix(index: 10) != runner_slot_index_suffix(index: 11)
+    && runner_slot_index_suffix(index: 9) == "09"
+    && runner_slot_index_suffix(index: 10) == "10"
+}
+
+// THE UNCHANGED-BELOW-THE-RANGE CONTROL. The consolidation must not move any name the fleet actually
+// uses today, so the committed range keeps its existing spelling.
+test fn the_suffix_is_unchanged_across_the_committed_range() -> Bool {
+  runner_slot_index_suffix(index: 1) == "01"
+    && runner_slot_index_suffix(index: 5) == "05"
+    && runner_slot_index_suffix(index: 6) == "06"
 }

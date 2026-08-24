@@ -1,61 +1,60 @@
 module v2.test.claim.operand_flow_witness
 
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-
-data operand_flow_shared_node: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^operand_flow_shared } },
+data operand_flow_shared_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^operand_flow_shared } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data operand_flow_consumer_a_node: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^operand_flow_consumer_a } },
+data operand_flow_consumer_a_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^operand_flow_consumer_a } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data operand_flow_consumer_b_node: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^operand_flow_consumer_b } },
+data operand_flow_consumer_b_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^operand_flow_consumer_b } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data operand_flow_shared_hash: std.content_hash.ContentHash = content_hash(n: operand_flow_shared_node)
+data operand_flow_shared_hash: ContentHash = Fnv1a64(content_hash(n: operand_flow_shared_node))
 
-data operand_flow_edge_a: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
+data operand_flow_edge_a: DependencyView = DependencyView {
   source: operand_flow_shared_node,
   dependent: operand_flow_consumer_a_node,
   kind: DataDependsOn,
   usage_site: operand_flow_consumer_a_node
 }
 
-data operand_flow_edge_b: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
+data operand_flow_edge_b: DependencyView = DependencyView {
   source: operand_flow_shared_node,
   dependent: operand_flow_consumer_b_node,
   kind: DataDependsOn,
   usage_site: operand_flow_consumer_b_node
 }
 
-data operand_flow_edge_non_data: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
+data operand_flow_edge_non_data: DependencyView = DependencyView {
   source: operand_flow_shared_node,
   dependent: operand_flow_consumer_a_node,
   kind: BarrierBefore,
   usage_site: operand_flow_consumer_a_node
 }
 
-data operand_flow_settled_artifact: v2.workflow.realization_runner.NodeKeyedGraphArtifact = v2.workflow.realization_runner.NodeKeyedGraphArtifact {
+data operand_flow_settled_artifact: NodeKeyedGraphArtifact = NodeKeyedGraphArtifact {
   rows: [
-    v2.workflow.realization_runner.NodeKeyedGraphRow {
+    NodeKeyedGraphRow {
       content_hash: operand_flow_shared_hash,
-      encoded_length: std.measure.byte_size(count: 9),
+      encoded_length: byte_size(count: 9),
       child_refs: []
     }
   ],
   entries: []
 }
 
-data operand_flow_missing_row_artifact: v2.workflow.realization_runner.NodeKeyedGraphArtifact = v2.workflow.realization_runner.NodeKeyedGraphArtifact {
+data operand_flow_missing_row_artifact: NodeKeyedGraphArtifact = NodeKeyedGraphArtifact {
   rows: [],
   entries: []
 }
@@ -81,7 +80,7 @@ test fn witness_shared_operand_consumers_agree() -> Bool {
         OperandFlow { edge: _, operand: operand_b, footprint: footprint_b } =>
           (operand_a == operand_b)
             && (operand_a == operand_flow_shared_hash)
-            && (std.measure.byte_size_count(b: footprint_a) == std.measure.byte_size_count(b: footprint_b))
+            && (byte_size_count(b: footprint_a) == byte_size_count(b: footprint_b))
         OperandFlowRefused { edge: _, cause: _ } => false
       }
     OperandFlowRefused { edge: _, cause: _ } => false
@@ -112,4 +111,3 @@ test fn witness_operand_flows_is_total_over_edges() -> Bool {
   )
   length(xs: rows) == 3
 }
-

@@ -1,23 +1,21 @@
 module extdeps.llm.cli
 
-
-
-data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
-  uri: extdeps.uri.Uri {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
     scheme: Https
     locator: "github.com/openai/codex"
   }
 }
 
-data codex_noninteractive_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
-  uri: extdeps.uri.Uri {
+data codex_noninteractive_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
     scheme: Https
     locator: "learn.chatgpt.com/docs/non-interactive-mode"
   }
 }
 
-data claude_cli_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
-  uri: extdeps.uri.Uri {
+data claude_cli_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
     scheme: Https
     locator: "docs.claude.com/en/docs/claude-code/cli-reference"
   }
@@ -223,10 +221,10 @@ data codex_device_prompt_input_contract_note: String = "WHAT codex EMITS IS A co
 
 type CodexDeviceLoginPrompt
   = CodexDeviceLoginReady {
-      verification_url: std.types.NonEmptyStr,
-      user_code: std.types.NonEmptyStr,
+      verification_url: NonEmptyStr,
+      user_code: NonEmptyStr,
     }
-  | CodexDeviceLoginPromptUnavailable { reason: std.types.NonEmptyStr }
+  | CodexDeviceLoginPromptUnavailable { reason: NonEmptyStr }
 
 data codex_device_prompt_marker_url: String = "https://auth.openai.com/codex/device"
 data codex_device_prompt_marker_code_line: String = "Enter this one-time code"
@@ -254,26 +252,26 @@ fn codex_device_prompt_code_scan(lines: List<String>) -> CodexCodeScan {
   })
 }
 
-fn codex_device_prompt_parse(pane: std.types.RenderedTerminalText) -> CodexDeviceLoginPrompt {
+fn codex_device_prompt_parse(pane: RenderedTerminalText) -> CodexDeviceLoginPrompt {
   let lines = split(s: pane as String, delimiter: "\n") |> map(l => trim(l))
   let url_hit = lines
     |> filter(l => string_contains(s: l, pattern: codex_device_prompt_marker_url))
     |> first
   match url_hit {
     Absent => CodexDeviceLoginPromptUnavailable {
-      reason: "no verification url in pane" as std.types.NonEmptyStr,
+      reason: "no verification url in pane" as NonEmptyStr,
     }
     Present { value: url_line } =>
       match codex_device_prompt_code_scan(lines: lines) {
         CodeScanSeeking => CodexDeviceLoginPromptUnavailable {
-          reason: "verification url present but no one-time code line" as std.types.NonEmptyStr,
+          reason: "verification url present but no one-time code line" as NonEmptyStr,
         }
         CodeScanAfterMarker => CodexDeviceLoginPromptUnavailable {
-          reason: "one-time code line present but code not yet rendered" as std.types.NonEmptyStr,
+          reason: "one-time code line present but code not yet rendered" as NonEmptyStr,
         }
         CodeScanFound { code } => CodexDeviceLoginReady {
-          verification_url: url_line as std.types.NonEmptyStr,
-          user_code: code as std.types.NonEmptyStr,
+          verification_url: url_line as NonEmptyStr,
+          user_code: code as NonEmptyStr,
         }
       }
   }
@@ -288,7 +286,7 @@ fn shape_codex_exec_argv_for_program(
   spec: CodexExecSpec,
 ) -> List<String> {
   shape_codex_exec_argv_for_programs(
-    env_program: "env",
+    env_program: env_path_resolved_program as String,
     program: program,
     codex_home: codex_home,
     cwd: cwd,

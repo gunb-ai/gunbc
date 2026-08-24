@@ -1,69 +1,68 @@
 module v2.test.materialize.materialize_witness
 
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-
-fn atom(sym: v2.std.node.Symbol) -> v2.std.node.Node {
-  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } }, children: [])
+fn atom(sym: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
 }
 
-fn conj2(a: v2.std.node.Node, b: v2.std.node.Node) -> v2.std.node.Node {
+fn conj2(a: Node, b: Node) -> Node {
   node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: TypeNode { connective: Conj },
     children: [
-      v2.std.node.Edge { label: v2.std.node.Named { name: ^left }, target: a },
-      v2.std.node.Edge { label: v2.std.node.Named { name: ^right }, target: b }
+      Edge { label: Named { name: ^left }, target: a },
+      Edge { label: Named { name: ^right }, target: b }
     ]
   )
 }
 
-fn dup_fixture() -> v2.std.node.Node { v2.test.materialize.materialize_witness.conj2(a: v2.test.materialize.materialize_witness.atom(sym: ^x), b: v2.test.materialize.materialize_witness.atom(sym: ^x)) }
+fn dup_fixture() -> Node { conj2(a: atom(sym: ^x), b: atom(sym: ^x)) }
 
-fn distinct_fixture() -> v2.std.node.Node { v2.test.materialize.materialize_witness.conj2(a: v2.test.materialize.materialize_witness.atom(sym: ^x), b: v2.test.materialize.materialize_witness.atom(sym: ^y)) }
+fn distinct_fixture() -> Node { conj2(a: atom(sym: ^x), b: atom(sym: ^y)) }
 
-test fn duplicate_subtree_is_one_redundant_computation() -> v2.std.logic.Bool {
+test fn duplicate_subtree_is_one_redundant_computation() -> Bool {
   materialize_redundant_computation_count(root: dup_fixture()) == 1
 }
 
-test fn duplicate_subtree_flagged() -> v2.std.logic.Bool {
+test fn duplicate_subtree_flagged() -> Bool {
   materialize_has_duplicate_computation(root: dup_fixture())
 }
 
-test fn distinct_subtrees_have_no_redundancy() -> v2.std.logic.Bool {
+test fn distinct_subtrees_have_no_redundancy() -> Bool {
   materialize_redundant_computation_count(root: distinct_fixture()) == 0
 }
 
-test fn distinct_subtrees_not_flagged() -> v2.std.logic.Bool {
+test fn distinct_subtrees_not_flagged() -> Bool {
   !materialize_has_duplicate_computation(root: distinct_fixture())
 }
 
-test fn dup_fixture_node_and_distinct_counts() -> v2.std.logic.Bool {
+test fn dup_fixture_node_and_distinct_counts() -> Bool {
   (materialize_node_count(root: dup_fixture()) == 3)
     && (materialize_distinct_computation_count(root: dup_fixture()) == 2)
 }
 
-test fn distinct_fixture_all_distinct() -> v2.std.logic.Bool {
+test fn distinct_fixture_all_distinct() -> Bool {
   materialize_distinct_computation_count(root: distinct_fixture()) == 3
 }
 
-fn witness_plan_schedule() -> List<List<std.realization_schedule.Runnable>> {
+fn witness_plan_schedule() -> List<List<Runnable>> {
   [
-    [std.realization_schedule.RunnableSingleClaim {
+    [RunnableSingleClaim {
       entry: "src/v2/test/claim/materialize/materialize_witness_test.dag"
       function: "duplicate_subtree_flagged"
-      profile: std.realization_schedule.runnable_resource_profile_negligible()
+      profile: runnable_resource_profile_negligible()
     }]
   ]
 }
 
-test fn node_content_hash_is_realization_plan_target() -> v2.std.logic.Bool {
+test fn node_content_hash_is_realization_plan_target() -> Bool {
   let root = dup_fixture()
   let other = distinct_fixture()
-  let plan = std.realization_schedule.RealizationPlan {
-    target: content_hash(n: root)
-    objective: std.realization_schedule.RealizationObjective { goals: [] }
+  let plan = RealizationPlan {
+    target: Fnv1a64(content_hash(n: root))
+    objective: RealizationObjective { goals: [] }
     schedule: witness_plan_schedule()
-    total: std.realization_schedule.cost_account_predicted_zero()
+    total: cost_account_predicted_zero()
   }
   hashes_contain(hs: distinct_hashes(root: root), h: plan.target)
     && !hashes_contain(hs: distinct_hashes(root: other), h: plan.target)

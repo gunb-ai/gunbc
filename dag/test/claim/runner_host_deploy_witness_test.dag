@@ -1,6 +1,5 @@
 module test.claim.runner_host_deploy
 
-
 test fn srv4_docker_prereq_cites_official_repo() -> Bool {
   let s = runner_host_docker_provision_script()
   string_contains(s: s, pattern: "download.docker.com/linux/ubuntu/gpg")
@@ -26,14 +25,16 @@ test fn srv4_runner_installer_command_cites_installer_with_env() -> Bool {
     installer_path: "/tmp/install-actions-runner.sh",
     pem_src_path: "/tmp/app.pem",
   )
-  let c = match outcome {
-    RunnerCommandReady { command: cmd } => shell_command_render(command: cmd)
-    RunnerCommandRefused { host_label: _, reason: _ } => ""
+  match outcome {
+    RunnerCommandRefused { host_label: _, reason: _ } => false
+    RunnerCommandReady { command: cmd } => {
+      let c = shell_command_render(command: cmd)
+      string_contains(s: c, pattern: "'CTRL_RUNNER_HOST_LABEL=srv4'")
+        && string_contains(s: c, pattern: "'CTRL_RUNNER_JOB_USER=ghrunner'")
+        && string_contains(s: c, pattern: "'CTRL_RUNNER_APP_PEM_SRC=/tmp/app.pem'")
+        && string_contains(s: c, pattern: "'/usr/bin/sudo' '-E' 'bash' '/tmp/install-actions-runner.sh'")
+    }
   }
-  string_contains(s: c, pattern: "'CTRL_RUNNER_HOST_LABEL=srv4'")
-    && string_contains(s: c, pattern: "'CTRL_RUNNER_JOB_USER=ghrunner'")
-    && string_contains(s: c, pattern: "'CTRL_RUNNER_APP_PEM_SRC=/tmp/app.pem'")
-    && string_contains(s: c, pattern: "'sudo' '-E' 'bash' '/tmp/install-actions-runner.sh'")
 }
 
 test fn srv4_runner_app_from_secret_manager() -> Bool {
@@ -43,21 +44,59 @@ test fn srv4_runner_app_from_secret_manager() -> Bool {
     && gunbc_ci_github_app.installation_id.value == 104134109
 }
 
-test fn srv4_enables_six_named_runner_instances() -> Bool {
+// THE ROSTER AND THE ENABLE COMMAND MUST AGREE WITH THE DECLARED COUNT, WHATEVER THAT COUNT IS.
+//
+// This row pinned six twice over: the roster length, and an assertion that srv4-07 does NOT appear.
+// Both were measurements of the tree the day it was written, and the 2026-08-23 CPU-axis change
+// falsified both at once -- srv4 commits twenty-one, so the roster is twenty-one long and srv4-07
+// is a perfectly ordinary member of it.
+//
+// What the row is actually for is the JOIN: the systemd units the enable command names are exactly
+// the instances the roster names, one per slot, zero-padded and one-based. That relation is what
+// would break if the two ever diverged, and it holds at any width. The name changes with it, since
+// a row called _six_ that no longer asserts six is worse than either.
+//
+// THE INVOCATION CONJUNCT NAMED ITS PROGRAMS AND #8919 MOVED THEM UNDER IT. It read
+// "'sudo' 'systemctl' 'enable' '--now'" -- correct against the hand-built argv this row was written
+// for, and false the moment runner_enable_command_argv started routing through
+// extdeps.systemd.systemctl systemctl_enable_now_command, which mints through the sealed
+// argv_command with sudo_binary_path as the program and inserts sudo's non-interactive flag. The
+// spelling was a THIRD authoring of facts extdeps.sudo.elevation and extdeps.systemd.systemctl
+// already own, so it rotted exactly the way a re-spelling does (DESIGN section 3).
+//
+// The two conjuncts now cite those authorities instead of re-spelling them, and they are split
+// because they assert different things: that activation ELEVATES non-interactively, and that it
+// reaches systemctl's enable --now. `enable` and `--now` stay literal because they are systemctl's
+// own operands, spelled inline by the builder rather than derived from any row -- so they remain
+// discriminating, and a command that listed the units without the verb still fails here.
+test fn srv4_enables_its_declared_runner_instances() -> Bool {
   let names = runner_instance_names(deploy: srv4_runner_host_deploy)
   let enable = match runner_activate_command(admission: admit_runner_activation(host_admission: admit_runner_host(deploy: srv4_runner_host_deploy), cache_ready: witness_ready_receipt(), pool_ready: witness_ready_pool())) {
     RunnerCommandReady { command: cmd } => shell_command_render(command: cmd)
     RunnerCommandRefused { host_label: _, reason: _ } => ""
   }
-  list_length(items: names) == 6
+  list_length(items: names) == srv4_runner_host_deploy.runner_count
     && string_contains(s: enable, pattern: "'actions-runner@srv4-01.service'")
     && string_contains(s: enable, pattern: "'actions-runner@srv4-05.service'")
-    && string_contains(s: enable, pattern: "srv4-06")
-    && !string_contains(s: enable, pattern: "srv4-07")
-    && string_contains(s: enable, pattern: "'sudo' 'systemctl' 'enable' '--now'")
+    && all(names, n => string_contains(s: enable, pattern: n))
+    && !string_contains(
+         s: enable,
+         pattern: concat("srv4-", runner_slot_index_suffix(index: srv4_runner_host_deploy.runner_count + 1)),
+       )
+    && string_contains(
+         s: enable,
+         pattern: concat(
+           concat("'", sudo_binary_path as String),
+           concat("' '", concat(sudo_non_interactive_flag as String, "'")),
+         ),
+       )
+    && string_contains(
+         s: enable,
+         pattern: concat(concat("'", systemctl_program as String), "' 'enable' '--now'"),
+       )
 }
 
-data unenrolled_host_fixture: gunbc.runner_host_deploy.RunnerHostDeploy = gunbc.runner_host_deploy.RunnerHostDeploy {
+data unenrolled_host_fixture: RunnerHostDeploy = RunnerHostDeploy {
   host_label: "srv9",
   ssh_target: "briansrls@192.168.1.250",
   runner_user: "briansrls",
@@ -114,15 +153,15 @@ test fn red_control_admission_blind_builder_rejected_by_gate() -> Bool {
 
 data activation_moved_note: String = "runner_enable_command was deleted with the materialization/activation split; these rows now drive runner_activate_command through a readiness receipt. The receipt below is a fixture, and the enrollment assertions it supports are unchanged: an unenrolled host still refuses, and the refusal still carries no command. What changed is that enrollment alone is no longer sufficient, which is the whole point of the split — so these witnesses now assert the WEAKER half of a stronger wall, and the wall's own controls live in test.claim.runner_activation_wall."
 
-fn witness_ready_receipt() -> gunbc.runner_activation.BuildCacheInstanceReady {
-  gunbc.runner_activation.BuildCacheInstanceReady {
-    instance: ci_cache_instance(host: srv4_runner_host_deploy.host_label as product.placement_supply.HostIdentity),
-    owner: gunbc.build_cache_instance.ProcessIdentity {
-      boot_id: "fixture-boot" as std.types.NonEmptyStr,
+fn witness_ready_receipt() -> BuildCacheInstanceReady {
+  BuildCacheInstanceReady {
+    instance: ci_cache_instance(host: srv4_runner_host_deploy.host_label as HostIdentity),
+    owner: ProcessIdentity {
+      boot_id: "fixture-boot" as NonEmptyStr,
       pid: 4242,
-      start_time: "80000000" as std.types.NonEmptyStr,
+      start_time: "80000000" as NonEmptyStr,
     },
-    managed_unit: ci_cache_instance(host: srv4_runner_host_deploy.host_label as product.placement_supply.HostIdentity).intended_unit,
+    managed_unit: ci_cache_instance(host: srv4_runner_host_deploy.host_label as HostIdentity).intended_unit,
     endpoint_verified: true,
     executable_verified: true,
     principal_verified: true,
@@ -132,9 +171,9 @@ fn witness_ready_receipt() -> gunbc.runner_activation.BuildCacheInstanceReady {
   }
 }
 
-fn witness_ready_pool() -> gunbc.runner_activation.HostCompilePoolReady {
-  gunbc.runner_activation.HostCompilePoolReady {
-    host: srv4_runner_host_deploy.host_label as product.placement_supply.HostIdentity,
+fn witness_ready_pool() -> HostCompilePoolReady {
+  HostCompilePoolReady {
+    host: srv4_runner_host_deploy.host_label as HostIdentity,
     slice_unit: gunbc_managed_compile_pool_slice,
     pool_declared: true,
     pool_observed: true,

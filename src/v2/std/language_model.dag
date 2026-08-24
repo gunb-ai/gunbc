@@ -1,58 +1,57 @@
 module v2.std.language_model
 
-
 type LanguageModel {
-  lex: v2.std.compilers.lexing.LexRules
-  grammar: v2.std.grammar.ParseGrammar
-  language_identity: v2.std.node.Symbol
-  canonical_symbols: Set<v2.std.node.Symbol>
-  core: v2.std.model_core.ModelCore
+  lex: LexRules
+  grammar: ParseGrammar
+  language_identity: Symbol
+  canonical_symbols: PointwisePower<Symbol>
+  core: ModelCore
 }
 
-fn language_model_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
-  v2.std.node.Edge {
-    label: v2.std.node.Named { name: name },
+fn language_model_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge {
+    label: Named { name: name },
     target: target
   }
 }
 
-fn language_model_empty_canonical_symbols() -> Set<v2.std.node.Symbol> {
-  std.types.Set {
+fn language_model_empty_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(_) {
       false
     }
   }
 }
 
-fn void_language_model(identity: v2.std.node.Symbol) -> LanguageModel {
+fn void_language_model(identity: Symbol) -> LanguageModel {
   LanguageModel {
-    lex: v2.std.compilers.lexing.VoidLexRules,
-    grammar: v2.std.grammar.VoidGrammar,
+    lex: VoidLexRules,
+    grammar: VoidGrammar,
     language_identity: identity,
     canonical_symbols: language_model_empty_canonical_symbols(),
-    core: v2.std.model_core.bool_model_core()
+    core: bool_model_core()
   }
 }
 
-fn language_model_canonical_symbols_to_node(symbols: Set<v2.std.node.Symbol>) -> v2.std.node.Node {
-  v2.std.grammar.grammar_empty_node()
+fn language_model_canonical_symbols_to_node(symbols: PointwisePower<Symbol>) -> Node {
+  grammar_empty_node()
 }
 
-fn language_model_to_node(lm: LanguageModel) -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+fn language_model_to_node(lm: LanguageModel) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       language_model_named_edge(
         name: ^language_model_field_lex,
-        target: v2.std.compilers.lexing.lex_rules_to_node(rules: lm.lex)
+        target: lex_rules_to_node(rules: lm.lex)
       ),
       language_model_named_edge(
         name: ^language_model_field_grammar,
-        target: v2.std.grammar.grammar_to_node(grammar: lm.grammar)
+        target: grammar_to_node(grammar: lm.grammar)
       ),
       language_model_named_edge(
         name: ^language_model_field_language_identity,
-        target: v2.std.grammar.grammar_atom(identity: lm.language_identity)
+        target: grammar_atom(identity: lm.language_identity)
       ),
       language_model_named_edge(
         name: ^language_model_field_canonical_symbols,
@@ -60,9 +59,9 @@ fn language_model_to_node(lm: LanguageModel) -> v2.std.node.Node {
       ),
       language_model_named_edge(
         name: ^language_model_field_core,
-        target: v2.std.model_core.model_core_first_primitive_substrate(core: lm.core)
+        target: model_core_first_primitive_substrate(core: lm.core)
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
   }
 }

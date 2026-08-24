@@ -1,15 +1,15 @@
 module v2.lens.subsumption
 
 type DiffId {
-  id: v2.std.node.Symbol
+  id: Symbol
 }
 
 type TestClaimId {
-  id: v2.std.node.Symbol
+  id: Symbol
 }
 
 type ProducerStageId {
-  id: v2.std.node.Symbol
+  id: Symbol
 }
 
 type SubsumptionVerification
@@ -18,12 +18,12 @@ type SubsumptionVerification
 
 type DissolutionSubsumption {
   root_fix: DiffId
-  subsumed_fixes: Set<DiffId>
+  subsumed_fixes: PointwisePower<DiffId>
   verification: SubsumptionVerification
 }
 
-fn affected_set_irt1_subsumed_fixes_value() -> Set<DiffId> {
-  std.types.Set {
+fn affected_set_irt1_subsumed_fixes_value() -> PointwisePower<DiffId> {
+  PointwisePower {
     member: fn(d) {
       d.id == ^affected_set_boundary_receipt_leaf_fix ||
         d.id == ^affected_set_dimension_receipt_leaf_fix ||
@@ -35,7 +35,7 @@ fn affected_set_irt1_subsumed_fixes_value() -> Set<DiffId> {
   }
 }
 
-data affected_set_irt1_subsumed_fixes: Set<DiffId> = affected_set_irt1_subsumed_fixes_value()
+data affected_set_irt1_subsumed_fixes: PointwisePower<DiffId> = affected_set_irt1_subsumed_fixes_value()
 
 data affected_set_irt1_subsumption: DissolutionSubsumption = {
   root_fix: DiffId { id: ^affected_set_irt1_frontier_root_fix },
@@ -45,8 +45,8 @@ data affected_set_irt1_subsumption: DissolutionSubsumption = {
   }
 }
 
-fn rust_language_model_emit_subsumed_fixes_value() -> Set<DiffId> {
-  std.types.Set {
+fn rust_language_model_emit_subsumed_fixes_value() -> PointwisePower<DiffId> {
+  PointwisePower {
     member: fn(d) {
       d.id == ^emit_rust_template_leaf_fix ||
         d.id == ^emit_rust_name_dispatch_leaf_fix
@@ -54,7 +54,7 @@ fn rust_language_model_emit_subsumed_fixes_value() -> Set<DiffId> {
   }
 }
 
-data rust_language_model_emit_subsumed_fixes: Set<DiffId> = rust_language_model_emit_subsumed_fixes_value()
+data rust_language_model_emit_subsumed_fixes: PointwisePower<DiffId> = rust_language_model_emit_subsumed_fixes_value()
 
 data rust_language_model_emit_subsumption: DissolutionSubsumption = {
   root_fix: DiffId { id: ^rust_language_model_emit_root_fix },
@@ -64,6 +64,6 @@ data rust_language_model_emit_subsumption: DissolutionSubsumption = {
   }
 }
 
-data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

@@ -1,15 +1,14 @@
 module extdeps.tools.hostname
 
-
-data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
-  uri: extdeps.uri.Uri {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
     scheme: Https
     locator: "man7.org/linux/man-pages/man1/hostname.1.html"
   }
 }
 
-data extdeps_hostnamectl_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
-  uri: extdeps.uri.Uri {
+data extdeps_hostnamectl_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
     scheme: Https
     locator: "www.freedesktop.org/software/systemd/man/latest/hostnamectl.html"
   }
@@ -19,7 +18,7 @@ fn hostname_short_read_argv() -> List<String> {
   ["hostname", "-s"]
 }
 
-fn hostname_set_argv(desired: extdeps.dns.domain_name.DnsLabel) -> List<String> {
+fn hostname_set_argv(desired: DnsLabel) -> List<String> {
   ["hostnamectl", "set-hostname", desired as String]
 }
 
@@ -42,7 +41,7 @@ service os.Hostname {
   }
 
   operation Set {
-    input { desired: extdeps.dns.domain_name.DnsLabel }
+    input { desired: DnsLabel }
     output {
       success: Bool from "exit_success"
       stderr: String from "stderr"
@@ -56,4 +55,22 @@ service os.Hostname {
       0 => { success: true, stderr: "" } "hermetic os.Hostname.Set"
     }
   }
+}
+
+// PATH-resolved program name, deliberately: this repository has made no filesystem observation of
+// the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
+// criterion for climbing to an absolute row, and the counter-example that makes the distinction
+// load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
+data hostname_program: NonEmptyStr = "hostname"
+
+// TWO BUILDERS BECAUSE THEY ANSWER DIFFERENT QUESTIONS. `hostname` prints whatever the host is
+// configured to call itself, which may be fully qualified; `hostname -s` prints the first label
+// only. A receipt that records identity wants the former, a converge that matches a fleet member's
+// short name wants the latter, and collapsing them would silently change which one a caller got.
+fn hostname_read_command() -> ArgvCommand {
+  argv_command(program: hostname_program, arguments: [])
+}
+
+fn hostname_short_read_command() -> ArgvCommand {
+  argv_command(program: hostname_program, arguments: ["-s"])
 }

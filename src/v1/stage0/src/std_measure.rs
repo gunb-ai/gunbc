@@ -14,7 +14,9 @@ pub use crate::extdeps_units_dimensionless::{
     parts_per_ten_thousand_unity_count, percent_unity_hundred_count,
 };
 pub use crate::extdeps_units_iec_80000_13::{iec_kibi_factor, octet_bit_count};
-pub use crate::extdeps_units_iso8601::{iso8601_minutes_per_hour, iso8601_seconds_per_minute};
+pub use crate::extdeps_units_iso8601::{
+    iso8601_hours_per_day, iso8601_minutes_per_hour, iso8601_seconds_per_minute,
+};
 pub use crate::extdeps_units_iso_80000_3::{
     arcseconds_per_degree_derived, arcseconds_per_turn, cubic_millimetres_per_cubic_metre,
     square_millimetres_per_square_metre,
@@ -142,6 +144,14 @@ pub fn seconds_per_minute() -> Nat {
 
 pub fn minutes_per_hour() -> Nat {
     crate::extdeps_units_iso8601::iso8601_minutes_per_hour()
+}
+
+pub fn hours_per_day() -> Nat {
+    iso8601_hours_per_day()
+}
+
+pub fn seconds_per_day() -> Nat {
+    ((hours_per_day() * minutes_per_hour()) * seconds_per_minute())
 }
 
 pub fn milliseconds_per_second() -> Nat {

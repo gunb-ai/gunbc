@@ -1,176 +1,175 @@
 module v2.test.claim.locality_affinity_witness
 
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-
-data locality_shared_node: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^locality_shared } },
+data locality_shared_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^locality_shared } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data locality_consumer_a_node: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^locality_consumer_a } },
+data locality_consumer_a_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^locality_consumer_a } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data locality_consumer_b_node: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^locality_consumer_b } },
+data locality_consumer_b_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^locality_consumer_b } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data locality_shared_hash: std.content_hash.ContentHash = content_hash(n: locality_shared_node)
+data locality_shared_hash: ContentHash = Fnv1a64(content_hash(n: locality_shared_node))
 
-data locality_edge_a: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
+data locality_edge_a: DependencyView = DependencyView {
   source: locality_shared_node,
   dependent: locality_consumer_a_node,
   kind: DataDependsOn,
   usage_site: locality_consumer_a_node
 }
 
-data locality_edge_b: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
+data locality_edge_b: DependencyView = DependencyView {
   source: locality_shared_node,
   dependent: locality_consumer_b_node,
   kind: DataDependsOn,
   usage_site: locality_consumer_b_node
 }
 
-data locality_consumer_a_hash: std.content_hash.ContentHash = content_hash(n: locality_consumer_a_node)
-data locality_consumer_b_hash: std.content_hash.ContentHash = content_hash(n: locality_consumer_b_node)
+data locality_consumer_a_hash: ContentHash = Fnv1a64(content_hash(n: locality_consumer_a_node))
+data locality_consumer_b_hash: ContentHash = Fnv1a64(content_hash(n: locality_consumer_b_node))
 
-data locality_footprint: std.measure.ByteSize = std.measure.byte_size(count: 64)
+data locality_footprint: ByteSize = byte_size(count: 64)
 
-data locality_flow_a: v2.workflow.operand_flow.OperandFlowRow = v2.workflow.operand_flow.OperandFlow {
+data locality_flow_a: OperandFlowRow = OperandFlow {
   edge: locality_edge_a,
   operand: locality_shared_hash,
   footprint: locality_footprint
 }
 
-data locality_flow_b: v2.workflow.operand_flow.OperandFlowRow = v2.workflow.operand_flow.OperandFlow {
+data locality_flow_b: OperandFlowRow = OperandFlow {
   edge: locality_edge_b,
   operand: locality_shared_hash,
   footprint: locality_footprint
 }
 
-data locality_flows: List<v2.workflow.operand_flow.OperandFlowRow> = [locality_flow_a, locality_flow_b]
+data locality_flows: List<OperandFlowRow> = [locality_flow_a, locality_flow_b]
 
-data locality_edge_unresolved: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
+data locality_edge_unresolved: DependencyView = DependencyView {
   source: locality_shared_node,
   dependent: locality_consumer_b_node,
   kind: BarrierBefore,
   usage_site: locality_consumer_b_node
 }
 
-data locality_flow_unresolved: v2.workflow.operand_flow.OperandFlowRow = v2.workflow.operand_flow.OperandFlowRefused {
+data locality_flow_unresolved: OperandFlowRow = OperandFlowRefused {
   edge: locality_edge_unresolved,
-  cause: v2.workflow.operand_flow.OperandFlowNoOperand { edge: locality_edge_unresolved }
+  cause: OperandFlowNoOperand { edge: locality_edge_unresolved }
 }
 
-data locality_flows_with_unresolved: List<v2.workflow.operand_flow.OperandFlowRow> = [locality_flow_a, locality_flow_unresolved]
+data locality_flows_with_unresolved: List<OperandFlowRow> = [locality_flow_a, locality_flow_unresolved]
 
-data locality_other_shared_node: v2.std.node.Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^locality_other_shared } },
+data locality_other_shared_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^locality_other_shared } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data locality_other_shared_hash: std.content_hash.ContentHash = content_hash(n: locality_other_shared_node)
+data locality_other_shared_hash: ContentHash = Fnv1a64(content_hash(n: locality_other_shared_node))
 
-data locality_flow_mismatched: v2.workflow.operand_flow.OperandFlowRow = v2.workflow.operand_flow.OperandFlow {
+data locality_flow_mismatched: OperandFlowRow = OperandFlow {
   edge: locality_edge_a,
   operand: locality_other_shared_hash,
   footprint: locality_footprint
 }
 
-data locality_flows_with_mismatch: List<v2.workflow.operand_flow.OperandFlowRow> = [locality_flow_mismatched, locality_flow_b]
+data locality_flows_with_mismatch: List<OperandFlowRow> = [locality_flow_mismatched, locality_flow_b]
 
-data locality_flow_a_wrong_footprint: v2.workflow.operand_flow.OperandFlowRow = v2.workflow.operand_flow.OperandFlow {
+data locality_flow_a_wrong_footprint: OperandFlowRow = OperandFlow {
   edge: locality_edge_a,
   operand: locality_shared_hash,
-  footprint: std.measure.byte_size(count: 128)
+  footprint: byte_size(count: 128)
 }
 
-data locality_flows_with_footprint_mismatch: List<v2.workflow.operand_flow.OperandFlowRow> = [locality_flow_a_wrong_footprint, locality_flow_b]
+data locality_flows_with_footprint_mismatch: List<OperandFlowRow> = [locality_flow_a_wrong_footprint, locality_flow_b]
 
-data locality_flows_duplicate_edge_single_consumer: List<v2.workflow.operand_flow.OperandFlowRow> = [locality_flow_a, locality_flow_a]
+data locality_flows_duplicate_edge_single_consumer: List<OperandFlowRow> = [locality_flow_a, locality_flow_a]
 
-data locality_flows_duplicate_edge_two_consumers: List<v2.workflow.operand_flow.OperandFlowRow> = [locality_flow_a, locality_flow_a, locality_flow_b]
+data locality_flows_duplicate_edge_two_consumers: List<OperandFlowRow> = [locality_flow_a, locality_flow_a, locality_flow_b]
 
-data locality_domain_id: std.machine_shape.DomainId = "locality-domain" as std.machine_shape.DomainId
-data locality_l1_id: std.machine_shape.LevelId = "l1" as std.machine_shape.LevelId
-data locality_l2_id: std.machine_shape.LevelId = "l2" as std.machine_shape.LevelId
+data locality_domain_id: DomainId = "locality-domain" as DomainId
+data locality_l1_id: LevelId = "l1" as LevelId
+data locality_l2_id: LevelId = "l2" as LevelId
 
-data locality_l1: std.machine_shape.MemoryLevel = std.machine_shape.MemoryLevel {
+data locality_l1: MemoryLevel = MemoryLevel {
   id: locality_l1_id,
-  capacity: std.measure.byte_size(count: 16),
+  capacity: byte_size(count: 16),
   transfer_grain: none,
   bandwidth: none,
   latency: none
 }
 
-data locality_l2: std.machine_shape.MemoryLevel = std.machine_shape.MemoryLevel {
+data locality_l2: MemoryLevel = MemoryLevel {
   id: locality_l2_id,
-  capacity: std.measure.byte_size(count: 256),
+  capacity: byte_size(count: 256),
   transfer_grain: none,
   bandwidth: none,
   latency: none
 }
 
-data locality_domain: std.machine_shape.ExecutionDomain = std.machine_shape.ExecutionDomain {
+data locality_domain: ExecutionDomain = ExecutionDomain {
   id: locality_domain_id,
-  execution: std.machine_shape.execution_shape_independent_lanes(lane_count: std.measure.hardware_thread_count(count: 1)),
+  execution: execution_shape_independent_lanes(lane_count: hardware_thread_count(count: 1)),
   memory: [locality_l1, locality_l2]
 }
 
-data locality_domain_no_fit: std.machine_shape.ExecutionDomain = std.machine_shape.ExecutionDomain {
+data locality_domain_no_fit: ExecutionDomain = ExecutionDomain {
   id: locality_domain_id,
-  execution: std.machine_shape.execution_shape_independent_lanes(lane_count: std.measure.hardware_thread_count(count: 1)),
+  execution: execution_shape_independent_lanes(lane_count: hardware_thread_count(count: 1)),
   memory: [locality_l1]
 }
 
-data locality_co_batch_assignment: List<v2.workflow.locality_affinity.ConsumerBatch> = [
-  v2.workflow.locality_affinity.ConsumerBatch { consumer: locality_consumer_a_hash, batch: 0 },
-  v2.workflow.locality_affinity.ConsumerBatch { consumer: locality_consumer_b_hash, batch: 0 }
+data locality_co_batch_assignment: List<ConsumerBatch> = [
+  ConsumerBatch { consumer: locality_consumer_a_hash, batch: 0 },
+  ConsumerBatch { consumer: locality_consumer_b_hash, batch: 0 }
 ]
 
-data locality_split_batch_assignment: List<v2.workflow.locality_affinity.ConsumerBatch> = [
-  v2.workflow.locality_affinity.ConsumerBatch { consumer: locality_consumer_a_hash, batch: 0 },
-  v2.workflow.locality_affinity.ConsumerBatch { consumer: locality_consumer_b_hash, batch: 1 }
+data locality_split_batch_assignment: List<ConsumerBatch> = [
+  ConsumerBatch { consumer: locality_consumer_a_hash, batch: 0 },
+  ConsumerBatch { consumer: locality_consumer_b_hash, batch: 1 }
 ]
 
-data locality_missing_assignment: List<v2.workflow.locality_affinity.ConsumerBatch> = [
-  v2.workflow.locality_affinity.ConsumerBatch { consumer: locality_consumer_a_hash, batch: 0 }
+data locality_missing_assignment: List<ConsumerBatch> = [
+  ConsumerBatch { consumer: locality_consumer_a_hash, batch: 0 }
 ]
 
-data locality_conflicting_assignment: List<v2.workflow.locality_affinity.ConsumerBatch> = [
-  v2.workflow.locality_affinity.ConsumerBatch { consumer: locality_consumer_a_hash, batch: 0 },
-  v2.workflow.locality_affinity.ConsumerBatch { consumer: locality_consumer_b_hash, batch: 1 },
-  v2.workflow.locality_affinity.ConsumerBatch { consumer: locality_consumer_b_hash, batch: 0 }
+data locality_conflicting_assignment: List<ConsumerBatch> = [
+  ConsumerBatch { consumer: locality_consumer_a_hash, batch: 0 },
+  ConsumerBatch { consumer: locality_consumer_b_hash, batch: 1 },
+  ConsumerBatch { consumer: locality_consumer_b_hash, batch: 0 }
 ]
 
-test fn witness_derive_affinity_claims_smallest_fitting_level() -> v2.std.logic.Bool {
+test fn witness_derive_affinity_claims_smallest_fitting_level() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: locality_flows, domain: locality_domain) {
     AffinityClaim { operand: op, level: lvl, footprint: fp, consumers: cs } =>
       op == locality_shared_hash
         && lvl == locality_l2_id
-        && std.measure.byte_size_count(b: fp) == 64
+        && byte_size_count(b: fp) == 64
         && length(xs: cs) == 2
     AffinityRefused { operand: _, cause: _ } => false
   }
 }
 
-test fn witness_derive_affinity_refuses_no_fitting_level() -> v2.std.logic.Bool {
+test fn witness_derive_affinity_refuses_no_fitting_level() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: locality_flows, domain: locality_domain_no_fit) {
     AffinityRefused { operand: op, cause: AffinityNoFittingLevel { operand: _, footprint: fp } } =>
-      op == locality_shared_hash && std.measure.byte_size_count(b: fp) == 64
+      op == locality_shared_hash && byte_size_count(b: fp) == 64
     AffinityRefused { operand: _, cause: _ } => false
     AffinityClaim { operand: _, level: _, footprint: _, consumers: _ } => false
   }
 }
 
-test fn witness_derive_affinity_refuses_single_consumer() -> v2.std.logic.Bool {
+test fn witness_derive_affinity_refuses_single_consumer() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: [locality_flow_a], domain: locality_domain) {
     AffinityRefused { operand: op, cause: AffinityInsufficientConsumers { operand: _ } } =>
       op == locality_shared_hash
@@ -179,7 +178,7 @@ test fn witness_derive_affinity_refuses_single_consumer() -> v2.std.logic.Bool {
   }
 }
 
-test fn witness_derive_affinity_refuses_unresolved_operand_edge() -> v2.std.logic.Bool {
+test fn witness_derive_affinity_refuses_unresolved_operand_edge() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: locality_flows_with_unresolved, domain: locality_domain) {
     AffinityRefused { operand: op, cause: AffinityFlowRefused { edge: e, cause: OperandFlowNoOperand { edge: _ } } } =>
       op == locality_shared_hash && e == locality_edge_unresolved
@@ -188,7 +187,7 @@ test fn witness_derive_affinity_refuses_unresolved_operand_edge() -> v2.std.logi
   }
 }
 
-test fn witness_derive_affinity_refuses_operand_mismatch() -> v2.std.logic.Bool {
+test fn witness_derive_affinity_refuses_operand_mismatch() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: locality_flows_with_mismatch, domain: locality_domain) {
     AffinityRefused { operand: op, cause: AffinityOperandMismatch { expected: expected, found: found } } =>
       op == locality_shared_hash
@@ -199,29 +198,29 @@ test fn witness_derive_affinity_refuses_operand_mismatch() -> v2.std.logic.Bool 
   }
 }
 
-test fn witness_derive_affinity_refuses_footprint_mismatch() -> v2.std.logic.Bool {
+test fn witness_derive_affinity_refuses_footprint_mismatch() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: locality_flows_with_footprint_mismatch, domain: locality_domain) {
     AffinityRefused { operand: op, cause: AffinityFootprintMismatch { operand: _, expected: exp, found: fnd } } =>
       op == locality_shared_hash
-        && std.measure.byte_size_count(b: exp) == 128
-        && std.measure.byte_size_count(b: fnd) == 64
+        && byte_size_count(b: exp) == 128
+        && byte_size_count(b: fnd) == 64
     AffinityRefused { operand: _, cause: _ } => false
     AffinityClaim { operand: _, level: _, footprint: _, consumers: _ } => false
   }
 }
 
-test fn witness_derive_affinity_dedupes_consumers_from_duplicate_edges() -> v2.std.logic.Bool {
+test fn witness_derive_affinity_dedupes_consumers_from_duplicate_edges() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: locality_flows_duplicate_edge_two_consumers, domain: locality_domain) {
     AffinityClaim { operand: op, level: lvl, footprint: fp, consumers: cs } =>
       op == locality_shared_hash
         && lvl == locality_l2_id
-        && std.measure.byte_size_count(b: fp) == 64
+        && byte_size_count(b: fp) == 64
         && length(xs: cs) == 2
     AffinityRefused { operand: _, cause: _ } => false
   }
 }
 
-test fn witness_derive_affinity_refuses_when_duplicate_edges_are_one_real_consumer() -> v2.std.logic.Bool {
+test fn witness_derive_affinity_refuses_when_duplicate_edges_are_one_real_consumer() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: locality_flows_duplicate_edge_single_consumer, domain: locality_domain) {
     AffinityRefused { operand: op, cause: AffinityInsufficientConsumers { operand: _ } } =>
       op == locality_shared_hash
@@ -230,7 +229,7 @@ test fn witness_derive_affinity_refuses_when_duplicate_edges_are_one_real_consum
   }
 }
 
-test fn witness_co_batch_prices_single_load() -> v2.std.logic.Bool {
+test fn witness_co_batch_prices_single_load() -> Bool {
   match price_operand_traffic(
     operand: locality_shared_hash,
     flows: locality_flows,
@@ -240,12 +239,12 @@ test fn witness_co_batch_prices_single_load() -> v2.std.logic.Bool {
     TrafficPriced { account: account, crossings: crossings } =>
       crossings == 1
         && account.level == locality_l2_id
-        && std.measure.byte_size_count(b: account.bytes) == 64
+        && byte_size_count(b: account.bytes) == 64
     TrafficPricingRefused { operand: _, cause: _ } => false
   }
 }
 
-test fn witness_split_batch_prices_double_load() -> v2.std.logic.Bool {
+test fn witness_split_batch_prices_double_load() -> Bool {
   match price_operand_traffic(
     operand: locality_shared_hash,
     flows: locality_flows,
@@ -255,12 +254,12 @@ test fn witness_split_batch_prices_double_load() -> v2.std.logic.Bool {
     TrafficPriced { account: account, crossings: crossings } =>
       crossings == 2
         && account.level == locality_l2_id
-        && std.measure.byte_size_count(b: account.bytes) == 128
+        && byte_size_count(b: account.bytes) == 128
     TrafficPricingRefused { operand: _, cause: _ } => false
   }
 }
 
-test fn witness_missing_batch_assignment_refuses_typed() -> v2.std.logic.Bool {
+test fn witness_missing_batch_assignment_refuses_typed() -> Bool {
   match price_operand_traffic(
     operand: locality_shared_hash,
     flows: locality_flows,
@@ -274,7 +273,7 @@ test fn witness_missing_batch_assignment_refuses_typed() -> v2.std.logic.Bool {
   }
 }
 
-test fn witness_conflicting_batch_assignment_refuses_typed() -> v2.std.logic.Bool {
+test fn witness_conflicting_batch_assignment_refuses_typed() -> Bool {
   match price_operand_traffic(
     operand: locality_shared_hash,
     flows: locality_flows,
@@ -294,7 +293,7 @@ test fn witness_conflicting_batch_assignment_refuses_typed() -> v2.std.logic.Boo
   }
 }
 
-test fn witness_refused_affinity_propagates_typed() -> v2.std.logic.Bool {
+test fn witness_refused_affinity_propagates_typed() -> Bool {
   match price_operand_traffic(
     operand: locality_shared_hash,
     flows: locality_flows,
@@ -307,4 +306,3 @@ test fn witness_refused_affinity_propagates_typed() -> v2.std.logic.Bool {
     TrafficPriced { account: _, crossings: _ } => false
   }
 }
-

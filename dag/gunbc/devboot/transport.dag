@@ -1,7 +1,6 @@
 module gunbc.devboot.transport
 
-
-data devboot_shell_transport_note: std.types.String = "Counted retained-transport roster for gunbc.devboot.build and gunbc.devboot.produce WitnessBin.Run sites. Runtime-present devboot modules are not yet on host_effect_apply typed effects; every raw argv site names a RetainedWitnessRun row with reason + dissolve-on = shell→intent Phase 2 (gunbc.host_effect_realize host_effect_apply). No unmarked WitnessBin.Run calls survive review."
+data devboot_shell_transport_note: String = "Counted retained-transport roster for the WitnessBin.Run sites of gunbc.devboot.build, gunbc.devboot.produce, and this module -- the directory ensure runs HERE, on the six callers' behalf, so a roster scoped to the other two modules would no longer name every site. Runtime-present devboot modules are not yet on host_effect_apply typed effects; every raw argv site names a RetainedWitnessRun row with reason + dissolve-on = shell→intent Phase 2 (gunbc.host_effect_realize host_effect_apply). No unmarked WitnessBin.Run calls survive review."
 
 // THE SEVENTEEN GIT ROWS THAT USED TO SIT HERE ARE DELETED RATHER THAN REPOINTED, and the
 // distinction is the point. Every row in this roster declares the same dissolution target,
@@ -18,79 +17,79 @@ data devboot_shell_transport_note: std.types.String = "Counted retained-transpor
 // re-adding a git argv site to gunbc.devboot would be a site with no reason row rather than
 // a site with a stale one.
 
-data devboot_shell_typed_effects_dissolve_ref: std.decl_ref.std.decl_ref.DeclarationRef = std.decl_ref.std.decl_ref.DeclarationRef {
+data devboot_shell_typed_effects_dissolve_ref: DeclarationRef = DeclarationRef {
   module_path: "gunbc.host_effect_realize",
   decl_name: "host_effect_apply",
-  field: std.decl_ref.WholeDeclaration,
+  field: WholeDeclaration,
 }
 
 type RetainedWitnessRun {
-  reason: std.decl_ref.std.types.NonEmptyStr
-  dissolves_to: std.decl_ref.std.decl_ref.DeclarationRef
+  reason: NonEmptyStr
+  dissolves_to: DeclarationRef
 }
 
 data retained_devboot_rm_rf: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot exchange and request/produced staging clears prior scratch trees and index files" as std.decl_ref.std.types.NonEmptyStr,
+  reason: "devboot exchange and request/produced staging clears prior scratch trees and index files" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_mkdir: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot exchange and staging directories are created before git index operations" as std.decl_ref.std.types.NonEmptyStr,
+  reason: "devboot exchange and staging directories are created before git index operations" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_sleep: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot poll interval waits between fetch attempts" as std.decl_ref.std.types.NonEmptyStr,
+  reason: "devboot poll interval waits between fetch attempts" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_sha256sum: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot independently verifies artifact bytes before trusting the store digest" as std.decl_ref.std.types.NonEmptyStr,
+  reason: "devboot independently verifies artifact bytes before trusting the store digest" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_cp: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot installs the verified artifact at the caller out_path" as std.decl_ref.std.types.NonEmptyStr,
+  reason: "devboot installs the verified artifact at the caller out_path" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_chmod: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot marks the installed artifact executable for the caller" as std.decl_ref.std.types.NonEmptyStr,
+  reason: "devboot marks the installed artifact executable for the caller" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_uname: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot records the producing host beside the answer without keying the subject" as std.decl_ref.std.types.NonEmptyStr,
+  reason: "devboot records the producing host beside the answer without keying the subject" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_cargo_build: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer compiles the admitted subject with the observed toolchain homes" as std.decl_ref.std.types.NonEmptyStr,
+  reason: "devboot producer compiles the admitted subject with the observed toolchain homes" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_rm_file: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer removes a scratch index or unpack-file temp path" as std.decl_ref.std.types.NonEmptyStr,
+  reason: "devboot producer removes a scratch index or unpack-file temp path" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_rustc_version: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer observes the local rustc toolchain for subject identity" as std.decl_ref.std.types.NonEmptyStr,
+  reason: "devboot producer observes the local rustc toolchain for subject identity" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_mv: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer installs the built artifact beside the store binding" as std.decl_ref.std.types.NonEmptyStr,
+  reason: "devboot producer installs the built artifact beside the store binding" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_execute_artifact: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot materialize path executes the fetched bytes to verify they run" as std.decl_ref.std.types.NonEmptyStr,
+  reason: "devboot materialize path executes the fetched bytes to verify they run" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
 data retained_devboot_ldd: RetainedWitnessRun = RetainedWitnessRun {
-  reason: "devboot producer observes platform C library version for subject identity" as std.decl_ref.std.types.NonEmptyStr,
+  reason: "devboot producer observes platform C library version for subject identity" as NonEmptyStr,
   dissolves_to: devboot_shell_typed_effects_dissolve_ref,
 }
 
@@ -99,39 +98,39 @@ data retained_devboot_ldd: RetainedWitnessRun = RetainedWitnessRun {
 // with no worktree (reached with `--git-dir=`). Both readings exist in git and they are not
 // interchangeable, so the choice is made here, at the one place that knows which side of the
 // exchange it is on, rather than re-spelled at every call.
-fn devboot_repo_address(repo_root: std.types.String) -> extdeps.git.plumbing.GitRepositoryAddress {
-  extdeps.git.plumbing.GitWorktreeAt { path: repo_root as std.types.FilePath }
+fn devboot_repo_address(repo_root: String) -> GitRepositoryAddress {
+  GitWorktreeAt { path: repo_root as FilePath }
 }
 
-fn devboot_store_address(store_root: std.types.String, repo_root: std.types.String) -> extdeps.git.plumbing.GitRepositoryAddress {
-  extdeps.git.plumbing.GitDirectoryAt { path: store_root as std.types.FilePath, run_in: repo_root as std.types.FilePath }
+fn devboot_store_address(store_root: String, repo_root: String) -> GitRepositoryAddress {
+  GitDirectoryAt { path: store_root as FilePath, run_in: repo_root as FilePath }
 }
 
 // A REF READ HAS THREE ANSWERS AND THIS IS WHERE THE EXIT CODES BECOME THEM. `rev-parse
 // --verify --quiet` exits 0 with the object id, 1 when the ref is absent, and 128 when the
-// repository itself could not be used (extdeps.git extdeps.git.git_ref_missing_exit_code /
+// repository itself could not be used (extdeps.git git_ref_missing_exit_code /
 // git_repository_unusable_exit_code). Absent and unreachable have OPPOSITE remedies -- create
 // it, versus stop -- so the third is a refusal here rather than a second spelling of absence.
 // A zero exit whose text does not decode to an object id is also a refusal: it means the read
 // succeeded and this layer cannot say what it read, which is not the same as reading nothing.
-fn devboot_ref_observation(exit_code: std.types.Int, revision: std.types.String, stderr: std.types.String) -> extdeps.git.plumbing.GitRefObservation {
-  if exit_code == extdeps.git.git_ref_missing_exit_code {
-    extdeps.git.plumbing.GitRefAbsent
+fn devboot_ref_observation(exit_code: Int, revision: String, stderr: String) -> GitRefObservation {
+  if exit_code == git_ref_missing_exit_code {
+    GitRefAbsent
   } else if !(exit_code == 0) {
-    extdeps.git.plumbing.GitRefObservationRefused { exit_code: exit_code, stderr: std.algebra.trim(s: stderr) }
+    GitRefObservationRefused { exit_code: exit_code, stderr: trim(s: stderr) }
   } else {
-    match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: std.algebra.trim(s: revision)) {
+    match git_object_id_from_untagged_hex(hex: trim(s: revision)) {
       Absent =>
-        extdeps.git.plumbing.GitRefObservationRefused {
+        GitRefObservationRefused {
           exit_code: exit_code,
-          stderr: join(["rev-parse returned an object id this build cannot decode: ", std.algebra.trim(s: revision)], ""),
+          stderr: join(["rev-parse returned an object id this build cannot decode: ", trim(s: revision)], ""),
         }
-      Present { value: oid } => extdeps.git.plumbing.GitRefObserved { oid: oid }
+      Present { value: oid } => GitRefObserved { oid: oid }
     }
   }
 }
 
-fn devboot_observe_ref(repo_root: std.types.String, ref_name: std.types.String) -> extdeps.git.plumbing.GitRefObservation {
+fn devboot_observe_ref(repo_root: String, ref_name: String) -> GitRefObservation {
   let read = git.Plumbing.ObserveRef(
     address: devboot_repo_address(repo_root: repo_root),
     ref_name: ref_name,
@@ -139,19 +138,18 @@ fn devboot_observe_ref(repo_root: std.types.String, ref_name: std.types.String) 
   devboot_ref_observation(exit_code: read.exit_code, revision: read.revision, stderr: read.stderr)
 }
 
-
 type WitnessBinRunOutcome {
-  success: std.types.Bool
-  exit_code: std.types.Int
-  stdout: std.types.String
-  stderr: std.types.String
+  success: Bool
+  exit_code: Int
+  stdout: String
+  stderr: String
 }
 
 fn devboot_witness_run(
   site: RetainedWitnessRun,
-  workdir: std.types.String,
-  bin_path: std.types.String,
-  args: List<std.types.String>,
+  workdir: String,
+  bin_path: String,
+  args: List<String>,
 ) -> WitnessBinRunOutcome {
   let out = gunbc.WitnessBin.Run(workdir: workdir, bin_path: bin_path, args: args)
   WitnessBinRunOutcome {
@@ -160,4 +158,35 @@ fn devboot_witness_run(
     stdout: out.stdout,
     stderr: out.stderr,
   }
+}
+
+// SIX CALL SITES SPELLED THIS THEMSELVES, AND THE SPELLING WAS A SECOND AUTHORITY. Each of
+// build.dag's four and produce.dag's two named the binary as bare "mkdir" and rebuilt ["-p", dir]
+// beside it, while extdeps.tools.mkdir already owned both halves -- the binary path, and -p as the
+// idempotent ensure form rather than a create. That is DESIGN section 3's fork: the same fact
+// written seven times, six of them without the citation that says why -p is there.
+//
+// The retained row does NOT dissolve with this. The site still reaches the host through a raw
+// WitnessBin.Run, so retained_devboot_mkdir stays exactly where it was and still points at
+// host_effect_apply; what ends is devboot's private spelling of the tool, not the untyped effect.
+// The honest rung is mitigatable (DESIGN section 4b): one construction site instead of six is
+// fewer places to diverge, not a wall -- a caller can still hand devboot_witness_run a bare
+// "mkdir", and nothing in the corpus refuses it. The next rung is the same host_effect_apply
+// migration the row already names.
+//
+// THE SPELLING IS UNCHANGED AND THAT IS DELIBERATE. This cites the authority's PATH-RESOLVED row,
+// so the argv devboot runs is byte-identical to what it ran before -- what ends is the private
+// spelling, not the resolution. An earlier revision of this migration adopted the absolute
+// /usr/bin/mkdir instead, reasoning that devboot's own `ldd --version` probe pins it to glibc
+// Linux; extdeps.tools.env landed the distinction that shows why that was wrong. What a host must
+// SATISFY is not what its filesystem LOOKS LIKE, and devboot's producer compiles on whichever box
+// the operator invoked it from -- a host this repository has not read. Asserting a path there
+// fabricates a host fact (DESIGN section 5) rather than repairing an unspecific one.
+fn devboot_ensure_directory(repo_root: String, path: String) -> WitnessBinRunOutcome {
+  devboot_witness_run(
+    site: retained_devboot_mkdir,
+    workdir: repo_root,
+    bin_path: mkdir_path_resolved_program as String,
+    args: mkdir_parents_args(path: path),
+  )
 }

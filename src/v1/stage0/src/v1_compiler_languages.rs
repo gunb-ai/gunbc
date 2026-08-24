@@ -363,7 +363,7 @@ pub fn item_keyword_for_kind(forms: Rc<Vec<Rc<ItemForm>>>, kind: ItemFormKind) -
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
-            for f in forms.clone().iter().cloned() {
+            for f in forms.iter().cloned() {
                 if (f.kind.clone() == kind.clone()) {
                     __result.push(f);
                 }
@@ -1325,7 +1325,7 @@ pub fn binop_symbol(
         let ops = target_operators(target.clone());
         let op_matching = Rc::new({
             let mut __result = Vec::new();
-            for spec in ops.clone().iter().cloned() {
+            for spec in ops.iter().cloned() {
                 if match spec.binop.clone() {
                     Some(b) => (b.clone() == op.clone()),
                     None => false,
@@ -1338,7 +1338,7 @@ pub fn binop_symbol(
         let specific = match algebra_field.clone() {
             Some(af) => Rc::new({
                 let mut __result = Vec::new();
-                for spec in op_matching.clone().iter().cloned() {
+                for spec in op_matching.iter().cloned() {
                     if match spec.algebra_field.clone() {
                         Some(sf) => (sf.clone() == af.clone()),
                         _ => false,
@@ -1356,7 +1356,7 @@ pub fn binop_symbol(
             Some(_) => specific.clone(),
             None => Rc::new({
                 let mut __result = Vec::new();
-                for spec in op_matching.clone().iter().cloned() {
+                for spec in op_matching.iter().cloned() {
                     if (spec.algebra_field.clone() == None) {
                         __result.push(spec);
                     }

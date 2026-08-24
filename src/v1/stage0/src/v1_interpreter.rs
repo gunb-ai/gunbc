@@ -1007,7 +1007,13 @@ pub enum HermeticEffectGround {
 impl fmt::Display for InterpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            InterpError::NoSuchFunction { name } => write!(f, "no such function: {}", name),
+            InterpError::NoSuchFunction { name } => write!(
+                f,
+                "no declaration named '{}' in this execution's loaded index \
+                 (searched the modules loaded for this run; the name may be \
+                 declared in a module this run did not load)",
+                name
+            ),
             InterpError::CallContractMismatch { callee, detail } => {
                 write!(f, "call contract mismatch calling '{}': {}", callee, detail)
             }

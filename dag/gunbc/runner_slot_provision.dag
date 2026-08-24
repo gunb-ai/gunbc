@@ -1,56 +1,99 @@
 module gunbc.runner_slot_provision
 
-
 // RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
 // ctrl is a dead repo; prior ctrl:install-actions-runner citations are void legacy pointers).
 // Per slot: cited ActionsRunnerRelease fetch+verify, base dir, extract, ownership, per-slot caps
 // BEFORE systemctl enable. srv3/srv4 materialization target is 6 slots; srv4 disk binding is
 // apply-time preflight in gunbc.runner_lifecycle runner_width_disk_preflight (not a row pin).
 
-data runner_slot_provision_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: std.disposition.SingleAuthority,
-  bind: std.decl_ref.DeclarationRef {
+data runner_slot_provision_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "host_effect_apply",
-    field: std.decl_ref.WholeDeclaration,
+    field: WholeDeclaration,
   }
 }
 
-type RunnerSlotMemberAt = std.types.NonEmptyStr
+type RunnerSlotMemberAt = NonEmptyStr
 
 type RunnerSlotMember {
-  instance_name: std.types.NonEmptyStr
-  slot_dir: std.types.NonEmptyStr
+  instance_name: NonEmptyStr
+  slot_dir: NonEmptyStr
 }
 
 type RunnerSlotObservation
   = RunnerSlotsObserved { members: List<RunnerSlotMember> }
-  | RunnerSlotsUnobserved { host: product.placement_supply.HostIdentity, reason: std.types.NonEmptyStr }
+  | RunnerSlotsUnobserved { reason: NonEmptyStr }
 
-fn runner_slot_instance_dir(instance_name: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
-  join([extdeps.github.actions_runner.actions_runner_base_dir, "/", instance_name as String], "") as std.types.NonEmptyStr
+fn runner_slot_instance_dir(instance_name: NonEmptyStr) -> NonEmptyStr {
+  join([actions_runner_base_dir, "/", instance_name as String], "") as NonEmptyStr
 }
 
 fn runner_slot_member_from_instance_name(instance_name: String) -> RunnerSlotMember {
-  let name = instance_name as std.types.NonEmptyStr
+  let name = instance_name as NonEmptyStr
   RunnerSlotMember {
     instance_name: name,
     slot_dir: runner_slot_instance_dir(instance_name: name),
   }
 }
 
-fn desired_runner_slot_members(deploy: gunbc.runner_host_deploy.RunnerHostDeploy) -> List<RunnerSlotMember> {
+// THE FABRIC SLOT IS NOT A PROVISIONING TARGET, AND UNTIL 2026-08-23 IT WAS ONE.
+//
+// This mapped runner_instance_names straight through, so desired was 1..runner_count and nothing
+// asked what any of those slots was FOR. gunbc.runner_slot_allocation authors srv3-06 as
+// SlotServesFabricExecution, so the desired set proposed installing a GitHub Actions runner ON TOP
+// OF THE FABRIC EXECUTION SLOT -- and reconcile would have seen it as an ordinary missing member,
+// so apply would have done it with no refusal anywhere.
+//
+// That is the count-as-authority failure runner_slot_allocation exists to prevent, reintroduced one
+// layer above it. Its own note records the first occurrence: purpose was derived by comparing index
+// against count, so the fabric slot MOVED WITH THE WIDTH -- at width 7, srv3-07 would have become
+// fabric and srv3-06 would have been silently handed back to Actions, relabelling a slot that may be
+// running work. The carve was made an AUTHORED identity so a width change could not do that. This
+// module then consumed the width and ignored the carve, reaching the same outcome by the other road.
+//
+// THE FILTER IS ON THE FABRIC ROLE, NOT ON COMMITTED MEMBERSHIP, and that choice is load-bearing.
+// Filtering on runner_slot_membership would ask the allocation authority whether each index is
+// within the host's committed width -- which is the same question runner_count already answered, and
+// which yields ZERO desired members for any host the fleet model does not know. The reconcile
+// fixtures deliberately plant their own synthetic deploy row (host_label "wfix") precisely so their
+// expected counts are literals authored beside a known input rather than a restatement of the live
+// fleet; routing desired through the global width authority would have silently emptied them and
+// turned four exact-count fixtures green-by-vacuity.
+//
+// So the width still comes from the deploy row, which already derives it from
+// gunbc_runner_slots_per_host, and this function removes exactly the identities that are spoken for.
+// Two questions, two answers: how many slots does this host carry, and which of them are Actions
+// runners.
+//
+// It works on INDICES rather than on rendered names, so the fabric identity is compared as an
+// identity and never by parsing a slot number back out of a string it was just formatted into.
+//
+// CONSEQUENCE ON THE FLEET: srv3 desires twenty against a committed width of twenty-one. srv1, srv2
+// and srv4 carry no fabric member and are unchanged.
+fn desired_runner_slot_members(deploy: RunnerHostDeploy) -> List<RunnerSlotMember> {
+  let host = deploy.host_label as HostIdentity
   map(
-    gunbc.runner_host_deploy.runner_instance_names(deploy: deploy),
-    n => runner_slot_member_from_instance_name(instance_name: n),
+    filter(
+      runner_index_seq(n: deploy.runner_count),
+      i => !identity_is_fabric_execution_member(
+        identity: RunnerSlotIdentity { host: host, slot_index: i },
+      ),
+    ),
+    i => runner_slot_member_from_instance_name(
+      instance_name: runner_slot_instance_name(
+        slot: RunnerSlotIdentity { host: host, slot_index: i },
+      ),
+    ),
   )
 }
 
-fn runner_slot_member_key(m: RunnerSlotMember) -> std.types.NonEmptyStr {
+fn runner_slot_member_key(m: RunnerSlotMember) -> NonEmptyStr {
   m.instance_name
 }
 
-fn runner_slot_member_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> Bool {
+fn runner_slot_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
   a as String == b as String
 }
 
@@ -60,16 +103,16 @@ fn runner_slot_member_value_eq(a: RunnerSlotMember, b: RunnerSlotMember) -> Bool
 
 data runner_slot_member_ownership_scaffold_note: String = "Ownership is NOT asserted for every observed slot-dir under /opt/actions-runner. R5 teardown-owned-only requires a provenance signal (gunbc-managed systemd drop-in + unit template this lane writes) before apply lands; until host_effect observation can read that signal, ownership_of returns Absent so Removed out-of-band dirs yield MemberRemovalRefused rather than fabricated Owned (review 49707)."
 
-fn runner_slot_member_ownership(m: RunnerSlotMember) -> gunbc.ownership.Ownership? {
+fn runner_slot_member_ownership(m: RunnerSlotMember) -> Ownership? {
   Absent
 }
 
 fn runner_slot_membership_reconcile(
   desired: List<RunnerSlotMember>,
   observed: List<RunnerSlotMember>,
-) -> gunbc.membership_reconcile.MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt> {
-  gunbc.membership_reconcile.membership_plan_admitting_outcome(
-    outcome: gunbc.membership_reconcile.membership_reconcile(
+) -> MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt> {
+  membership_plan_admitting_outcome(
+    outcome: membership_reconcile(
       desired: desired,
       observed: observed,
       key_of: runner_slot_member_key,
@@ -83,16 +126,16 @@ fn runner_slot_membership_reconcile(
 type RunnerSlotEnumerationPostcondition
   = RunnerSlotEnumerationMatched
   | RunnerSlotEnumerationMismatch {
-      host: product.placement_supply.HostIdentity
+      host: HostIdentity
       declared_count: Int
       observed_count: Int
     }
 
 fn runner_slot_enumeration_postcondition(
-  host: product.placement_supply.HostIdentity,
+  host: HostIdentity,
   observed: List<RunnerSlotMember>,
 ) -> RunnerSlotEnumerationPostcondition {
-  let declared = gunbc.fleet_host_budget.declared_runner_count_for(host: host)
+  let declared = declared_runner_count_for(host: host)
   let observed_count = length(observed)
   if observed_count == declared {
     RunnerSlotEnumerationMatched
@@ -106,15 +149,15 @@ fn runner_slot_enumeration_postcondition(
 }
 
 type RunnerSlotProvisionPlan {
-  host_label: std.types.NonEmptyStr
-  membership: gunbc.membership_reconcile.MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>
+  host_label: NonEmptyStr
+  membership: MembershipPlan<RunnerSlotMember, RunnerSlotMemberAt>
   base_dir_script: String
   upsert_extract_scripts: List<String>
 }
 
 fn runner_slot_provision_plan(
-  deploy: gunbc.runner_host_deploy.RunnerHostDeploy,
-  artifact: extdeps.github.actions_runner.ActionsRunnerBinaryArtifact,
+  deploy: RunnerHostDeploy,
+  artifact: ActionsRunnerBinaryArtifact,
   observed: List<RunnerSlotMember>,
 ) -> RunnerSlotProvisionPlan {
   let membership = runner_slot_membership_reconcile(
@@ -124,11 +167,11 @@ fn runner_slot_provision_plan(
   RunnerSlotProvisionPlan {
     host_label: deploy.host_label,
     membership: membership,
-    base_dir_script: extdeps.github.actions_runner.actions_runner_base_dir_ensure_script(runner_user: deploy.runner_user),
+    base_dir_script: actions_runner_base_dir_ensure_script(runner_user: deploy.runner_user),
     upsert_extract_scripts: flat_map(membership.actions, a =>
       match a {
         MemberAdded { at: _, to: m } =>
-          [extdeps.github.actions_runner.actions_runner_slot_extract_script(
+          [actions_runner_slot_extract_script(
             artifact: artifact,
             slot_dir: m.slot_dir,
             job_user: deploy.job_user,
@@ -143,5 +186,63 @@ fn runner_slot_provision_plan(
 }
 
 fn runner_slot_provision_has_width_increase(plan: RunnerSlotProvisionPlan) -> Bool {
-  gunbc.membership_reconcile.membership_added_count(plan: plan.membership) > 0
+  membership_added_count(plan: plan.membership) > 0
+}
+
+// --- observation: the third converge member family -------------------------------------------
+
+data runner_slot_observation_refuses_note: String = "AN UNREADABLE HOST REFUSES; AN EMPTY HOST DOES NOT. These are different states and collapsing them is the empty-observation narrow: rendering 'I could not enumerate the slots' as 'this host has no slots' makes the reconcile propose ADDING every desired slot to a machine whose real population was never read, which on apply means installing over a live fleet. RunnerSlotsUnobserved carries the CAUSE AND NOT THE HOST, which is a correction rather than an omission: this observer runs LocalExec against whatever machine it is on and has no way to name that machine, so a host field here could only ever be fabricated. It was, briefly -- as the empty string -- and the empty string is not even a HostIdentity, so the fabrication refused to typecheck, which is the carrier shape doing the work a review would otherwise have had to do. The caller knows which host it is converging and supplies it; the observation reports only what it actually established. RunnerSlotsObserved with an empty list is a genuine answer about a genuinely empty host.\n\nTHE SIBLING FAMILIES DO NOT DRAW THIS LINE AND THAT IS THE DEFECT NOT TO COPY. gunbc.fleet_converge_plan_cli observe_cap_members_wet yields [] both when a drop-in is absent and when it cannot be read, and observe_timer_members_wet filters on a test that cannot distinguish 'no such unit' from 'could not run the test'. Those are tolerable for caps because an absent drop-in is the common real state; they are not tolerable for slots, where absent means 'provision it'.\n\nENUMERATION IS BY DIRECTORY, NOT BY PROBING THE DESIRED NAMES. Asking 'does each name I expect exist' can only ever return a subset of what I already intended, so an out-of-band slot -- one nobody desired -- would be invisible and could never be reported as MemberRemoved. Listing the base directory is what makes the observed population independent of the desired one, which is the whole point of a reconcile."
+
+func observe_runner_slot_members_wet() -> RunnerSlotObservation
+  uses net: Network
+{
+  match run_shell_command_capture(
+    command: ls_one_per_line_command(path: actions_runner_base_dir),
+    transport: LocalExec,
+  ) {
+    ProcessRefused { exit_code: code, stderr: err } =>
+      RunnerSlotsUnobserved {
+        reason: concat(
+          concat("could not enumerate ", actions_runner_base_dir),
+          concat(": the listing refused rather than returning an empty directory, so this host's slot population is UNKNOWN and must not be read as empty. stderr: ", err)
+        ) as NonEmptyStr,
+      }
+    ProcessOutputAbsent =>
+      RunnerSlotsUnobserved {
+        reason: concat(
+          concat("enumerating ", actions_runner_base_dir),
+          " produced no output at all -- not an empty listing, which would be an empty string. A command that yields nothing has not answered the question, and treating it as 'no slots' would propose installing every desired slot onto a host whose population was never read."
+        ) as NonEmptyStr,
+      }
+    ProcessOutputPresent { text: t } =>
+      RunnerSlotsObserved {
+        members: map(
+          filter(t.split("\n"), l => trim(s: l) != ""),
+          l => runner_slot_member_from_instance_name(instance_name: trim(s: l)),
+        ),
+      }
+  }
+}
+
+type RunnerSlotConvergeVerdict
+  = RunnerSlotConvergePlanned { host: HostIdentity, plan: RunnerSlotProvisionPlan }
+  | RunnerSlotConvergeRefused { host: HostIdentity, reason: NonEmptyStr }
+
+data runner_slot_converge_verdict_note: String = "THE REFUSAL ARM IS THE REASON THIS FUNCTION EXISTS RATHER THAN CALLERS COMPOSING THE TWO HALVES THEMSELVES. A caller holding an observation and a deploy row can always pass the observed members straight into runner_slot_provision_plan, and the unobserved case would then be a list nobody looked at. Routing both through one verdict means the only way to reach a plan is to have actually read the host, and an unmodeled host or an unreadable directory produces a refusal that names which it was."
+
+fn runner_slot_converge_verdict(
+  host: HostIdentity,
+  deploy: RunnerHostDeploy,
+  artifact: ActionsRunnerBinaryArtifact,
+  observation: RunnerSlotObservation,
+) -> RunnerSlotConvergeVerdict {
+  match observation {
+    RunnerSlotsUnobserved { reason: r } =>
+      RunnerSlotConvergeRefused { host: host, reason: r }
+    RunnerSlotsObserved { members: obs } =>
+      RunnerSlotConvergePlanned {
+        host: host,
+        plan: runner_slot_provision_plan(deploy: deploy, artifact: artifact, observed: obs),
+      }
+  }
 }

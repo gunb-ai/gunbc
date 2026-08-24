@@ -1,0 +1,94 @@
+module test.claim.fabric_isolation_witness_test
+
+// A SHARED-KERNEL SANDBOX CANNOT SATISFY A DEDICATED-KERNEL REQUIREMENT, AND THE REFUSAL NAMES
+// EXACTLY THAT ONE GUARANTEE.
+//
+// This is the discriminating control for the whole model. A Bool-returning match would answer
+// "no" here and "no" for a host with no network namespacing at all, and those have unrelated
+// remedies -- find a microVM supplier, versus fix this host. The assertion is that the missing
+// list is exactly [DedicatedKernel], not merely non-empty.
+test fn a_shared_kernel_offer_fails_only_the_dedicated_kernel_guarantee() -> Bool {
+  let missing = unsatisfied_isolation_guarantees(
+    required: dedicated_kernel_sandbox_profile(),
+    provided: shared_kernel_sandbox_profile(),
+  )
+  (missing |> count) == 1
+    && unsatisfied_isolation_wire(missing: missing) == "dedicated-kernel"
+}
+
+// THE SAME OFFER SATISFIES EVERYTHING A SHARED-KERNEL TENANT ASKS FOR.
+// The positive control: without it the witness above would pass against a match that refuses
+// everything.
+test fn a_shared_kernel_offer_satisfies_a_shared_kernel_requirement() -> Bool {
+  isolation_profile_satisfies(
+    required: shared_kernel_sandbox_profile(),
+    provided: shared_kernel_sandbox_profile(),
+  )
+    && !isolation_profile_satisfies(
+      required: dedicated_kernel_sandbox_profile(),
+      provided: shared_kernel_sandbox_profile(),
+    )
+}
+
+// TODAY'S RUNNER SLOTS COULD NOT HOST A TENANT, AND THIS COUNTS THE GAP RATHER THAN ASSERTING IT.
+//
+// A slot reuses its writable root by design -- the persistent checkout that avoids re-cloning ~10G
+// -- runs in the host's process namespace, and shares /home/ghrunner with every other slot on the
+// machine, which has already produced two independent mid-run file deletions under running jobs.
+// So all four tenant guarantees are missing, and the witness asserts the COUNT so that providing
+// one of them turns it red: the correct trigger to revisit the profile, rather than a green that
+// survives partial progress.
+//
+// THE FLOOR IS DELIBERATELY NOT THE SUBJECT HERE. Our own work requires none of these and runs
+// green today; measuring the fleet against the floor's requirement would report a gap that does
+// not exist. The tenant requirement is the one the fleet genuinely cannot meet.
+test fn todays_slots_could_not_host_a_tenant_workload() -> Bool {
+  let missing = unsatisfied_isolation_guarantees(
+    required: tenant_workload_isolation_requirement(),
+    provided: current_runner_slot_profile(),
+  )
+  (missing |> count) == 4
+    && !isolation_profile_satisfies(
+      required: tenant_workload_isolation_requirement(),
+      provided: current_runner_slot_profile(),
+    )
+}
+
+// AND THE FLEET IS STILL ELIGIBLE FOR OUR OWN FLOOR, WHICH IS THE CONTROL THAT KEEPS THE ABOVE
+// FROM BEING A UNIVERSAL "NOTHING IS ELIGIBLE". Without it, a match that refused every pairing
+// would satisfy the gap witness and look like a working model.
+test fn todays_slots_still_satisfy_our_own_floor() -> Bool {
+  isolation_profile_satisfies(
+    required: floor_isolation_requirement(),
+    provided: current_runner_slot_profile(),
+  )
+}
+
+// EVERY GUARANTEE HAS ITS OWN WIRE WORD.
+//
+// The discriminating half: a label function that collapsed two members would still render a
+// plausible refusal, and the collapse would only surface as an operator provisioning the wrong
+// thing. Asserted as distinctness across the whole closed set rather than by spot-checking one.
+test fn the_seven_guarantees_do_not_share_a_wire_word() -> Bool {
+  let all = [
+    FreshWritableRoot, PrivateProcessNamespace, PrivateNetworkNamespace,
+    PrivateUserNamespace, AttemptScopedSecrets, DefaultDenyEgress, DedicatedKernel,
+  ]
+  let labels = map(all, g => isolation_guarantee_label(g: g))
+  (all |> count) == 7
+    && (labels |> count) == 7
+    && !any(labels, a => (filter(labels, b => b == a) |> count) > 1)
+}
+
+// AN EMPTY REQUIREMENT IS SATISFIED BY AN EMPTY OFFER, WHICH IS NOT VACUOUS BUT LOAD-BEARING.
+//
+// It states that the empty missing-list means SATISFIED and never "could not ask". The fold
+// derives its answer by filtering the REQUIRED set, so an empty result can only mean every
+// required guarantee was found -- if it could also mean the question failed, every unsatisfiable
+// offer in the fleet would read as fungible.
+test fn requiring_nothing_is_satisfied_rather_than_unanswerable() -> Bool {
+  isolation_profile_satisfies(
+    required: IsolationProfile { guarantees: [] },
+    provided: current_runner_slot_profile(),
+  )
+}

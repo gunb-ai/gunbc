@@ -131,7 +131,7 @@ pub fn export_entry_fingerprint(entry: Rc<ExportEntry>) -> Rc<Fnv1a64Structural>
 }
 
 pub fn interface_summary_rollup(exports: Rc<Vec<Rc<ExportEntry>>>) -> Rc<Fnv1a64Structural> {
-    exports.clone().iter().cloned().fold(
+    exports.iter().cloned().fold(
         content_hash_atom("interface-summary-v0".to_string()),
         |acc: Rc<Fnv1a64Structural>, entry: Rc<ExportEntry>| {
             content_hash_combine_structural(acc, export_entry_fingerprint(entry.clone()))
@@ -143,7 +143,7 @@ pub fn module_key(
     source_hash: Rc<Fnv1a64Structural>,
     direct_import_interface_hashes: Rc<Vec<Rc<Fnv1a64Structural>>>,
 ) -> Rc<Fnv1a64Structural> {
-    direct_import_interface_hashes.clone().iter().cloned().fold(
+    direct_import_interface_hashes.iter().cloned().fold(
         content_hash_tagged_structural("module-key-source".to_string(), source_hash.clone()),
         |acc: Rc<Fnv1a64Structural>, import_hash: Rc<Fnv1a64Structural>| {
             content_hash_tagged_structural(

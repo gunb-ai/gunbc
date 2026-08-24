@@ -1,0 +1,49 @@
+module extdeps.posix.sh_invocation
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/sh.html"
+  }
+}
+
+// WHY THIS IS A SEPARATE MODULE FROM extdeps.posix.shell_command_language, AND IT IS A CYCLE, NOT A
+// PREFERENCE. The invocation builder was authored inside that module and the corpus refused with a
+// circular dependency: extdeps.exec.command imports it for posix_single_quote, so it cannot import
+// extdeps.exec.command back for the ArgvCommand carrier. The subject module owns the SPECIFICATION
+// (the shell command language, its quoting rules); this module owns one INVOCATION SHAPE over the
+// utility that implements it, and depends on the carrier -- exactly the split
+// extdeps.languages.bash.invocation has from extdeps.languages.bash.subject, for the same reason.
+
+// THE `sh -c` INVOCATION, AND IT IS THE RESIDUAL CLASS OF THIS SEAL RATHER THAN A HOLE IN IT.
+//
+// What the ArgvCommand wall makes unwritable is a hand-spelled WORD LIST: the flags of a tool this
+// repository does not own, typed at a call site where nothing can check them. That is a different
+// class from a shell PROGRAM, which is one argument to one program (`sh`) whose own contract is
+// "interpret this text". A builder that took a script and returned an argv is not a place a flag can
+// be dropped -- there are no flags to drop -- so sealing the record does not and should not make a
+// shell program unwritable. The text itself is modeling debt, and it is the shell -> dag lane's
+// debt: gunbc.retained_shell_script and extdeps.shell.exec TransportScript already own the route by
+// which a script body becomes a modeled program, and the sites that reach for this builder are the
+// ones that have not yet been carried through it.
+//
+// POPULATION AT THE SEAL, counted rather than estimated: eleven call sites. Ten are production host
+// probes in the fleet observation and enrollment path (gunbc.fleet_probe_identity_observe x6,
+// gunbc.fleet_host_key_enrollment x4) whose bodies use $(...), && and || -- genuine shell
+// composition, not an argv wearing a costume. The eleventh is a manual receipt test that needs a
+// program which exits nonzero while printing nothing, and reaches for `sh -c "exit 3"` because no
+// utility has that as its contract.
+//
+// DISSOLVE-ON: those bodies become modeled programs through the shell -> dag route, at which
+// point this builder loses its last caller and is deleted with them. It is NOT an escape hatch for a
+// new argv: a caller reaching for it to run a single program with flags is spelling that program's
+// argv inside a string, which review must refuse exactly as it refuses the record literal.
+fn posix_sh_program_command(script: String) -> ArgvCommand {
+  argv_command(program: posix_sh_program, arguments: ["-c", script])
+}
+
+// PATH-resolved program name, deliberately: this repository has made no filesystem observation of
+// the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
+// criterion for climbing to an absolute row, and the counter-example that makes the distinction
+// load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
+data posix_sh_program: NonEmptyStr = "sh"

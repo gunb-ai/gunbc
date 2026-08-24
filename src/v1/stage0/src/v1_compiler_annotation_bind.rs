@@ -64,7 +64,7 @@ pub fn next_module_item_start(
     after: i64,
     fallback: i64,
 ) -> i64 {
-    items.clone().iter().cloned().fold(
+    items.iter().cloned().fold(
         fallback.clone(),
         |best: i64, entry: Rc<OccurrenceIndexEntry>| {
             let start = entry
@@ -89,7 +89,7 @@ pub fn module_item_extent_end(
     limit: i64,
     own_end: i64,
 ) -> i64 {
-    entries.clone().iter().cloned().fold(
+    entries.iter().cloned().fold(
         own_end.clone(),
         |best: i64, entry: Rc<OccurrenceIndexEntry>| {
             let entry_start = entry
@@ -239,7 +239,7 @@ pub fn render_subject_annotation_blocks(
             Some(
                 Rc::new({
                     let mut __result = Vec::new();
-                    for text in texts.clone().iter().cloned() {
+                    for text in texts.iter().cloned() {
                         __result.push(render_annotation_block(text.clone()));
                     }
                     __result
@@ -277,7 +277,6 @@ pub fn authored_name_among(
     id: OccurrenceId,
 ) -> Option<String> {
     entries
-        .clone()
         .iter()
         .cloned()
         .fold(None, |acc: _, entry: Rc<OccurrenceIndexEntry>| {
@@ -291,7 +290,6 @@ pub fn authored_name_among(
 
 pub fn eligible_name_count(entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>, name: String) -> i64 {
     entries
-        .clone()
         .iter()
         .cloned()
         .fold(0, |n: i64, entry: Rc<OccurrenceIndexEntry>| {
@@ -373,7 +371,7 @@ pub fn bind_annotations(
     source_length: i64,
 ) -> Rc<AnnotationAttachmentResult> {
     attach_annotations(
-        captures.clone().iter().cloned().fold(
+        captures.iter().cloned().fold(
             Rc::new(vec![]),
             |acc: _, capture: Rc<UnboundAnnotationCapture>| {
                 v1_rt::rc_list_push(acc, normalize_dag_annotation(capture.clone()))

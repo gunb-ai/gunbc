@@ -1,6 +1,5 @@
 module gunbc.devboot.build
 
-
 // GUNBC BUILD RETURNS ONE EXACT EXECUTABLE TO A REMOTE AGENT.
 //
 // This module is the whole of what a caller sees. It takes a program name and returns either an executable file on disk whose bytes are bound to a digest, or a refusal that says which step refused and why. It does not return a lease, a ref, a store path, a provider, a token or a host, and none of those words appear in BuildOutcome -- they are how the operation works, not what it means, and a product interface that leaks its mechanism has to keep leaking it forever.
@@ -23,7 +22,6 @@ data produced_digest_entry: String = "sha256"
 data produced_refusal_entry: String = "refusal"
 
 data produced_host_entry: String = "host"
-
 
 fn request_ref_of(token: String) -> String {
   join([request_ref_namespace, token], "")
@@ -51,12 +49,7 @@ fn materialize_ref_tree(repo_root: String, work_root: String, token: String, ref
     bin_path: "rm",
     args: ["-rf", out_dir, index_path],
   )
-  let made = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root,
-    bin_path: "mkdir",
-    args: ["-p", out_dir],
-  )
+  let made = devboot_ensure_directory(repo_root: repo_root, path: out_dir)
   let loaded = git.Plumbing.ReadTreeIntoIndex(
     address: devboot_repo_address(repo_root: repo_root),
     index: index_path as FilePath,
@@ -105,7 +98,7 @@ fn digest_field(acc: DigestScan, part: String) -> DigestScan {
 }
 
 type FileSha256Outcome
-  = FileSha256Present { digest: std.content_hash.Sha256Digest }
+  = FileSha256Present { digest: Sha256Digest }
   | FileSha256CommandFailed { exit_code: Int, stderr: String }
   | FileSha256PathUnreadable { path: String }
 
@@ -131,14 +124,14 @@ fn file_sha256(repo_root: String, path: String) -> FileSha256Outcome {
   }
 }
 
-fn render_sha256_digest(digest: std.content_hash.Sha256Digest) -> String {
+fn render_sha256_digest(digest: Sha256Digest) -> String {
   digest.hex as String
 }
 
 // WHAT A CALLER RECEIVES. An artifact is a path plus the digest that binds it, and both are present or the outcome is a refusal -- there is no arm carrying a path whose bytes were never checked, because that arm is how a stale binary passed for a produced one once already.
 type BuiltArtifact {
   path: String
-  sha256: std.content_hash.Sha256Digest
+  sha256: Sha256Digest
 }
 
 // THE RECEIPT IS WHERE PROCESS IDENTITY LIVES. Which host produced the bytes, which executable did it, what the invocation was: all of it is real and worth keeping, and none of it may reach the artifact's identity. A key that carries the producing host means the same tree built on two machines is two subjects, so the second caller rebuilds what the first already produced and the dedup this service exists for silently stops happening. So these facts are reported and never keyed.
@@ -150,16 +143,16 @@ type BuildReceipt {
 
 type BuildRefusal
   = ProgramNotBuildable { program: String, offered: String }
-  | WorktreeNotSnapshotted { refusal: gunbc.devboot.produce.SnapshotRefused }
-  | ToolchainNotObserved { refusal: gunbc.devboot.produce.ToolchainObservationRefused }
+  | WorktreeNotSnapshotted { refusal: SnapshotRefused }
+  | ToolchainNotObserved { refusal: ToolchainObservationRefused }
   | SourceTreeOidUnusable { hex: String }
-  | SubjectNotAdmitted { cause: gunbc.devboot.subject.BuildSubjectRefusalCause }
+  | SubjectNotAdmitted { cause: BuildSubjectRefusalCause }
   | ProducerUnreachable { detail: String }
-  | ProducerDidNotAnswer { waited: std.measure.Second }
+  | ProducerDidNotAnswer { waited: Second }
   | ProducerRefusedRequest { detail: String }
   | SubjectMismatch { requested: String, produced: String }
   | ArtifactNotRetrievable { detail: String }
-  | ArtifactDigestMismatch { expected: std.content_hash.Sha256Digest, observed: std.content_hash.Sha256Digest }
+  | ArtifactDigestMismatch { expected: Sha256Digest, observed: Sha256Digest }
 
 type BuildOutcome
   = Built { program_subject: String, artifact: BuiltArtifact, receipt: BuildReceipt }
@@ -216,7 +209,7 @@ fn poll_settled(acc: PollState) -> Bool {
 }
 
 // THE POLL INTERVAL IS A DURATION, not a number that happens to be counted in seconds. A scale unit living in a name rather than in the type is the conflation this repository treats as a hard block, and leaving it here while the producer's wait was migrated to Second in this same change would have been worse than either choice alone: two representations of one concept, one file apart from the authority that already models it.
-fn poll_interval() -> std.measure.Second {
+fn poll_interval() -> Second {
   second(count: 5)
 }
 
@@ -232,7 +225,7 @@ fn poll_attempts() -> List<Int> {
   fold([1, 2, 3, 4, 5, 6], init: [], f: (acc, outer) => concat(acc, poll_tick_unit()))
 }
 
-fn poll_budget() -> std.measure.Second {
+fn poll_budget() -> Second {
   second(count: (poll_attempts() |> count) * second_count(poll_interval()))
 }
 
@@ -281,12 +274,7 @@ fn client_repo_dir(work_root: String) -> String {
 }
 
 fn ensure_client_repo(repo_root: String, work_root: String) -> Bool {
-  let made = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root,
-    bin_path: "mkdir",
-    args: ["-p", client_repo_dir(work_root: work_root)],
-  )
+  let made = devboot_ensure_directory(repo_root: repo_root, path: client_repo_dir(work_root: work_root))
   git.Plumbing.InitAt(
     address: devboot_repo_address(repo_root: repo_root),
     path: client_repo_dir(work_root: work_root) as FilePath,
@@ -384,12 +372,7 @@ fn publish_request(
     bin_path: "rm",
     args: ["-rf", staging, index_path],
   )
-  let made = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root,
-    bin_path: "mkdir",
-    args: ["-p", staging],
-  )
+  let made = devboot_ensure_directory(repo_root: repo_root, path: staging)
   let subject_path = join([staging, "/subject"], "")
   let program_path = join([staging, "/program"], "")
   match stage_text_blob(repo_root: repo_root, path: subject_path, text: subject_text) {
@@ -459,12 +442,12 @@ fn devboot_build(
       }
     ProgramSelected { package, cargo_target, bin_name } =>
       match devboot_snapshot(repo_root: repo_root, work_root: work_root) {
-        SnapshotRefused { detail } => BuildRefused { cause: WorktreeNotSnapshotted { refusal: gunbc.devboot.produce.SnapshotRefused { detail: detail } } }
+        SnapshotRefused { detail } => BuildRefused { cause: WorktreeNotSnapshotted { refusal: SnapshotRefused { detail: detail } } }
         SnapshotTaken { tree_hex } =>
           match observe_toolchain(repo_root: repo_root) {
             ToolchainObservationRefused { detail } =>
               BuildRefused {
-                cause: ToolchainNotObserved { refusal: gunbc.devboot.produce.ToolchainObservationRefused { detail: detail } },
+                cause: ToolchainNotObserved { refusal: ToolchainObservationRefused { detail: detail } },
               }
             ToolchainObserved { toolchain, host } =>
               match git_object_id_from_untagged_hex(hex: tree_hex) {
@@ -512,7 +495,7 @@ fn devboot_build_admitted(
   endpoint: String,
   out_path: String,
   tree_hex: String,
-  subject: gunbc.devboot.subject.BuildSubject,
+  subject: BuildSubject,
   token: String,
 ) -> BuildOutcome {
   let subject_text = render_build_subject(subject: subject)
@@ -694,7 +677,7 @@ type ProducerHome {
 }
 
 type ServeReport
-  = ServeProduced { token: String, sha256: std.content_hash.Sha256Digest }
+  = ServeProduced { token: String, sha256: Sha256Digest }
   | ServeRefused { token: String, detail: String }
 
 type RequestEntryOutcome
@@ -818,7 +801,7 @@ fn publish_produced_tree(
   token: String,
   subject_text: String,
   artifact_path: String,
-  artifact_sha256: std.content_hash.Sha256Digest?,
+  artifact_sha256: Sha256Digest?,
   refusal_text: String,
 ) -> ProducedPublication {
   let staging = join([work_root, "/", token, "/produced"], "")
@@ -829,12 +812,7 @@ fn publish_produced_tree(
     bin_path: "rm",
     args: ["-rf", staging, index_path],
   )
-  let made = devboot_witness_run(
-    site: retained_devboot_mkdir,
-    workdir: repo_root,
-    bin_path: "mkdir",
-    args: ["-p", staging],
-  )
+  let made = devboot_ensure_directory(repo_root: repo_root, path: staging)
   match stage_text_blob(repo_root: repo_root, path: join([staging, "/subject"], ""), text: subject_text) {
     GitOidCommandFailed { exit_code, stderr } =>
       produced_publication_refused(detail: join(["could not stage the produced subject: ", stderr], ""))
@@ -1002,7 +980,7 @@ fn devboot_serve_admitted(
   home: ProducerHome,
   token: String,
   requested_subject: String,
-  subject: gunbc.devboot.subject.BuildSubject,
+  subject: BuildSubject,
   source_tree: String,
   package: String,
   bin_name: String,
@@ -1049,21 +1027,25 @@ fn devboot_serve_built(
   let built = devboot_witness_run(
     site: retained_devboot_cargo_build,
     workdir: source_dir,
-    bin_path: "env",
-    args: [
-      concat("RUSTUP_HOME=", home.rustup_home),
-      concat("CARGO_HOME=", home.cargo_home),
-      concat("CARGO_TARGET_DIR=", target_dir),
-      concat("CARGO_BUILD_JOBS=", home.build_jobs),
-      "RUSTC_WRAPPER=",
-      home.cargo_bin,
-      "build",
-      "--release",
-      "--package",
-      package,
-      "--bin",
-      bin_name,
-    ],
+    bin_path: env_path_resolved_program as String,
+    args: env_prefixed_args(
+      bindings: [
+        EnvSet { name: rustup_home_env_name as String, value: home.rustup_home },
+        EnvSet { name: cargo_environment_variable_name(variable: CargoHomeEnv) as String, value: home.cargo_home },
+        EnvSet { name: cargo_environment_variable_name(variable: CargoTargetDirEnv) as String, value: target_dir },
+        EnvSet { name: cargo_environment_variable_name(variable: CargoBuildJobsEnv) as String, value: home.build_jobs },
+        EnvSet { name: cargo_environment_variable_name(variable: RustcWrapperEnv) as String, value: "" },
+      ],
+      command_argv: [
+        home.cargo_bin,
+        "build",
+        "--release",
+        "--package",
+        package,
+        "--bin",
+        bin_name,
+      ],
+    ),
   )
   if !built.success {
     serve_refusal(
@@ -1134,9 +1116,9 @@ fn render_build_outcome(outcome: BuildOutcome) -> String {
   }
 }
 
-fn build_outcome_exit(outcome: BuildOutcome) -> std.process.ProcessExit {
+fn build_outcome_exit(outcome: BuildOutcome) -> ProcessExit {
   match outcome {
-    Built { program_subject, artifact, receipt } => std.process.ExitSuccess
+    Built { program_subject, artifact, receipt } => ExitSuccess
     BuildRefused { cause } => exit_failure(reason: build_refusal_sentence(cause: cause))
   }
 }
@@ -1149,9 +1131,9 @@ fn render_serve_report(report: ServeReport) -> String {
   }
 }
 
-fn serve_report_exit(report: ServeReport) -> std.process.ProcessExit {
+fn serve_report_exit(report: ServeReport) -> ProcessExit {
   match report {
-    ServeProduced { token, sha256 } => std.process.ExitSuccess
+    ServeProduced { token, sha256 } => ExitSuccess
     ServeRefused { token, detail } => exit_failure(reason: detail)
   }
 }
@@ -1164,7 +1146,7 @@ fn devboot_build_entry(
   endpoint: String,
   out_path: String,
   receipt_path: String,
-) -> std.process.ProcessExit {
+) -> ProcessExit {
   let outcome = devboot_build(
     program: program,
     repo_root: repo_root,
@@ -1192,7 +1174,7 @@ fn devboot_serve_entry(
   cargo_home: String,
   build_jobs: String,
   receipt_path: String,
-) -> std.process.ProcessExit {
+) -> ProcessExit {
   let report = devboot_serve_request(
     repo_root: repo_root,
     work_root: work_root,
@@ -1255,6 +1237,3 @@ fn devboot_subject_probe(program: String, repo_root: String, work_root: String) 
       }
   }
 }
-
-
-

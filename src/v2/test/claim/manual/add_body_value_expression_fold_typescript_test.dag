@@ -1,30 +1,29 @@
 module v2.test.manual.add_body_value_expression_fold_typescript
 
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-
-fn add_body_fold_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
+fn add_body_fold_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
 }
 
-fn add_body_fold_add_operator_row_minus() -> v2.std.node.Node {
+fn add_body_fold_add_operator_row_minus() -> Node {
   target_operator_realization_node(
     operation: canonical_operation_op_add(),
-    shape: v2.std.compilers.target_model.InfixToken { token: ^ts_token_minus }
+    shape: InfixToken { token: ^ts_token_minus }
   )
 }
 
-fn add_body_fold_operator_catalog_minus() -> v2.std.node.Node {
+fn add_body_fold_operator_catalog_minus() -> Node {
   target_operator_realizations_catalog_node(rows: [add_body_fold_add_operator_row_minus()])
 }
 
-fn add_body_fold_operator_catalog_empty() -> v2.std.node.Node {
+fn add_body_fold_operator_catalog_empty() -> Node {
   target_operator_realizations_catalog_node(rows: [])
 }
 
-fn add_body_fold_target_model_bundle(operator_catalog: v2.std.node.Node) -> v2.std.node.Node {
+fn add_body_fold_target_model_bundle(operator_catalog: Node) -> Node {
   node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: TypeNode { connective: Conj },
     children: [
       add_body_fold_named_edge(
         name: ^target_model_edge_selection_policy,
@@ -56,13 +55,13 @@ fn add_body_fold_target_model_bundle(operator_catalog: v2.std.node.Node) -> v2.s
   )
 }
 
-fn add_body_fold_target_model_minus_catalog() -> v2.std.compilers.target_model.TargetModel {
-  v2.std.compilers.target_model.TargetModel {
+fn add_body_fold_target_model_minus_catalog() -> TargetModel {
+  TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: add_body_fold_target_model_bundle(
       operator_catalog: add_body_fold_operator_catalog_minus()
     ),
-    lex: ts_fn_add_lex_rules(),
+    lex: ModeledLexRules { root: ts_fn_add_lex_rules() },
     binding_spellings: ts_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: ts_source_text_authority(),
@@ -70,13 +69,13 @@ fn add_body_fold_target_model_minus_catalog() -> v2.std.compilers.target_model.T
   }
 }
 
-fn add_body_fold_target_model_missing_operator_catalog() -> v2.std.compilers.target_model.TargetModel {
-  v2.std.compilers.target_model.TargetModel {
+fn add_body_fold_target_model_missing_operator_catalog() -> TargetModel {
+  TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: add_body_fold_target_model_bundle(
       operator_catalog: add_body_fold_operator_catalog_empty()
     ),
-    lex: ts_fn_add_lex_rules(),
+    lex: ModeledLexRules { root: ts_fn_add_lex_rules() },
     binding_spellings: ts_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: ts_source_text_authority(),
@@ -85,32 +84,32 @@ fn add_body_fold_target_model_missing_operator_catalog() -> v2.std.compilers.tar
 }
 
 fn add_body_fold_tokens_equal(
-  left: List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
-  right: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
-) -> v2.std.logic.Bool {
+  left: List<ConcreteSyntaxToken>,
+  right: List<ConcreteSyntaxToken>
+) -> Bool {
   content_hash(n: concrete_syntax_token_list_to_node(tokens: left)) == content_hash(n: concrete_syntax_token_list_to_node(tokens: right))
 }
 
-fn add_body_fold_operand_swap_body_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn add_body_fold_operand_swap_body_tokens() -> List<ConcreteSyntaxToken> {
   [
-    v2.std.compilers.target_model.BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_y },
-    v2.std.compilers.target_model.FixedToken { token_class: ^ts_token_plus },
-    v2.std.compilers.target_model.BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_x }
+    BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_y },
+    FixedToken { token_class: ^ts_token_plus },
+    BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_x }
   ]
 }
 
-fn add_body_fold_catalog_minus_body_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn add_body_fold_catalog_minus_body_tokens() -> List<ConcreteSyntaxToken> {
   [
-    v2.std.compilers.target_model.BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_x },
-    v2.std.compilers.target_model.FixedToken { token_class: ^ts_token_minus },
-    v2.std.compilers.target_model.BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_y }
+    BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_x },
+    FixedToken { token_class: ^ts_token_minus },
+    BoundToken { token_class: ^ts_token_ident, binding: ^dag_binding_param_y }
   ]
 }
 
 fn add_body_fold_body_tokens_for_arrow(
-  arrow: v2.std.node.Node,
-  target: v2.std.compilers.target_model.TargetModel
-) -> v2.std.diagnostic.Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+  arrow: Node,
+  target: TargetModel
+) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
     o: target_project_arrow_body_to_value_expression(
       arrow: arrow,
@@ -136,19 +135,19 @@ fn add_body_fold_body_tokens_for_arrow(
 }
 
 fn add_body_fold_tokens_accept_arrow(
-  arrow: v2.std.node.Node,
-  target: v2.std.compilers.target_model.TargetModel,
-  expected: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
-) -> v2.std.logic.Bool {
+  arrow: Node,
+  target: TargetModel,
+  expected: List<ConcreteSyntaxToken>
+) -> Bool {
   match add_body_fold_body_tokens_for_arrow(arrow: arrow, target: target) {
     Accepted { value: tokens, diagnostics: d } =>
-      add_body_fold_tokens_equal(left: tokens, right: expected) && (d == v2.std.diagnostic.None)
+      add_body_fold_tokens_equal(left: tokens, right: expected) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn add_body_ts_fold_add_body_tokens_holds() -> v2.std.logic.Bool {
-  match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
+test fn add_body_ts_fold_add_body_tokens_holds() -> Bool {
+  match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_body_fold_tokens_accept_arrow(
         arrow: arrow,
@@ -159,7 +158,7 @@ test fn add_body_ts_fold_add_body_tokens_holds() -> v2.std.logic.Bool {
   }
 }
 
-test fn add_body_ts_fold_operand_swap_discriminates() -> v2.std.logic.Bool {
+test fn add_body_ts_fold_operand_swap_discriminates() -> Bool {
   match table_fixture_add_arrow_with_body_swapped_operands() {
     Accepted { value: swapped_arrow, diagnostics: _ } =>
       add_body_fold_tokens_accept_arrow(
@@ -167,7 +166,7 @@ test fn add_body_ts_fold_operand_swap_discriminates() -> v2.std.logic.Bool {
         target: ts_target_model(),
         expected: add_body_fold_operand_swap_body_tokens()
       )
-      && match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
+      && match table_fixture_add_arrow_with_body() {
         Accepted { value: canonical_arrow, diagnostics: _ } =>
           !add_body_fold_tokens_accept_arrow(
             arrow: canonical_arrow,
@@ -180,8 +179,8 @@ test fn add_body_ts_fold_operand_swap_discriminates() -> v2.std.logic.Bool {
   }
 }
 
-test fn add_body_ts_fold_catalog_minus_discriminates() -> v2.std.logic.Bool {
-  match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
+test fn add_body_ts_fold_catalog_minus_discriminates() -> Bool {
+  match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_body_fold_tokens_accept_arrow(
         arrow: arrow,
@@ -192,8 +191,8 @@ test fn add_body_ts_fold_catalog_minus_discriminates() -> v2.std.logic.Bool {
   }
 }
 
-test fn add_body_ts_fold_missing_catalog_rejects() -> v2.std.logic.Bool {
-  match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
+test fn add_body_ts_fold_missing_catalog_rejects() -> Bool {
+  match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match add_body_fold_body_tokens_for_arrow(
         arrow: arrow,

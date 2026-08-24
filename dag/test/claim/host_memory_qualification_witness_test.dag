@@ -4,16 +4,16 @@ module test.claim.host_memory_qualification_witness_test
 // one-per-channel population that was about to be tested on 2026-08-11 is
 // REFUSED, so an unsupported configuration cannot produce a verdict.
 test fn four_dimm_population_must_be_a1_b1_e1_f1() -> Bool {
-  extdeps.boards.types.admit_population(
+  admit_population(
     candidate: ["A1", "B1", "E1", "F1"],
-    documented: extdeps.boards.asrock_rack.asrock_altrad8ud_documented_dimm_populations,
-  ) == extdeps.boards.types.PopulationSupported
+    documented: asrock_altrad8ud_documented_dimm_populations,
+  ) == PopulationSupported
 }
 
 test fn one_per_channel_four_dimm_population_is_refused() -> Bool {
-  match extdeps.boards.types.admit_population(
+  match admit_population(
     candidate: ["A1", "C1", "E1", "G1"],
-    documented: extdeps.boards.asrock_rack.asrock_altrad8ud_documented_dimm_populations,
+    documented: asrock_altrad8ud_documented_dimm_populations,
   ) {
     PopulationUnsupported { slots: _ } => true
     PopulationSupported => false
@@ -21,16 +21,16 @@ test fn one_per_channel_four_dimm_population_is_refused() -> Bool {
 }
 
 test fn single_and_dual_populations_are_supported() -> Bool {
-  extdeps.boards.types.admit_population(candidate: ["A1"], documented: extdeps.boards.asrock_rack.asrock_altrad8ud_documented_dimm_populations) == extdeps.boards.types.PopulationSupported
-    && extdeps.boards.types.admit_population(candidate: ["A1", "E1"], documented: extdeps.boards.asrock_rack.asrock_altrad8ud_documented_dimm_populations) == extdeps.boards.types.PopulationSupported
+  admit_population(candidate: ["A1"], documented: asrock_altrad8ud_documented_dimm_populations) == PopulationSupported
+    && admit_population(candidate: ["A1", "E1"], documented: asrock_altrad8ud_documented_dimm_populations) == PopulationSupported
 }
 
 // RED control: a two-module population in the WRONG slots is refused, so the
 // check is discriminating on slot identity rather than on module count.
 test fn two_dimm_population_in_wrong_slots_is_refused() -> Bool {
-  match extdeps.boards.types.admit_population(
+  match admit_population(
     candidate: ["A1", "B1"],
-    documented: extdeps.boards.asrock_rack.asrock_altrad8ud_documented_dimm_populations,
+    documented: asrock_altrad8ud_documented_dimm_populations,
   ) {
     PopulationUnsupported { slots: _ } => true
     PopulationSupported => false
@@ -44,38 +44,38 @@ test fn two_dimm_population_in_wrong_slots_is_refused() -> Bool {
 // E588 (observed followed by reset on srv3/srv4) and E559 (observed on a
 // same-family machine that continues booting) are the SAME class. Fatality
 // therefore cannot be a function of the class.
-data srv3_post_bios_310_standing: gunbc.host_memory_qualification.HostMemoryStanding = gunbc.host_memory_qualification.HostMemoryStanding {
+data srv3_post_bios_310_standing: HostMemoryStanding = HostMemoryStanding {
   host: "srv3",
   part_number: "M386A4G40DM0-CPB",
   population: ["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"],
-  class_support: gunbc.host_memory_qualification.ClassSupportedByBoard,
-  part_qualification: gunbc.host_memory_qualification.NotListedInVendorAvl {
-    avl_authority: extdeps.cpu.ampere.ampere_altra_avl_authority,
+  class_support: ClassSupportedByBoard,
+  part_qualification: NotListedInVendorAvl {
+    avl_authority: ampere_altra_avl_authority,
     avl_issue: "1.15 (December 2025)",
   },
-  training: gunbc.host_memory_qualification.TrainingOperational { dimm_mask: "0x00005555" },
-  boot: gunbc.host_memory_qualification.RepeatingFirmwareReset { token: "E588", cycles: 6 },
+  training: TrainingOperational { dimm_mask: "0x00005555" },
+  boot: RepeatingFirmwareReset { token: "E588", cycles: 6 },
   observed_at: 1786580000000,
 }
 
 test fn ddr_training_success_does_not_establish_host_boot() -> Bool {
-  !gunbc.host_memory_qualification.host_boot_is_established(standing: srv3_post_bios_310_standing)
+  !host_boot_is_established(standing: srv3_post_bios_310_standing)
 }
 
 // Positive control: the ONLY thing that establishes boot is the boot axis.
 test fn only_reached_operating_system_establishes_boot() -> Bool {
-  gunbc.host_memory_qualification.host_boot_is_established(
-    standing: gunbc.host_memory_qualification.HostMemoryStanding {
+  host_boot_is_established(
+    standing: HostMemoryStanding {
       host: "srv3",
       part_number: "M386A4G40DM0-CPB",
       population: ["A1"],
-      class_support: gunbc.host_memory_qualification.ClassSupportedByBoard,
-      part_qualification: gunbc.host_memory_qualification.NotListedInVendorAvl {
-        avl_authority: extdeps.cpu.ampere.ampere_altra_avl_authority,
+      class_support: ClassSupportedByBoard,
+      part_qualification: NotListedInVendorAvl {
+        avl_authority: ampere_altra_avl_authority,
         avl_issue: "1.15 (December 2025)",
       },
-      training: gunbc.host_memory_qualification.TrainingOperational { dimm_mask: "0x00000001" },
-      boot: gunbc.host_memory_qualification.BootReachedOperatingSystem,
+      training: TrainingOperational { dimm_mask: "0x00000001" },
+      boot: BootReachedOperatingSystem,
       observed_at: 1786580000000,
     },
   )
@@ -84,7 +84,7 @@ test fn only_reached_operating_system_establishes_boot() -> Bool {
 // Generic class support does not construct exact-part qualification: the same
 // standing is ClassSupportedByBoard AND NotListedInVendorAvl.
 test fn class_support_does_not_establish_part_qualification() -> Bool {
-  srv3_post_bios_310_standing.class_support == gunbc.host_memory_qualification.ClassSupportedByBoard
+  srv3_post_bios_310_standing.class_support == ClassSupportedByBoard
     && match srv3_post_bios_310_standing.part_qualification {
       NotListedInVendorAvl { avl_authority: _, avl_issue: _ } => true
       _ => false
@@ -94,27 +94,27 @@ test fn class_support_does_not_establish_part_qualification() -> Bool {
 // A P token is not an error and an E token is not a verdict: the classifier
 // answers NAMESPACE only, and no token-to-meaning function exists to call.
 test fn p_token_is_not_an_error() -> Bool {
-  !extdeps.ampere.scp_diagnostic.scp_token_is_error_class(token: extdeps.ampere.scp_diagnostic.AmpereScpConsoleToken { class: extdeps.ampere.scp_diagnostic.ScpPCode, number: 12 })
+  !scp_token_is_error_class(token: AmpereScpConsoleToken { class: ScpPCode, number: 12 })
 }
 
 test fn e_token_class_is_namespace_not_fatality() -> Bool {
-  extdeps.ampere.scp_diagnostic.scp_token_is_error_class(token: extdeps.ampere.scp_diagnostic.AmpereScpConsoleToken { class: extdeps.ampere.scp_diagnostic.ScpECode, number: 588 })
-    && extdeps.ampere.scp_diagnostic.scp_token_is_error_class(token: extdeps.ampere.scp_diagnostic.AmpereScpConsoleToken { class: extdeps.ampere.scp_diagnostic.ScpECode, number: 559 })
+  scp_token_is_error_class(token: AmpereScpConsoleToken { class: ScpECode, number: 588 })
+    && scp_token_is_error_class(token: AmpereScpConsoleToken { class: ScpECode, number: 559 })
 }
 
 // A missing projection does not establish a missing source.
 test fn projection_absence_does_not_establish_source_absence() -> Bool {
-  !gunbc.host_diagnostic_channel.projection_absence_establishes_source_absence()
+  !projection_absence_establishes_source_absence()
 }
 
 test fn redfish_only_observation_is_not_complete() -> Bool {
-  !gunbc.host_diagnostic_channel.redfish_only_observation_is_complete()
+  !redfish_only_observation_is_complete()
 }
 
 // A destructive or acknowledging read cannot be modeled as a pure snapshot.
 test fn boot_progress_read_is_not_a_snapshot() -> Bool {
-  extdeps.ampere.scp_diagnostic.ampere_smpro_boot_progress_interface.read_effect == extdeps.ampere.scp_diagnostic.ReadAcknowledgesBootProgress
-    && extdeps.ampere.scp_diagnostic.ampere_smpro_boot_progress_interface.read_effect != extdeps.ampere.scp_diagnostic.ReadSnapshot
+  ampere_smpro_boot_progress_interface.read_effect == ReadAcknowledgesBootProgress
+    && ampere_smpro_boot_progress_interface.read_effect != ReadSnapshot
 }
 
 // A duplicated slot is refused. This passed under the previous
@@ -122,9 +122,9 @@ test fn boot_progress_read_is_not_a_snapshot() -> Bool {
 // duplicate shrinks the candidate's distinct set, so the subset test failed.
 // It is kept because the property is the one callers rely on.
 test fn a_duplicated_candidate_slot_is_refused() -> Bool {
-  match extdeps.boards.types.admit_population(
+  match admit_population(
     candidate: ["A1", "A1", "B1", "E1"],
-    documented: extdeps.boards.asrock_rack.asrock_altrad8ud_documented_dimm_populations,
+    documented: asrock_altrad8ud_documented_dimm_populations,
   ) {
     PopulationUnsupported { slots: _ } => true
     PopulationSupported => false
@@ -138,14 +138,14 @@ test fn a_duplicated_candidate_slot_is_refused() -> Bool {
 // refuses it. Synthetic on purpose — no real board row has a duplicate, which
 // is exactly why the defect was latent and why the guard must not depend on
 // that staying true.
-data duplicated_documented_population: extdeps.boards.types.DimmPopulation = extdeps.boards.types.DimmPopulation {
-  board: extdeps.boards.types.AsrockRackAltrad8ud1l2t,
+data duplicated_documented_population: DimmPopulation = DimmPopulation {
+  board: AsrockRackAltrad8ud1l2t,
   slots: ["A1", "A1"],
-  authority: extdeps.cpu.ampere.ampere_altra_avl_authority,
+  authority: ampere_altra_avl_authority,
 }
 
 test fn a_duplicated_documented_row_does_not_admit_a_distinct_pair() -> Bool {
-  match extdeps.boards.types.admit_population(
+  match admit_population(
     candidate: ["A1", "B1"],
     documented: [duplicated_documented_population],
   ) {
@@ -158,10 +158,10 @@ test fn a_duplicated_documented_row_does_not_admit_a_distinct_pair() -> Bool {
 // still admitted, so the refusal above is multiset discrimination rather than
 // a blanket rejection of duplicated rows.
 test fn a_duplicated_documented_row_still_admits_its_own_multiset() -> Bool {
-  extdeps.boards.types.admit_population(
+  admit_population(
     candidate: ["A1", "A1"],
     documented: [duplicated_documented_population],
-  ) == extdeps.boards.types.PopulationSupported
+  ) == PopulationSupported
 }
 
 // --- RELOCATED 2026-08-19: the training-implication claims -----------------------------------------
@@ -189,53 +189,55 @@ test fn a_duplicated_documented_row_still_admits_its_own_multiset() -> Bool {
 //   replacement in test.claim.build_fulfillment_witness, where a sample-required
 //   verdict resolves to pending evidence and a decoded refusal stops the line.
 
-data stick_32g: std.measure.ByteSize = std.measure.byte_size(count: 34359738368)
+data stick_32g: ByteSize = byte_size(count: 34359738368)
 
 // The family observed failing MREP on this board: load-reduced, so it must
 // execute the data-buffer step.
-data lrdimm_32g: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types.DramModuleCatalogRow {
+data lrdimm_32g: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "M386A4G40DM0-CPB",
-  manufacturer: extdeps.vendor.samsung.samsung,
-  generation: extdeps.memory.types.dram_generation_ddr4,
-  capacity_bytes: test.claim.host_memory_qualification_witness_test.stick_32g,
+  manufacturer: samsung,
+  generation: dram_generation_ddr4,
+  capacity_bytes: stick_32g,
   data_rate_mts: 2133,
   ecc: true,
-  buffering: extdeps.memory.types.LoadReduced,
-  chip_width: std.measure.bit_width(count: 4),
+  buffering: LoadReduced,
+  die_stacking: MonolithicDie,
+  chip_width: bit_width(count: 4),
   rank_count: 4,
 }
 
 // Same capacity, same vendor, same generation — registered rather than load
 // reduced. The ONLY axis that differs is the one the rule reads.
-data rdimm_32g: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types.DramModuleCatalogRow {
+data rdimm_32g: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "M393A4K40DB2-CTD",
-  manufacturer: extdeps.vendor.samsung.samsung,
-  generation: extdeps.memory.types.dram_generation_ddr4,
-  capacity_bytes: test.claim.host_memory_qualification_witness_test.stick_32g,
+  manufacturer: samsung,
+  generation: dram_generation_ddr4,
+  capacity_bytes: stick_32g,
   data_rate_mts: 2666,
   ecc: true,
-  buffering: extdeps.memory.types.Registered,
-  chip_width: std.measure.bit_width(count: 4),
+  buffering: Registered,
+  die_stacking: MonolithicDie,
+  chip_width: bit_width(count: 4),
   rank_count: 2,
 }
 
-data observed_failures: List<gunbc.host_memory_qualification.PlatformTrainingFailure> = [gunbc.host_memory_qualification.altrad8ud_mrep_failure_observation]
+data observed_failures: List<PlatformTrainingFailure> = [altrad8ud_mrep_failure_observation]
 
 // The same failure at DECODED standing. Only the evidence differs, which is
 // what makes the severity comparison below discriminating.
-data decoded_failure: gunbc.host_memory_qualification.PlatformTrainingFailure = gunbc.host_memory_qualification.PlatformTrainingFailure {
-  board: extdeps.boards.types.AsrockRackAltrad8ud1l2t,
-  step: extdeps.memory.training.LrdimmDataBufferMrep,
-  standing: gunbc.host_memory_qualification.DecodedFromPlatformSyndrome { register: "B5" },
+data decoded_failure: PlatformTrainingFailure = PlatformTrainingFailure {
+  board: AsrockRackAltrad8ud1l2t,
+  step: LrdimmDataBufferMrep,
+  standing: DecodedFromPlatformSyndrome { register: "B5" },
   observed_population: ["A1"],
   observed_at: 1786590000000,
 }
 
 // The same failure with NO evidence behind it.
-data unobserved_failure: gunbc.host_memory_qualification.PlatformTrainingFailure = gunbc.host_memory_qualification.PlatformTrainingFailure {
-  board: extdeps.boards.types.AsrockRackAltrad8ud1l2t,
-  step: extdeps.memory.training.LrdimmDataBufferMrep,
-  standing: gunbc.host_memory_qualification.EvidenceUnobserved,
+data unobserved_failure: PlatformTrainingFailure = PlatformTrainingFailure {
+  board: AsrockRackAltrad8ud1l2t,
+  step: LrdimmDataBufferMrep,
+  standing: EvidenceUnobserved,
   observed_population: ["A1"],
   observed_at: 1786590000000,
 }
@@ -246,10 +248,10 @@ data unobserved_failure: gunbc.host_memory_qualification.PlatformTrainingFailure
 // PartImplicatedByFailingStep here, which is how a single association
 // removed most of the 64GB DDR4 market by construction.
 test fn an_association_requires_a_sample_rather_than_refusing() -> Bool {
-  match gunbc.host_memory_qualification.part_implication(
+  match part_implication(
     candidate: lrdimm_32g,
     failures: observed_failures,
-    target_board: extdeps.boards.types.AsrockRackAltrad8ud1l2t,
+    target_board: AsrockRackAltrad8ud1l2t,
   ) {
     PartSampleQualificationRequired { step: _, standing: _ } => true
     PartImplicatedByFailingStep { step: _, standing: _ } => false
@@ -261,10 +263,10 @@ test fn an_association_requires_a_sample_rather_than_refusing() -> Bool {
 // step, same module — decoded from this platform's own syndrome register, so
 // the refusal is earned.
 test fn a_decoded_syndrome_does_refuse() -> Bool {
-  match gunbc.host_memory_qualification.part_implication(
+  match part_implication(
     candidate: lrdimm_32g,
     failures: [decoded_failure],
-    target_board: extdeps.boards.types.AsrockRackAltrad8ud1l2t,
+    target_board: AsrockRackAltrad8ud1l2t,
   ) {
     PartImplicatedByFailingStep { step: _, standing: _ } => true
     _ => false
@@ -275,10 +277,10 @@ test fn a_decoded_syndrome_does_refuse() -> Bool {
 // implicate anything at all. Refusing on EvidenceUnobserved would let a row
 // nobody measured remove parts from the market.
 test fn an_unobserved_standing_implicates_nothing() -> Bool {
-  match gunbc.host_memory_qualification.part_implication(
+  match part_implication(
     candidate: lrdimm_32g,
     failures: [unobserved_failure],
-    target_board: extdeps.boards.types.AsrockRackAltrad8ud1l2t,
+    target_board: AsrockRackAltrad8ud1l2t,
   ) {
     PartNotImplicated => true
     _ => false
@@ -288,10 +290,10 @@ test fn an_unobserved_standing_implicates_nothing() -> Bool {
 // RED control on the structural axis: an otherwise identical registered module
 // has no data buffer, cannot execute MREP, and is untouched at ANY standing.
 test fn registered_module_is_untouched_even_by_a_decoded_failure() -> Bool {
-  match gunbc.host_memory_qualification.part_implication(
-    candidate: test.claim.host_memory_qualification_witness_test.rdimm_32g,
+  match part_implication(
+    candidate: rdimm_32g,
     failures: [decoded_failure],
-    target_board: extdeps.boards.types.AsrockRackAltrad8ud1l2t,
+    target_board: AsrockRackAltrad8ud1l2t,
   ) {
     PartNotImplicated => true
     _ => false
@@ -299,6 +301,6 @@ test fn registered_module_is_untouched_even_by_a_decoded_failure() -> Bool {
 }
 
 test fn only_the_load_reduced_module_executes_mrep() -> Bool {
-  extdeps.memory.training.module_executes_step(module: lrdimm_32g, step: extdeps.memory.training.LrdimmDataBufferMrep)
-    && !extdeps.memory.training.module_executes_step(module: test.claim.host_memory_qualification_witness_test.rdimm_32g, step: extdeps.memory.training.LrdimmDataBufferMrep)
+  module_executes_step(module: lrdimm_32g, step: LrdimmDataBufferMrep)
+    && !module_executes_step(module: rdimm_32g, step: LrdimmDataBufferMrep)
 }

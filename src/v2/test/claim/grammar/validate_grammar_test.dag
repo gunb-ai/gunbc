@@ -1,20 +1,34 @@
 module v2.test.claim.grammar.validate_grammar
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data validate_grammar_fixture_start: v2.std.node.Symbol = ^validate_grammar_fixture_start
-data validate_grammar_fixture_terminal_a: v2.std.node.Symbol = ^validate_grammar_fixture_terminal_a
-data validate_grammar_fixture_other_nt: v2.std.node.Symbol = ^validate_grammar_fixture_other_nt
-data validate_grammar_fixture_bad_lhs: v2.std.node.Symbol = ^validate_grammar_fixture_bad_lhs
-data validate_grammar_fixture_orphan_terminal: v2.std.node.Symbol = ^validate_grammar_fixture_orphan_terminal
+data validate_grammar_fixture_start: Symbol = ^validate_grammar_fixture_start
+data validate_grammar_fixture_terminal_a: Symbol = ^validate_grammar_fixture_terminal_a
+data validate_grammar_fixture_other_nt: Symbol = ^validate_grammar_fixture_other_nt
+data validate_grammar_fixture_bad_lhs: Symbol = ^validate_grammar_fixture_bad_lhs
+data validate_grammar_fixture_orphan_terminal: Symbol = ^validate_grammar_fixture_orphan_terminal
 
-fn validate_grammar_fixture_well_formed() -> v2.std.grammar.FormalGrammar {
+// The two singleton predicates every fixture below builds. Extracted for a reason beyond
+// de-duplication: before this, `PointwisePower` reached this module's emitted text ONLY through a
+// value-position record literal, and the import derivation in `v1.compiler.emit_rust`
+// `reference_derived_use_lines` walks SIGNATURE-level type positions -- a name spelled only inside
+// a body construction is never proposed as a use-line. A declared return type puts the reference
+// where the derivation can see it.
+fn validate_grammar_fixture_nonterminal_singleton(only: FormalNonterminal) -> PointwisePower<FormalNonterminal> {
+  PointwisePower { member: fn(n) { n == only } }
+}
+
+fn validate_grammar_fixture_terminal_singleton(only: FormalTerminal) -> PointwisePower<FormalTerminal> {
+  PointwisePower { member: fn(t) { t == only } }
+}
+
+fn validate_grammar_fixture_well_formed() -> FormalGrammar {
   let start = grammar_formal_nonterminal(identity: ^validate_grammar_fixture_start)
-  let terminal = v2.std.grammar.FormalTerminal { identity: ^validate_grammar_fixture_terminal_a }
-  v2.std.grammar.FormalGrammar {
-    nonterminals: std.types.Set { member: fn(n) { n == start } },
-    terminals: std.types.Set { member: fn(t) { t == terminal } },
-    productions: std.algebra.Cons {
+  let terminal = FormalTerminal { identity: ^validate_grammar_fixture_terminal_a }
+  FormalGrammar {
+    nonterminals: validate_grammar_fixture_nonterminal_singleton(only: start),
+    terminals: validate_grammar_fixture_terminal_singleton(only: terminal),
+    productions: Cons {
       head: grammar_formal_production(
         lhs: ^validate_grammar_fixture_start,
         rhs: [grammar_formal_terminal(identity: ^validate_grammar_fixture_terminal_a)]
@@ -25,14 +39,14 @@ fn validate_grammar_fixture_well_formed() -> v2.std.grammar.FormalGrammar {
   }
 }
 
-fn validate_grammar_fixture_start_not_in_nonterminals() -> v2.std.grammar.FormalGrammar {
+fn validate_grammar_fixture_start_not_in_nonterminals() -> FormalGrammar {
   let start = grammar_formal_nonterminal(identity: ^validate_grammar_fixture_start)
   let other_nt = grammar_formal_nonterminal(identity: ^validate_grammar_fixture_other_nt)
-  let terminal = v2.std.grammar.FormalTerminal { identity: ^validate_grammar_fixture_terminal_a }
-  v2.std.grammar.FormalGrammar {
-    nonterminals: std.types.Set { member: fn(n) { n == other_nt } },
-    terminals: std.types.Set { member: fn(t) { t == terminal } },
-    productions: std.algebra.Cons {
+  let terminal = FormalTerminal { identity: ^validate_grammar_fixture_terminal_a }
+  FormalGrammar {
+    nonterminals: validate_grammar_fixture_nonterminal_singleton(only: other_nt),
+    terminals: validate_grammar_fixture_terminal_singleton(only: terminal),
+    productions: Cons {
       head: grammar_formal_production(
         lhs: ^validate_grammar_fixture_other_nt,
         rhs: [grammar_formal_terminal(identity: ^validate_grammar_fixture_terminal_a)]
@@ -43,13 +57,13 @@ fn validate_grammar_fixture_start_not_in_nonterminals() -> v2.std.grammar.Formal
   }
 }
 
-fn validate_grammar_fixture_lhs_not_in_nonterminals() -> v2.std.grammar.FormalGrammar {
+fn validate_grammar_fixture_lhs_not_in_nonterminals() -> FormalGrammar {
   let start = grammar_formal_nonterminal(identity: ^validate_grammar_fixture_start)
-  let terminal = v2.std.grammar.FormalTerminal { identity: ^validate_grammar_fixture_terminal_a }
-  v2.std.grammar.FormalGrammar {
-    nonterminals: std.types.Set { member: fn(n) { n == start } },
-    terminals: std.types.Set { member: fn(t) { t == terminal } },
-    productions: std.algebra.Cons {
+  let terminal = FormalTerminal { identity: ^validate_grammar_fixture_terminal_a }
+  FormalGrammar {
+    nonterminals: validate_grammar_fixture_nonterminal_singleton(only: start),
+    terminals: validate_grammar_fixture_terminal_singleton(only: terminal),
+    productions: Cons {
       head: grammar_formal_production(
         lhs: ^validate_grammar_fixture_bad_lhs,
         rhs: [grammar_formal_terminal(identity: ^validate_grammar_fixture_terminal_a)]
@@ -60,13 +74,13 @@ fn validate_grammar_fixture_lhs_not_in_nonterminals() -> v2.std.grammar.FormalGr
   }
 }
 
-fn validate_grammar_fixture_rhs_symbol_not_in_alphabet() -> v2.std.grammar.FormalGrammar {
+fn validate_grammar_fixture_rhs_symbol_not_in_alphabet() -> FormalGrammar {
   let start = grammar_formal_nonterminal(identity: ^validate_grammar_fixture_start)
-  let terminal = v2.std.grammar.FormalTerminal { identity: ^validate_grammar_fixture_terminal_a }
-  v2.std.grammar.FormalGrammar {
-    nonterminals: std.types.Set { member: fn(n) { n == start } },
-    terminals: std.types.Set { member: fn(t) { t == terminal } },
-    productions: std.algebra.Cons {
+  let terminal = FormalTerminal { identity: ^validate_grammar_fixture_terminal_a }
+  FormalGrammar {
+    nonterminals: validate_grammar_fixture_nonterminal_singleton(only: start),
+    terminals: validate_grammar_fixture_terminal_singleton(only: terminal),
+    productions: Cons {
       head: grammar_formal_production(
         lhs: ^validate_grammar_fixture_start,
         rhs: [grammar_formal_terminal(identity: ^validate_grammar_fixture_orphan_terminal)]
@@ -106,4 +120,3 @@ test fn witness_validate_grammar_rhs_symbol_not_in_alphabet_rejects_holds() -> B
     Violates { diagnostic: _ } => true
   }
 }
-

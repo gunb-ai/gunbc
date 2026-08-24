@@ -1,19 +1,10 @@
 module gunbc.fleet_container
 
-
-type CpuRequirement { min_threads: std.measure.HardwareThreadCount, architecture: extdeps.toolchain.types.Architecture? }
-type GpuRequirement { min_vram: std.measure.ByteSize, runtimes: List<extdeps.gpu.types.GpuRuntime> }
-type MemoryRequirement { min_bytes: std.measure.ByteSize }
-type StorageRequirement { min_bytes: std.measure.ByteSize, persistence: extdeps.storage.types.PersistenceKind }
-type NetworkRequirement { egress: product.network_topology.NetworkEgressClass?, ambient_allowed: Bool }
-
-type ResourceEnvelope {
-  cpu: CpuRequirement?
-  gpu: GpuRequirement?
-  memory: MemoryRequirement?
-  storage: StorageRequirement?
-  network: NetworkRequirement?
-}
+// THE REQUIREMENT VOCABULARY MOVED TO product.fabric.envelope AND IS CONSUMED HERE.
+//
+// These are machine questions, not container questions -- a bare-metal host and a rented VM answer
+// them identically -- so owning them inside a model of our fleet's containers put a general fact in
+// a specific home. Consumed, not redeclared (DESIGN section 3).
 
 type ContainerBaseline
   = ContainerBaselineMeasured { idle: ResourceEnvelope }
@@ -23,7 +14,7 @@ type FleetContainerType
   = GhaRunnerContainer { baseline: ContainerBaseline }
   | AgentSessionContainer { baseline: ContainerBaseline }
 
-fn idle_memory_envelope(min_bytes: std.measure.ByteSize) -> ResourceEnvelope {
+fn idle_memory_envelope(min_bytes: ByteSize) -> ResourceEnvelope {
   ResourceEnvelope {
     cpu: none,
     gpu: none,
@@ -41,9 +32,8 @@ data agent_session_container: FleetContainerType = AgentSessionContainer {
   baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: byte_size(471859200)) }
 }
 
-
 type BaselineResolution
-  = BaselineResolved { bytes: std.measure.ByteSize }
+  = BaselineResolved { bytes: ByteSize }
   | BaselineUnmeasured { reason: String }
 
 fn container_baseline(c: FleetContainerType) -> ContainerBaseline {
@@ -68,15 +58,15 @@ fn container_baseline_bytes(c: FleetContainerType) -> BaselineResolution {
   }
 }
 
-fn memory_bytes_honor_demand(supply: std.measure.ByteSize, demand: std.measure.ByteSize) -> Bool {
+fn memory_bytes_honor_demand(supply: ByteSize, demand: ByteSize) -> Bool {
   byte_size_count(supply) >= byte_size_count(demand)
 }
 
-fn projected_concurrent_peak(width: std.measure.HardwareThreadCount, per_shard_peak: std.measure.ByteSize) -> std.measure.ByteSize {
+fn projected_concurrent_peak(width: HardwareThreadCount, per_shard_peak: ByteSize) -> ByteSize {
   measure_scale_fraction_ceil(m: per_shard_peak, num: hardware_thread_count_value(width), den: 1)
 }
 
-fn parallel_run_demand_envelope(width: std.measure.HardwareThreadCount, per_shard_peak: std.measure.ByteSize) -> ResourceEnvelope {
+fn parallel_run_demand_envelope(width: HardwareThreadCount, per_shard_peak: ByteSize) -> ResourceEnvelope {
   ResourceEnvelope {
     cpu: Present { value: CpuRequirement { min_threads: width, architecture: none } },
     gpu: none,
@@ -92,9 +82,9 @@ fn parallel_run_demand_envelope(width: std.measure.HardwareThreadCount, per_shar
 
 fn parallel_run_demand_envelope_from_budget(
   shard_count: Int,
-  hardware_threads: std.measure.HardwareThreadCount,
-  memory_budget: std.measure.ByteSize,
-  per_shard_peak: std.measure.ByteSize,
+  hardware_threads: HardwareThreadCount,
+  memory_budget: ByteSize,
+  per_shard_peak: ByteSize,
   conservative_fallback_width: Int
 ) -> ResourceEnvelope {
   parallel_run_demand_envelope(
@@ -109,21 +99,21 @@ fn parallel_run_demand_envelope_from_budget(
   )
 }
 
-fn demand_envelope_memory(envelope: ResourceEnvelope) -> std.measure.ByteSize {
+fn demand_envelope_memory(envelope: ResourceEnvelope) -> ByteSize {
   match envelope.memory {
     Absent => byte_size(0)
     Present { value: req } => req.min_bytes
   }
 }
 
-fn demand_envelope_thread_count(envelope: ResourceEnvelope) -> std.nat.Nat {
+fn demand_envelope_thread_count(envelope: ResourceEnvelope) -> Nat {
   match envelope.cpu {
     Absent => 0
     Present { value: req } => hardware_thread_count_value(req.min_threads)
   }
 }
 
-fn demand_envelope_fits_budget(envelope: ResourceEnvelope, budget: std.measure.ByteSize) -> Bool {
+fn demand_envelope_fits_budget(envelope: ResourceEnvelope, budget: ByteSize) -> Bool {
   memory_bytes_honor_demand(supply: budget, demand: demand_envelope_memory(envelope: envelope))
 }
 

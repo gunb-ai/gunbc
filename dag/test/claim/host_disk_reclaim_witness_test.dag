@@ -1,0 +1,113 @@
+module test.claim.host_disk_reclaim_witness_test
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn probe_checkout(packs: Int, tmp_packs: Int) -> CheckoutObservation {
+  CheckoutObservation {
+    git_dir: "/opt/actions-runner/srv4-01/_work/gunbc/gunbc/.git" as NonEmptyStr,
+    owner: "ghrunner" as NonEmptyStr,
+    pack_count: packs,
+    tmp_pack_count: tmp_packs,
+    git_dir_bytes: byte_size(count: 8000000000),
+  }
+}
+
+fn decision_label(d: RepackDecision) -> String {
+  match d {
+    RepackWarranted { git_dir: _, owner: _, pack_count: _ } => "warranted"
+    RepackBelowFragmentationGate { git_dir: _, pack_count: _ } => "below-gate"
+    RepackRefusedSlotBusy { git_dir: _, worker_cgroup_unit: _ } => "refused-busy"
+    RepackRefusedJobStateUnobservable { git_dir: _, reason: _ } => "refused-unobservable"
+  }
+}
+
+fn label_for(job_state: SlotJobState, packs: Int) -> String {
+  decision_label(d: repack_decision_for(job_state: job_state, checkout: probe_checkout(packs: packs, tmp_packs: 0)))
+}
+
+// AN IDLE, FRAGMENTED CHECKOUT IS THE ONLY STATE THAT EARNS THE I/O. 46 is the measured upper end on
+// srv4 (operator 2026-08-22), so this is the live shape rather than an invented one.
+test fn an_idle_fragmented_checkout_is_warranted() -> Bool {
+  label_for(job_state: SlotIdle, packs: 46) == "warranted"
+}
+
+// THE GATE IS A FRAGMENTATION GATE AND THIS IS THE ROW THAT PROVES IT IS NOT A SIZE GATE: the
+// checkout is 8GB in both this row and the one above, and only the pack count differs. A gate that
+// had drifted to charging on size would pass both.
+test fn an_idle_but_unfragmented_checkout_is_skipped_not_warranted() -> Bool {
+  label_for(job_state: SlotIdle, packs: reclaim_fragmentation_gate_packs) == "below-gate"
+}
+
+// THE BOUNDARY IS EXCLUSIVE, asserted at both sides of the gate rather than near it, because an
+// off-by-one here means either re-packing a clean repo every six hours or never packing a repo that
+// has crossed the threshold.
+test fn the_fragmentation_gate_is_exclusive_at_both_sides() -> Bool {
+  label_for(job_state: SlotIdle, packs: reclaim_fragmentation_gate_packs + 1) == "warranted"
+    && label_for(job_state: SlotIdle, packs: reclaim_fragmentation_gate_packs - 1) == "below-gate"
+}
+
+// A RUNNING JOB REFUSES GIT WORK EVEN WHEN THE REPO IS MAXIMALLY FRAGMENTED. This is the safety
+// property the real script holds by cgroup detection, and it must dominate the fragmentation
+// decision rather than being weighed against it -- so it is asserted at the pack count that most
+// strongly argues for repacking.
+test fn a_busy_slot_refuses_git_work_however_fragmented() -> Bool {
+  label_for(
+    job_state: SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as NonEmptyStr },
+    packs: 370,
+  ) == "refused-busy"
+}
+
+// THE DISCRIMINATING CONTROL, and the reason this file exists rather than a Bool-returning
+// predicate. Both refusals decline to touch git, so a collapsed implementation returning one arm --
+// or a Bool -- passes every row above and is wrong: "a job is running here" and "we could not tell
+// whether a job is running here" have different owners and different repairs. This row is an
+// INEQUALITY over the two labels, so it goes red the moment they are merged, which is exactly the
+// state-space conflation DESIGN section 5 names.
+test fn the_two_refusals_do_not_share_one_answer() -> Bool {
+  let busy = label_for(
+    job_state: SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as NonEmptyStr },
+    packs: 370,
+  )
+  let unknown = label_for(
+    job_state: SlotJobStateUnobservable { reason: "cgroup read failed" as NonEmptyStr },
+    packs: 370,
+  )
+  busy != unknown && unknown == "refused-unobservable"
+}
+
+fn probe_slot(job_state: SlotJobState, tmp_packs: Int) -> SlotDiskObservation {
+  SlotDiskObservation {
+    slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 1 },
+    job_state: job_state,
+    diag_log_bytes: byte_size(count: 500000000),
+    checkouts: [probe_checkout(packs: 46, tmp_packs: tmp_packs)],
+  }
+}
+
+// EVERY CHECKOUT UNDER A SLOT INHERITS THE SLOT'S JOB STATE, not its own. The script decides
+// busy-ness per SLOT and then walks that slot's checkouts, so a per-checkout re-decision would be a
+// second authority for one fact.
+test fn every_checkout_under_a_busy_slot_is_refused() -> Bool {
+  let ds = slot_repack_decisions(obs: probe_slot(job_state: SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as NonEmptyStr }, tmp_packs: 0))
+  map(ds, d => decision_label(d: d)) == ["refused-busy"]
+}
+
+// THE tmp_pack SWEEP IS NOT GATED ON BUSY-NESS, and this pair is what says so: the same residue is
+// reported under a busy slot and an idle one. An interrupted index-pack's leftover is not job
+// state, so gating it on busy-ness would leave pure garbage on exactly the hosts working hardest.
+test fn interrupted_fetch_residue_is_reported_regardless_of_job_state() -> Bool {
+  slot_has_interrupted_fetch_residue(obs: probe_slot(job_state: SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as NonEmptyStr }, tmp_packs: 3))
+    && slot_has_interrupted_fetch_residue(obs: probe_slot(job_state: SlotIdle, tmp_packs: 3))
+    && slot_has_interrupted_fetch_residue(obs: probe_slot(job_state: SlotIdle, tmp_packs: 0)) == false
+}
+
+// THE TWO AGE FLOORS CARRY A DURATION, AND THIS ASSERTS THE RELATION RATHER THAN THE SECONDS. The
+// script authors them as "3 days" and "1 day", so the durable fact is that the diagnostic-log floor
+// is three times the interrupted-fetch floor and both are positive. Asserting 259200 instead would
+// be a change detector against a number transcribed from the same arithmetic that produced it --
+// the oracle failure DESIGN section 5 names -- and it would go red on a correct unit refactor while
+// staying green if both floors were wrong by the same factor.
+test fn the_age_floors_keep_their_authored_ratio() -> Bool {
+  second_count(s: reclaim_diag_max_age) == 3 * second_count(s: reclaim_tmp_pack_min_age)
+    && second_count(s: reclaim_tmp_pack_min_age) > 0
+}

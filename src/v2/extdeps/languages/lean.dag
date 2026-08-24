@@ -1,6 +1,5 @@
 module v2.extdeps.languages.lean
 
-
 type LeanDeclarationKind
   = LeanDef
   | LeanTheorem
@@ -9,8 +8,8 @@ type LeanDeclarationKind
   | LeanAxiom
 
 type LeanName {
-  namespace: List<v2.std.node.Symbol>
-  local: v2.std.node.Symbol
+  namespace: List<Symbol>
+  local: Symbol
 }
 
 type LeanLevel
@@ -18,7 +17,7 @@ type LeanLevel
   | LeanLevelSucc { predecessor: LeanLevelRef }
   | LeanLevelMax { left: LeanLevelRef, right: LeanLevelRef }
   | LeanLevelIMax { left: LeanLevelRef, right: LeanLevelRef }
-  | LeanLevelParam { name: v2.std.node.Symbol }
+  | LeanLevelParam { name: Symbol }
 
 type LeanLevelRef {
   name: LeanName
@@ -115,9 +114,9 @@ type LeanFidelityFeature
   | LeanUnsupportedTheoremClass
 
 type LeanProofCheckSemantics<IRCarrier> {
-  kernel_definitional_reduction: v2.std.logic.Bool
-  opaque_axiom_boundary: v2.std.logic.Bool
-  proof_irrelevance_for_propositions: v2.std.logic.Bool
+  kernel_definitional_reduction: Bool
+  opaque_axiom_boundary: Bool
+  proof_irrelevance_for_propositions: Bool
 }
 
 data lean_bit_width_admissibility_note: String = "Lean fixed-precision integers: width axis is std.measure.BitWidth; lean_admit_bit_width is the admission boundary producing LeanBitWidthAccepted with LeanAdmittedBitWidth or LeanBitWidthRefused pinning the observed width. LeanAdmittedBitWidth is sole_constructor — cross-module forge is refused; honest rung is accepted refinement with executing refusal (witness lean_bit_width_admissibility_witness_test), not structural impossibility. Catalog fixed widths match admission Accepted before constructing LeanIntegerScalar; refusal stops at LeanWidthAdmissionRefused, not LeanIntegerWidth. Platform word is LeanPlatformWord. Signedness is std.integer.Signedness."
@@ -131,29 +130,29 @@ type LeanOverflowRaiseEffect
   | LeanOverflowTraps
 
 type LeanAdmittedOverflowSemantics sole_constructor {
-  semantics: std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect>
+  semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
 }
 
 type LeanOverflowSemanticsAdmission
   = LeanOverflowAccepted { semantics: LeanAdmittedOverflowSemantics }
   | LeanOverflowRefused {
-      observed: std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect>,
-      reason: v2.std.node.Symbol
+      observed: IntegerOverflowSemantics<LeanOverflowRaiseEffect>,
+      reason: Symbol
     }
 
 data lean_overflow_parse_continuation_note: String = "DECLARED SCAFFOLD parser continuation defect (review calm-badger-682 msg_e83789a9, msg_4683ea0a): authority src/v1/02_parse.dag parse_let — both arms omit skip_newlines before parse_expr after ExpectEq (typed EatConsumed and untyped EatUnchanged), so any let initializer continued on the next line begins with Newline and fails parse_expr prefix with expected expression, found Newline; parse_return is a suspected sibling (same parse_expr-after-keyword shape, not yet executed). skip_newlines is the pervasive idiom in 02_parse.dag; absence here is omission not grammar. CI reproduced on lean_overflow_semantics_witness_note and lean_catalog_fixed_width_overflow. Multiline generic record data is ordinary corpus-wide; multiline-ness alone and variant-vs-record RHS are refuted discriminators. Single-line initializers until v1 lane lands the parser fix. Dissolve-on: v1 parse_let and parse_return skip newlines after = / keyword, then restore multi-line witnesses."
 
-data lean_catalog_fixed_width_overflow: std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect> = std.integer.OverflowReturns { value_rule: extdeps.languages.lean.overflow.lean_upstream_fixed_width_overflow_returns_rule }
+data lean_catalog_fixed_width_overflow: IntegerOverflowSemantics<LeanOverflowRaiseEffect> = OverflowReturns { value_rule: lean_upstream_fixed_width_overflow_returns_rule }
 
 fn lean_admit_fixed_width_overflow_semantics(
-  semantics: std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect>
+  semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
 ) -> LeanOverflowSemanticsAdmission {
   match semantics {
-    OverflowReturns { value_rule: std.integer.ReturnWrapping } =>
+    OverflowReturns { value_rule: ReturnWrapping } =>
       LeanOverflowAccepted {
         semantics: LeanAdmittedOverflowSemantics { semantics: semantics }
       }
-    OverflowReturns { value_rule: std.integer.ReturnSaturating } =>
+    OverflowReturns { value_rule: ReturnSaturating } =>
       LeanOverflowRefused {
         observed: semantics,
         reason: ^lean_overflow_refuse_saturating_not_fixed_width_catalog
@@ -172,8 +171,8 @@ fn lean_admit_fixed_width_overflow_semantics(
 }
 
 fn lean_overflow_semantics_arm_tag(
-  semantics: std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect>
-) -> v2.std.node.Symbol {
+  semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
+) -> Symbol {
   match semantics {
     OverflowReturns { value_rule: _ } => ^lean_overflow_arm_returns
     OverflowRaises { effect: _ } => ^lean_overflow_arm_raises
@@ -181,7 +180,7 @@ fn lean_overflow_semantics_arm_tag(
   }
 }
 
-fn lean_overflow_raise_effect_tag(effect: LeanOverflowRaiseEffect) -> v2.std.node.Symbol {
+fn lean_overflow_raise_effect_tag(effect: LeanOverflowRaiseEffect) -> Symbol {
   match effect {
     LeanOverflowPanics => ^lean_overflow_effect_panics
     LeanOverflowTraps => ^lean_overflow_effect_traps
@@ -189,12 +188,12 @@ fn lean_overflow_raise_effect_tag(effect: LeanOverflowRaiseEffect) -> v2.std.nod
 }
 
 type LeanAdmittedBitWidth sole_constructor {
-  width: std.measure.BitWidth
+  width: BitWidth
 }
 
 type LeanBitWidthAdmission
   = LeanBitWidthAccepted { width: LeanAdmittedBitWidth }
-  | LeanBitWidthRefused { width: std.measure.BitWidth }
+  | LeanBitWidthRefused { width: BitWidth }
 
 type LeanIntegerWidth
   = LeanFixedWidth { width: LeanAdmittedBitWidth }
@@ -202,27 +201,27 @@ type LeanIntegerWidth
 
 type LeanScalar
   = LeanIntegerScalar {
-      signedness: std.integer.Signedness,
+      signedness: Signedness,
       width: LeanIntegerWidth,
       overflow: LeanAdmittedOverflowSemantics
     }
-  | LeanWidthAdmissionRefused { width: std.measure.BitWidth }
-  | LeanOverflowAdmissionRefused { semantics: std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect> }
+  | LeanWidthAdmissionRefused { width: BitWidth }
+  | LeanOverflowAdmissionRefused { semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect> }
   | BoolScalar
 
 type LeanPrimitiveFacts {
-  surface_spelling: v2.std.node.Symbol
+  surface_spelling: Symbol
   scalar: LeanScalar
-  representation: v2.std.node.Symbol
+  representation: Symbol
 }
 
 fn lean_primitive_facts_for_catalog_width(
-  surface_spelling: v2.std.node.Symbol,
-  signedness: std.integer.Signedness,
-  count: v2.std.nat.Nat,
-  representation: v2.std.node.Symbol
+  surface_spelling: Symbol,
+  signedness: Signedness,
+  count: Nat,
+  representation: Symbol
 ) -> LeanPrimitiveFacts {
-  match lean_admit_bit_width(width: std.measure.bit_width(count: count)) {
+  match lean_admit_bit_width(width: bit_width(count: count)) {
     LeanBitWidthAccepted { width: admitted } =>
       match lean_admit_fixed_width_overflow_semantics(semantics: lean_catalog_fixed_width_overflow) {
         LeanOverflowAccepted { semantics: admitted_overflow } => LeanPrimitiveFacts {
@@ -359,29 +358,29 @@ data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
   lean_facts_bool
 ]
 
-data lean_bool_grounding: std.algebra.BooleanAlgebra<v2.std.logic.Bool> = v2.std.logic.bool_boolean_algebra
+data lean_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
-fn lean_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } },
+fn lean_inhabitant_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
     children: [],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn lean_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
-  v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
+fn lean_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
 }
 
-fn lean_signedness_node(signedness: std.integer.Signedness) -> v2.std.node.Node {
+fn lean_signedness_node(signedness: Signedness) -> Node {
   match signedness {
     Signed => lean_inhabitant_atom(id: ^lean_tag_signed)
     Unsigned => lean_inhabitant_atom(id: ^lean_tag_unsigned)
   }
 }
 
-fn lean_admit_bit_width(width: std.measure.BitWidth) -> LeanBitWidthAdmission {
-  let n = std.measure.bit_width_count(width)
+fn lean_admit_bit_width(width: BitWidth) -> LeanBitWidthAdmission {
+  let n = bit_width_count(width)
   if n == 8 || n == 16 || n == 32 || n == 64 {
     LeanBitWidthAccepted { width: LeanAdmittedBitWidth { width: width } }
   } else {
@@ -389,12 +388,12 @@ fn lean_admit_bit_width(width: std.measure.BitWidth) -> LeanBitWidthAdmission {
   }
 }
 
-fn lean_platform_word_width_node() -> v2.std.node.Node {
+fn lean_platform_word_width_node() -> Node {
   lean_inhabitant_atom(id: ^lean_tag_pointer)
 }
 
-fn lean_admitted_bit_width_node(admitted: LeanAdmittedBitWidth) -> v2.std.node.Node {
-  let n = std.measure.bit_width_count(admitted.width)
+fn lean_admitted_bit_width_node(admitted: LeanAdmittedBitWidth) -> Node {
+  let n = bit_width_count(admitted.width)
   if n == 8 {
     lean_inhabitant_atom(id: ^lean_tag_bits8)
   } else if n == 16 {
@@ -408,21 +407,21 @@ fn lean_admitted_bit_width_node(admitted: LeanAdmittedBitWidth) -> v2.std.node.N
   }
 }
 
-fn lean_integer_width_node(width: LeanIntegerWidth) -> v2.std.node.Node {
+fn lean_integer_width_node(width: LeanIntegerWidth) -> Node {
   match width {
     LeanFixedWidth { width: admitted } => lean_admitted_bit_width_node(admitted: admitted)
     LeanPlatformWord => lean_platform_word_width_node()
   }
 }
 
-fn lean_overflow_return_value_rule_node(rule: std.integer.OverflowReturnValueRule) -> v2.std.node.Node {
+fn lean_overflow_return_value_rule_node(rule: OverflowReturnValueRule) -> Node {
   match rule {
     ReturnWrapping => lean_inhabitant_atom(id: ^lean_tag_overflow_return_wrapping)
     ReturnSaturating => lean_inhabitant_atom(id: ^lean_tag_overflow_return_saturating)
   }
 }
 
-fn lean_overflow_raise_effect_node(effect: LeanOverflowRaiseEffect) -> v2.std.node.Node {
+fn lean_overflow_raise_effect_node(effect: LeanOverflowRaiseEffect) -> Node {
   match effect {
     LeanOverflowPanics => lean_inhabitant_atom(id: ^lean_tag_overflow_effect_panics)
     LeanOverflowTraps => lean_inhabitant_atom(id: ^lean_tag_overflow_effect_traps)
@@ -430,11 +429,11 @@ fn lean_overflow_raise_effect_node(effect: LeanOverflowRaiseEffect) -> v2.std.no
 }
 
 fn lean_overflow_semantics_node(
-  semantics: std.integer.IntegerOverflowSemantics<LeanOverflowRaiseEffect>
-) -> v2.std.node.Node {
+  semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect>
+) -> Node {
   match semantics {
-    OverflowReturns { value_rule: rule } => v2.std.node.Node {
-      kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+    OverflowReturns { value_rule: rule } => Node {
+      kind: TypeNode { connective: Conj },
       children: [
         lean_named_edge(
           name: ^lean_overflow_field_classifier,
@@ -445,10 +444,10 @@ fn lean_overflow_semantics_node(
           target: lean_overflow_return_value_rule_node(rule: rule)
         )
       ],
-      occurrence_id: v2.std.node.SyntheticOccurrence
+      occurrence_id: SyntheticOccurrence
 }
-    OverflowRaises { effect: effect } => v2.std.node.Node {
-      kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+    OverflowRaises { effect: effect } => Node {
+      kind: TypeNode { connective: Conj },
       children: [
         lean_named_edge(
           name: ^lean_overflow_field_classifier,
@@ -459,17 +458,17 @@ fn lean_overflow_semantics_node(
           target: lean_overflow_raise_effect_node(effect: effect)
         )
       ],
-      occurrence_id: v2.std.node.SyntheticOccurrence
+      occurrence_id: SyntheticOccurrence
 }
     OverflowUndefined =>
       lean_inhabitant_atom(id: ^lean_tag_overflow_undefined)
   }
 }
 
-fn lean_scalar_node(scalar: LeanScalar) -> v2.std.node.Node {
+fn lean_scalar_node(scalar: LeanScalar) -> Node {
   match scalar {
-    LeanIntegerScalar { signedness, width, overflow } => v2.std.node.Node {
-      kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+    LeanIntegerScalar { signedness, width, overflow } => Node {
+      kind: TypeNode { connective: Conj },
       children: [
         lean_named_edge(
           name: ^lean_scalar_field_classifier,
@@ -488,7 +487,7 @@ fn lean_scalar_node(scalar: LeanScalar) -> v2.std.node.Node {
           target: lean_overflow_semantics_node(semantics: overflow.semantics)
         )
       ],
-      occurrence_id: v2.std.node.SyntheticOccurrence
+      occurrence_id: SyntheticOccurrence
 }
     LeanWidthAdmissionRefused { width: _ } =>
       lean_inhabitant_atom(id: ^lean_tag_width_inadmissible)
@@ -498,9 +497,9 @@ fn lean_scalar_node(scalar: LeanScalar) -> v2.std.node.Node {
   }
 }
 
-fn lean_primitive_facts_node(facts: LeanPrimitiveFacts) -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+fn lean_primitive_facts_node(facts: LeanPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       lean_named_edge(
         name: ^lean_facts_field_surface_spelling,
@@ -515,13 +514,13 @@ fn lean_primitive_facts_node(facts: LeanPrimitiveFacts) -> v2.std.node.Node {
         target: lean_inhabitant_atom(id: facts.representation)
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn lean_primitive_inhabitant_node(id: v2.std.node.Symbol, facts: LeanPrimitiveFacts) -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+fn lean_primitive_inhabitant_node(id: Symbol, facts: LeanPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       lean_named_edge(name: ^lean_inhabitant_field_atom, target: lean_inhabitant_atom(id: id)),
       lean_named_edge(
@@ -529,31 +528,31 @@ fn lean_primitive_inhabitant_node(id: v2.std.node.Symbol, facts: LeanPrimitiveFa
         target: lean_primitive_facts_node(facts: facts)
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn lean_inhabitant_int32_node() -> v2.std.node.Node {
+fn lean_inhabitant_int32_node() -> Node {
   lean_primitive_inhabitant_node(id: ^lean_inhabitant_int32, facts: lean_facts_int32())
 }
 
 fn lean_fixed_int_spec_facts(
   facts: LeanPrimitiveFacts,
-  signedness: std.integer.Signedness,
+  signedness: Signedness,
   width: LeanIntegerWidth,
   overflow: LeanAdmittedOverflowSemantics
-) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
-  std.types.Map {
+) -> Map<Symbol, Node> {
+  Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {}) {
+      } else if axis == discriminant(v: ModelCoreFactAxisWidth {}) {
           v2.std.optional.Present { value: lean_integer_width_node(width: width) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {}) {
+      } else if axis == discriminant(v: ModelCoreFactAxisSignedness {}) {
           v2.std.optional.Present { value: lean_signedness_node(signedness: signedness) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisOverflowDisposition {}) {
+      } else if axis == discriminant(v: ModelCoreFactAxisOverflowDisposition {}) {
           v2.std.optional.Present { value: lean_overflow_semantics_node(semantics: overflow.semantics) }
       } else {
           v2.std.optional.Absent
@@ -562,12 +561,12 @@ fn lean_fixed_int_spec_facts(
   }
 }
 
-fn lean_bool_spec_facts(facts: LeanPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
-  std.types.Map {
+fn lean_bool_spec_facts(facts: LeanPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
       } else {
           v2.std.optional.Absent
@@ -576,12 +575,12 @@ fn lean_bool_spec_facts(facts: LeanPrimitiveFacts) -> Map<v2.std.node.Symbol, v2
   }
 }
 
-fn lean_width_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
-  std.types.Map {
+fn lean_width_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
       } else {
           v2.std.optional.Absent
@@ -590,12 +589,12 @@ fn lean_width_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<v2.
   }
 }
 
-fn lean_overflow_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<v2.std.node.Symbol, v2.std.node.Node> {
-  std.types.Map {
+fn lean_overflow_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
     lookup: fn(axis) {
-      if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisSurfaceSpelling {}) {
+      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.surface_spelling) }
-      } else if axis == discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {}) {
+      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
           v2.std.optional.Present { value: lean_inhabitant_atom(id: facts.representation) }
       } else {
           v2.std.optional.Absent
@@ -604,9 +603,9 @@ fn lean_overflow_admission_refused_spec_facts(facts: LeanPrimitiveFacts) -> Map<
   }
 }
 
-fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> v2.std.model_core.PrimitiveFactBundle {
+fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> PrimitiveFactBundle {
   match facts.scalar {
-    LeanIntegerScalar { signedness, width, overflow } => v2.std.model_core.PrimitiveFactBundle {
+    LeanIntegerScalar { signedness, width, overflow } => PrimitiveFactBundle {
       substrate_carrier: lean_primitive_facts_node(facts: facts),
       spec_facts: lean_fixed_int_spec_facts(
         facts: facts,
@@ -615,33 +614,33 @@ fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> v2.std.model_c
         overflow: overflow
       )
     }
-    BoolScalar => v2.std.model_core.PrimitiveFactBundle {
+    BoolScalar => PrimitiveFactBundle {
       substrate_carrier: lean_primitive_facts_node(facts: facts),
       spec_facts: lean_bool_spec_facts(facts: facts)
     }
-    LeanWidthAdmissionRefused { width: _ } => v2.std.model_core.PrimitiveFactBundle {
+    LeanWidthAdmissionRefused { width: _ } => PrimitiveFactBundle {
       substrate_carrier: lean_primitive_facts_node(facts: facts),
       spec_facts: lean_width_admission_refused_spec_facts(facts: facts)
     }
-    LeanOverflowAdmissionRefused { semantics: _ } => v2.std.model_core.PrimitiveFactBundle {
+    LeanOverflowAdmissionRefused { semantics: _ } => PrimitiveFactBundle {
       substrate_carrier: lean_primitive_facts_node(facts: facts),
       spec_facts: lean_overflow_admission_refused_spec_facts(facts: facts)
     }
   }
 }
 
-fn lean_primitive_fact_bundles() -> List<v2.std.model_core.PrimitiveFactBundle> {
-  v2.std.algebra.list_map(xs: lean_primitive_facts_catalog, f: fn(facts) {
+fn lean_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  list_map(xs: lean_primitive_facts_catalog, f: fn(facts) {
     lean_primitive_bundle_from_facts(facts: facts)
   })
 }
 
-fn lean_catalog_surface_symbol_step(sym: v2.std.node.Symbol, acc: v2.std.logic.Bool, facts: LeanPrimitiveFacts) -> v2.std.logic.Bool {
+fn lean_catalog_surface_symbol_step(sym: Symbol, acc: Bool, facts: LeanPrimitiveFacts) -> Bool {
   acc || sym == facts.surface_spelling
 }
 
-fn lean_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
-  v2.std.algebra.fold_list(
+fn lean_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
     xs: lean_primitive_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -650,11 +649,11 @@ fn lean_catalog_surface_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
   )
 }
 
-fn lean_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.GrammarExpr {
-  v2.std.grammar.Terminal { token_class: token_class, stamp: v2.std.grammar.StampClass }
+fn lean_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampClass }
 }
 
-fn lean_token_class_tail() -> List<v2.std.node.Symbol> {
+fn lean_token_class_tail() -> List<Symbol> {
   [
     ^lean_token_name_dec,
     ^lean_token_lparen,
@@ -673,37 +672,37 @@ fn lean_token_class_tail() -> List<v2.std.node.Symbol> {
   ]
 }
 
-fn lean_formal_token_classes() -> List<v2.std.node.Symbol> {
-  std.algebra.Cons {
+fn lean_formal_token_classes() -> List<Symbol> {
+  Cons {
     head: ^lean_token_kw_def,
     tail: lean_token_class_tail()
   }
 }
 
-fn lean_formal_rhs_from_token_classes(classes: List<v2.std.node.Symbol>) -> List<v2.std.grammar.FormalGrammarSymbol> {
-  v2.std.algebra.list_map(xs: classes, f: fn(token_class) {
-    v2.std.grammar.grammar_formal_terminal(identity: token_class)
+fn lean_formal_rhs_from_token_classes(classes: List<Symbol>) -> List<FormalGrammarSymbol> {
+  list_map(xs: classes, f: fn(token_class) {
+    grammar_formal_terminal(identity: token_class)
   })
 }
 
-fn lean_def_dec_formal_production() -> v2.std.grammar.FormalProduction {
-  v2.std.grammar.FormalProduction {
-    lhs: v2.std.grammar.grammar_formal_nonterminal(identity: ^lean_production_def_dec),
+fn lean_def_dec_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: ^lean_production_def_dec),
     rhs: lean_formal_rhs_from_token_classes(classes: lean_formal_token_classes())
   }
 }
 
-data lean_def_dec_formal_production_authority: v2.std.grammar.FormalProduction = lean_def_dec_formal_production()
+data lean_def_dec_formal_production_authority: FormalProduction = lean_def_dec_formal_production()
 
 fn lean_grammar_sequence_from_nonempty(
-  head: v2.std.node.Symbol,
-  tail: List<v2.std.node.Symbol>
-) -> v2.std.grammar.GrammarExpr {
-  v2.std.algebra.fold_list(
+  head: Symbol,
+  tail: List<Symbol>
+) -> GrammarExpr {
+  fold_list(
     xs: tail,
     empty: lean_grammar_terminal(token_class: head),
     cons: fn(acc, token_class) {
-      v2.std.grammar.Sequence {
+      Sequence {
         left: acc,
         right: lean_grammar_terminal(token_class: token_class)
       }
@@ -711,29 +710,29 @@ fn lean_grammar_sequence_from_nonempty(
   )
 }
 
-fn lean_def_dec_parse_expr() -> v2.std.grammar.GrammarExpr {
+fn lean_def_dec_parse_expr() -> GrammarExpr {
   lean_grammar_sequence_from_nonempty(
     head: ^lean_token_kw_def,
     tail: lean_token_class_tail()
   )
 }
 
-fn lean_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
-  v2.std.compilers.lexing.TokenRule {
+fn lean_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule {
     token_class: token_class,
-    pattern: v2.std.compilers.lexing.LiteralPattern { text: text }
+    pattern: LiteralPattern { text: text }
   }
 }
 
-fn lean_numeric_literal_lex_rule() -> v2.std.compilers.lexing.LexRule {
-  v2.std.compilers.lexing.TokenRule {
+fn lean_numeric_literal_lex_rule() -> LexRule {
+  TokenRule {
     token_class: ^lean_token_numeric_literal,
-    pattern: v2.std.compilers.lexing.OneOrMorePattern { element: v2.std.compilers.lexing.CharClassPattern { class: v2.std.compilers.lexing.DigitChar } }
+    pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
   }
 }
 
-fn lean_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
-  v2.std.compilers.lexing.LexRuleSet {
+fn lean_lex_rules() -> LexRuleSet {
+  LexRuleSet {
     rules: [
       lean_lex_rule(token_class: ^lean_token_kw_termination_by, text: "\n  termination_by "),
       lean_lex_rule(token_class: ^lean_token_assign, text: " := "),
@@ -750,60 +749,60 @@ fn lean_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
   }
 }
 
-fn lean_lex() -> v2.std.compilers.lexing.LexRules {
-  v2.std.compilers.lexing.ModeledLexRules { root: lean_lex_rules() }
+fn lean_lex() -> LexRules {
+  ModeledLexRules { root: lean_lex_rules() }
 }
 
-fn lean_lex_token_symbol(sym: v2.std.node.Symbol) -> v2.std.logic.Bool {
-  v2.std.compilers.lexing.lex_rule_set_token_class_member(
+fn lean_lex_token_symbol(sym: Symbol) -> Bool {
+  lex_rule_set_token_class_member(
     rules: lean_lex_rules(),
     token_class: sym
   )
 }
 
-fn lean_grammar_root() -> v2.std.grammar.GrammarRoot {
-  let start = v2.std.grammar.GrammarProduction {
+fn lean_grammar_root() -> GrammarRoot {
+  let start = GrammarProduction {
     name: ^lean_production_def_dec,
     expression: lean_def_dec_parse_expr(),
-    emitted: v2.std.grammar.grammar_atom(identity: ^lean_surface_def_item)
+    emitted: grammar_atom(identity: ^lean_surface_def_item)
   }
-  v2.std.grammar.GrammarRoot {
+  GrammarRoot {
     start: ^lean_production_def_dec,
     productions: [start],
-    sync_tokens: v2.std.grammar.grammar_empty_sync_tokens()
+    sync_tokens: grammar_empty_sync_tokens()
   }
 }
 
-fn lean_grammar() -> v2.std.grammar.ParseGrammar {
-  v2.std.grammar.ModeledGrammar { root: lean_grammar_root() }
+fn lean_grammar() -> ParseGrammar {
+  ModeledGrammar { root: lean_grammar_root() }
 }
 
-fn lean_ingest_grammar_schema() -> v2.std.grammar.GrammarSchema {
-  v2.std.grammar.GrammarSchema {
+fn lean_ingest_grammar_schema() -> GrammarSchema {
+  GrammarSchema {
     lex: lean_lex(),
     grammar: lean_grammar()
   }
 }
 
-fn lean_ingest_grammar_probe() -> v2.std.grammar.GrammarSchemaProbeBinding {
-  v2.std.grammar.GrammarSchemaProbeBinding {
+fn lean_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
+  GrammarSchemaProbeBinding {
     schema: lean_ingest_grammar_schema(),
-    probe: v2.std.grammar.GrammarSchemaProbe {
+    probe: GrammarSchemaProbe {
       fixture: lean_source_text,
       production: lean_def_dec_formal_production(),
-      expected_parse_surface: v2.std.grammar.grammar_atom(identity: ^lean_surface_def_item)
+      expected_parse_surface: grammar_atom(identity: ^lean_surface_def_item)
     }
   }
 }
 
-data lean_ingest_grammar_probe_authority: v2.std.grammar.GrammarSchemaProbeBinding = lean_ingest_grammar_probe()
+data lean_ingest_grammar_probe_authority: GrammarSchemaProbeBinding = lean_ingest_grammar_probe()
 
-fn lean_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
-  std.types.Set {
+fn lean_language_model_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       lean_catalog_surface_symbol(sym: sym) ||
         lean_lex_token_symbol(sym: sym) ||
-        v2.std.grammar.grammar_carries_symbol(grammar: lean_grammar(), sym: sym) ||
+        grammar_carries_symbol(grammar: lean_grammar(), sym: sym) ||
         sym == ^lean_source_literal
     }
   }
@@ -811,11 +810,11 @@ fn lean_language_model_canonical_symbols() -> Set<v2.std.node.Symbol> {
 
 fn lean_integer_algebra_witness_node(
   facts: LeanPrimitiveFacts,
-  signedness: std.integer.Signedness,
+  signedness: Signedness,
   width: LeanIntegerWidth
-) -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       lean_named_edge(
         name: ^lean_witness_integer_commutative_ring,
@@ -834,13 +833,13 @@ fn lean_integer_algebra_witness_node(
         target: lean_integer_width_node(width: width)
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn lean_bool_algebra_witness_node() -> v2.std.node.Node {
-  v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
+fn lean_bool_algebra_witness_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
     children: [
       lean_named_edge(
         name: ^lean_witness_bool_boolean_algebra,
@@ -851,16 +850,16 @@ fn lean_bool_algebra_witness_node() -> v2.std.node.Node {
         target: lean_inhabitant_atom(id: ^lean_repr_bool_inductive)
       )
     ],
-    occurrence_id: v2.std.node.SyntheticOccurrence
+    occurrence_id: SyntheticOccurrence
 }
 }
 
-fn lean_scalar_algebra_inhabitance_optional(facts: LeanPrimitiveFacts) -> v2.std.optional.Optional<v2.std.model_core.AlgebraInhabitanceDecl> {
+fn lean_scalar_algebra_inhabitance_optional(facts: LeanPrimitiveFacts) -> Optional<AlgebraInhabitanceDecl> {
   let inhabitant = lean_primitive_facts_node(facts: facts)
   match facts.scalar {
-    LeanIntegerScalar { signedness, width, overflow: _ } => v2.std.optional.Present {
-      value: v2.std.model_core.AlgebraInhabitanceDecl {
-        algebra: v2.std.algebra.commutative_ring_type_node(inhabitant: inhabitant),
+    LeanIntegerScalar { signedness, width, overflow: _ } => Present {
+      value: AlgebraInhabitanceDecl {
+        algebra: commutative_ring_type_node(inhabitant: inhabitant),
         inhabitant: inhabitant,
         witness: lean_integer_algebra_witness_node(
           facts: facts,
@@ -869,47 +868,47 @@ fn lean_scalar_algebra_inhabitance_optional(facts: LeanPrimitiveFacts) -> v2.std
         )
       }
     }
-    BoolScalar => v2.std.optional.Present {
-      value: v2.std.model_core.AlgebraInhabitanceDecl {
-        algebra: v2.std.algebra.boolean_algebra_type_node(inhabitant: inhabitant),
+    BoolScalar => Present {
+      value: AlgebraInhabitanceDecl {
+        algebra: boolean_algebra_type_node(inhabitant: inhabitant),
         inhabitant: inhabitant,
         witness: lean_bool_algebra_witness_node()
       }
     }
-    LeanWidthAdmissionRefused { width: _ } => v2.std.optional.Absent
-    LeanOverflowAdmissionRefused { semantics: _ } => v2.std.optional.Absent
+    LeanWidthAdmissionRefused { width: _ } => Absent
+    LeanOverflowAdmissionRefused { semantics: _ } => Absent
   }
 }
 
-fn lean_inhabitance_decl_step(acc: List<v2.std.model_core.AlgebraInhabitanceDecl>, facts: LeanPrimitiveFacts) -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
+fn lean_inhabitance_decl_step(acc: List<AlgebraInhabitanceDecl>, facts: LeanPrimitiveFacts) -> List<AlgebraInhabitanceDecl> {
   match lean_scalar_algebra_inhabitance_optional(facts: facts) {
-    Present { value: decl } => v2.std.algebra.list_snoc_item(xs: acc, item: decl)
+    Present { value: decl } => list_snoc_item(xs: acc, item: decl)
     Absent => acc
   }
 }
 
-fn lean_model_core_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
-  v2.std.algebra.fold_list(
+fn lean_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
     xs: lean_primitive_facts_catalog,
-    empty: std.algebra.Empty,
+    empty: Empty,
     cons: fn(acc, facts) {
       lean_inhabitance_decl_step(acc: acc, facts: facts)
     }
   )
 }
 
-fn lean_model_core() -> v2.std.model_core.ModelCore {
-  v2.std.model_core.ModelCore {
+fn lean_model_core() -> ModelCore {
+  ModelCore {
     primitives: lean_primitive_fact_bundles(),
     inhabitance: lean_model_core_inhabitance_decls(),
     laws: [],
-    effects: v2.std.model_core.EffectSemanticsDecl { operations: [] },
-    partiality: v2.std.model_core.PartialitySemanticsDecl { operations: [] }
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
   }
 }
 
-fn lean_language_model() -> v2.std.language_model.LanguageModel {
-  v2.std.language_model.LanguageModel {
+fn lean_language_model() -> LanguageModel {
+  LanguageModel {
     lex: lean_lex(),
     grammar: lean_grammar(),
     language_identity: ^lean_language_model_surface_id,

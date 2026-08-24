@@ -1,14 +1,13 @@
 module extdeps.tools.curl
 
-
-data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
-  uri: extdeps.uri.Uri {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
     scheme: Https
     locator: "curl.se/docs/manpage.html"
   }
 }
 
-data curl_pinned_version: extdeps.version.VersionConstraint = ">= 7.68"
+data curl_pinned_version: VersionConstraint = ">= 7.68"
 
 data curl_cli_tool: CliTool = CliTool {
   name: "curl",
@@ -16,18 +15,18 @@ data curl_cli_tool: CliTool = CliTool {
   installable_via: [SourceApt { package: package_curl }],
 }
 
-data curl_localhost_connect_timeout: std.measure.Second = second(count: 2)
+data curl_localhost_connect_timeout: Second = second(count: 2)
 
-data curl_localhost_max_time: std.measure.Second = second(count: 5)
+data curl_localhost_max_time: Second = second(count: 5)
 
-fn curl_bounded_get_flags(connect_timeout: std.measure.Second, max_time: std.measure.Second) -> String {
+fn curl_bounded_get_flags(connect_timeout: Second, max_time: Second) -> String {
   concat(
     concat("--connect-timeout ", to_string(second_count(s: connect_timeout))),
     concat(" --max-time ", to_string(second_count(s: max_time)))
   )
 }
 
-fn curl_bounded_localhost_get_argv_prefix(connect_timeout: std.measure.Second, max_time: std.measure.Second) -> String {
+fn curl_bounded_localhost_get_argv_prefix(connect_timeout: Second, max_time: Second) -> String {
   concat("curl -sf ", curl_bounded_get_flags(connect_timeout: connect_timeout, max_time: max_time))
 }
 
@@ -36,4 +35,19 @@ fn curl_localhost_bounded_get_argv_prefix() -> String {
     connect_timeout: curl_localhost_connect_timeout,
     max_time: curl_localhost_max_time
   )
+}
+
+// THE DOWNLOAD, WITH ITS SUCCESS SEMANTICS ATTACHED. -f is not decoration: without it curl exits 0
+// on a 404 and writes the error page to the destination, which is the fail-open class
+// gunbc.plans.transport_argv_anemia_dissolution exists to remove. -s suppresses the progress meter,
+// -L follows redirects, -o names the destination. Moved here from extdeps.exec.command, which is a
+// generic hub and may not carry one product's flags (DESIGN section 3).
+// PATH-resolved program name, deliberately: this repository has made no filesystem observation of
+// the host this command runs on, and an absolute path is a claim about one. The full reasoning, the
+// criterion for climbing to an absolute row, and the counter-example that makes the distinction
+// load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
+data curl_program: NonEmptyStr = "curl"
+
+fn curl_download_command(url: String, destination: String) -> ArgvCommand {
+  argv_command(program: curl_program, arguments: ["-fsL", "-o", destination, url])
 }

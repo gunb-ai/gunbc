@@ -1,0 +1,134 @@
+module gunbc.host_disk_reclaim_units
+
+// THE INSTALLATION AUTHORITY FOR THE FLEET'S STANDING DISK-RECLAIM MECHANISM.
+//
+// gunbc.host_disk_reclaim models what the reclaimer DECIDES -- which slots are eligible, which
+// refusals are distinct, where the fragmentation gate sits. This module models how that mechanism
+// is INSTALLED: the oneshot service and the calendar timer that drives it. The two are separate
+// facts and neither implies the other, which is exactly the gap this module closes -- before it,
+// the mechanism was load-bearing on every runner host and authored NOWHERE in this repository, so
+// nothing here could observe it, converge it, or notice it had stopped.
+//
+// The units render through extdeps.systemd.unit_file rather than being carried as unit text,
+// following gunbc.live_deploy.emit's fleet-converge timer exactly. The three resource-discipline
+// directives this needs -- Nice, IOSchedulingClass, TimeoutStartSec -- did not exist on
+// SystemdServiceDirective and were added there, because a renderer that cannot express them still
+// produces a unit that runs and simply competes with live CI while doing so.
+data host_disk_reclaim_units_note: String = "Service and timer for the fleet-wide runner disk reclaimer, rendered from extdeps.systemd.unit_file. Cadence and refusal semantics are gunbc.host_disk_reclaim."
+
+// TWO DIRECTIVES ON THE INCUMBENT UNIT ARE DELIBERATELY NOT RENDERED, AND THE SECOND IS THE POINT.
+//
+// `Documentation=` on the incumbent names a URL into the ctrl repository's copy of the shell
+// script. Rendering it would publish a pointer that is wrong the moment the mechanism finishes
+// moving here, so it is dropped rather than carried forward stale.
+//
+// `EnvironmentFile=-/etc/default/ctrl-runner-reclaim` is dropped for a stronger reason: it is an
+// escape hatch in the sense DESIGN section 5 forbids. Its documented variables include
+// RECLAIM_GIT_GC and RECLAIM_GIT_GC_MIN_PACKS -- one of which disables the repack entirely and the
+// other of which moves the fragmentation gate -- so a host carrying that file answers a different
+// policy than the one this repository models, silently and with no observation that would show it.
+// The gates are data rows here (reclaim_fragmentation_gate_packs and its siblings); a file that can
+// override them re-opens the single authority those rows exist to hold. Dropping it is a
+// deliberate behavioral difference from the incumbent, not a fidelity gap, and any host that has
+// the file today keeps it inert rather than obeyed.
+data reclaim_omitted_environment_file_note: String = "EnvironmentFile and Documentation are not rendered; see the annotation above. The first is a policy escape hatch over gates this repository owns, the second a pointer that goes stale on subsumption."
+
+fn reclaim_service_unit_name() -> NonEmptyStr {
+  "ctrl-runner-reclaim.service" as NonEmptyStr
+}
+
+fn reclaim_timer_unit_name() -> NonEmptyStr {
+  "ctrl-runner-reclaim.timer" as NonEmptyStr
+}
+
+// EXECSTART NAMES THE INSTALLED SCRIPT, AND THAT BINDING IS THE ONE OPEN SEAM IN THIS MODULE.
+//
+// The terminal form is this repository's own binary running the decision that
+// gunbc.host_disk_reclaim already models, with no shell in the path. That subcommand does not
+// exist yet, and a unit whose ExecStart named it would install a mechanism that cannot run --
+// strictly worse than the incumbent on a fleet whose disks fill without it.
+//
+// This is the staged half of DESIGN section 3's replacement migration, taken deliberately: the
+// boundary is gap-intolerant, so the new root is built while the old one keeps serving, and the
+// transition switches ExecStart and deletes the script together. What this module buys before that
+// switch is not cosmetic -- the unit and timer become observable, convergeable facts instead of
+// files installed by a script nobody in this repository can see.
+//
+// NEXT-RUNG TRIGGER (DESIGN section 4b(2)): a gunbc subcommand that evaluates
+// slot_repack_decisions against an observed SlotDiskObservation and actuates the admitted ones.
+// Until it lands this seam is a declared binding to an external artifact, not a modeled effect.
+fn reclaim_exec_start_command() -> NonEmptyStr {
+  "/usr/local/bin/reclaim-runner-disk.sh" as NonEmptyStr
+}
+
+// EVERY SIX HOURS, AND THE JITTER IS LOAD-BEARING RATHER THAN POLITE.
+//
+// Six hours sits inside the observed growth rate -- a busy slot accretes a few GB of packs and
+// logs per day -- while keeping each pass cheap enough to stay under the timeout below.
+// Persistent catches a host that was powered off at the scheduled time. The randomized delay
+// exists because the fleet's hosts share nothing except a clock: without it every host reclaims
+// in the same minute, so the one window in which CI is guaranteed to contend with maintenance is
+// a window the schedule creates.
+data reclaim_timer_on_calendar: String = "*-*-* 00/6:00:00"
+
+data reclaim_timer_randomized_delay: Second = second(count: 900)
+
+// A WEDGED REPACK MUST NOT HOLD THE TIMER FOREVER, AND THIS BOUND IS NOT THE PER-REPO ONE.
+//
+// gunbc.host_disk_reclaim reclaim_per_repo_timeout bounds ONE repository's repack; this bounds the
+// whole pass across every slot on the host. They are different quantities and the unit bound is
+// derived from the inner one rather than restated, so a change to the per-repo budget cannot leave
+// the outer bound quietly contradicting it. Two hours of headroom over the derived floor covers
+// the non-repack work in a pass (log rotation, docker prune) without turning the bound into a
+// number with no stated relation to anything.
+fn reclaim_service_start_timeout() -> Second {
+  second(count: second_count(s: reclaim_per_repo_timeout) * 2)
+}
+
+fn reclaim_service_unit_file() -> SystemdUnitFile {
+  ServiceUnitFile {
+    unit: [
+      Description {
+        text: "Bounded disk reclaim for persistent GHA runner workspaces" as NonEmptyStr,
+      },
+      After { target: "network.target" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ExecStart { command: reclaim_exec_start_command() },
+      ServiceNice { priority: 15 },
+      ServiceIoSchedulingClass { scheduling_class: IoSchedulingIdle },
+      TimeoutStartSec {
+        duration: to_string(second_count(s: reclaim_service_start_timeout())) as NonEmptyStr,
+      },
+    ],
+    install: NotInstallable,
+  }
+}
+
+fn reclaim_timer_unit_file() -> SystemdUnitFile {
+  TimerUnitFile {
+    unit: [
+      Description {
+        text: "Periodic bounded disk reclaim for GHA runner workspaces" as NonEmptyStr,
+      },
+    ],
+    timer: [
+      TimerUnit { target: reclaim_service_unit_name() },
+      OnCalendar { expression: reclaim_timer_on_calendar as NonEmptyStr },
+      RandomizedDelaySec {
+        duration: to_string(second_count(s: reclaim_timer_randomized_delay)) as NonEmptyStr,
+      },
+      Persistent { enabled: true },
+    ],
+    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+  }
+}
+
+fn reclaim_service_unit_text() -> String {
+  serialize_systemd_unit_file(file: reclaim_service_unit_file())
+}
+
+fn reclaim_timer_unit_text() -> String {
+  serialize_systemd_unit_file(file: reclaim_timer_unit_file())
+}

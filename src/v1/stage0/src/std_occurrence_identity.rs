@@ -479,7 +479,6 @@ pub fn occurrence_containment_path_contains_ancestor(
     target: OccurrenceId,
 ) -> bool {
     ancestors
-        .clone()
         .iter()
         .cloned()
         .fold(false, |found: bool, id: OccurrenceId| {
@@ -492,7 +491,6 @@ pub fn occurrence_containment_ancestors_as_list(
 ) -> Rc<Vec<OccurrenceId>> {
     v1_rt::reverse(
         ancestors
-            .clone()
             .iter()
             .cloned()
             .fold(Rc::new(vec![]), |acc: _, id: OccurrenceId| {
@@ -511,7 +509,7 @@ pub fn occurrence_id_list_is_prefix_of(
     prefix: Rc<Vec<OccurrenceId>>,
     path: Rc<Vec<OccurrenceId>>,
 ) -> bool {
-    prefix.clone().iter().cloned().fold(Rc::new(OccurrenceIdListPrefixAcc {
+    prefix.iter().cloned().fold(Rc::new(OccurrenceIdListPrefixAcc {
     path_remaining: path.clone(),
     ok: true,
 }), |acc: Rc<OccurrenceIdListPrefixAcc>, expected: OccurrenceId| if !acc.ok.clone() {
@@ -647,7 +645,7 @@ pub fn occurrence_transport_role_index_build(
     references: Rc<Vec<Rc<ReferenceOccurrence>>>,
 ) -> Rc<OccurrenceTransportRoleIndexBuild> {
     {
-        let declaration_build = declarations.clone().iter().cloned().fold(
+        let declaration_build = declarations.iter().cloned().fold(
             Rc::new(OccurrenceTransportRoleIndexBuild {
                 declarations_by_id: v1_rt::rc_empty_map::<i64, Rc<DeclarationOccurrence>>(),
                 references_by_id: v1_rt::rc_empty_map::<i64, Rc<ReferenceOccurrence>>(),
@@ -684,7 +682,7 @@ pub fn occurrence_transport_role_index_build(
         );
         match declaration_build.refusal.clone() {
             Some(_) => declaration_build,
-            None => references.clone().iter().cloned().fold(
+            None => references.iter().cloned().fold(
                 declaration_build,
                 |build: Rc<OccurrenceTransportRoleIndexBuild>,
                  reference: Rc<ReferenceOccurrence>| match build.refusal.clone() {

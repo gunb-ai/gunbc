@@ -26,15 +26,15 @@ module product.fabric.work
 // facts - a source content manifest and a provenance receipt - and Work always
 // consumes the manifest, consuming provenance only where provenance is a
 // declared input.
-type ProgramRef = std.types.NonEmptyStr where brand("ProgramRef")
+type ProgramRef = NonEmptyStr where brand("ProgramRef")
 
-type ArtifactManifestRef = std.types.NonEmptyStr where brand("ArtifactManifestRef")
+type ArtifactManifestRef = NonEmptyStr where brand("ArtifactManifestRef")
 
-type EffectContractRef = std.types.NonEmptyStr where brand("EffectContractRef")
+type EffectContractRef = NonEmptyStr where brand("EffectContractRef")
 
-type OutputContractRef = std.types.NonEmptyStr where brand("OutputContractRef")
+type OutputContractRef = NonEmptyStr where brand("OutputContractRef")
 
-type SourceManifestRef = std.types.NonEmptyStr where brand("SourceManifestRef")
+type SourceManifestRef = NonEmptyStr where brand("SourceManifestRef")
 
 // Resumability is a property of what a step DECLARES, never of the fabric. A step
 // whose effects are undeclared cannot be resumed by any mechanism, so the tier is
@@ -59,11 +59,11 @@ type SourceManifestRef = std.types.NonEmptyStr where brand("SourceManifestRef")
 // proof the step completed.
 type ResumabilityTier
   = ReceiptSatisfiable
-  | IdempotentUnderKey { idempotency_key: std.content_hash.ContentHash }
-  | OpaqueEffects { reason: std.types.NonEmptyStr }
+  | IdempotentUnderKey { idempotency_key: ContentHash }
+  | OpaqueEffects { reason: NonEmptyStr }
 
 type WorkStep {
-  step_id: std.types.NonEmptyStr
+  step_id: NonEmptyStr
   resumability: ResumabilityTier
 }
 
@@ -84,35 +84,51 @@ type WorkContract {
 // Capability and trust-domain references are declared HERE, on the
 // requirement side, and imported by supply rather than redeclared there.
 // Fungibility - selection's first and load-bearing step - compares a Work's
-// requirements against an Offer's capabilities, so the two sides of that
+// requirements against a SupplierOffer's capabilities, so the two sides of that
 // comparison are two readings of one fact. Typing them separately would make
 // the comparison need a coercion, and a coercion between two spellings of one
 // concept is where the divergence starts.
 
-type CapabilityManifestRef = std.types.NonEmptyStr where brand("CapabilityManifestRef")
+type CapabilityManifestRef = NonEmptyStr where brand("CapabilityManifestRef")
 
-type TrustDomainRef = std.types.NonEmptyStr where brand("TrustDomainRef")
+type TrustDomainRef = NonEmptyStr where brand("TrustDomainRef")
 
 // Shape and HardRequirements moved here when product.compute_fabric was deleted at
 // the root. They are the only load-bearing content that module had: what a WorkSpec
-// requires and what an Offer offers is a work-side fact, and shape_material below
+// requires and what a SupplierOffer offers is a work-side fact, and shape_material below
 // already destructures the axis deliberately, so the axis wall lives beside the
 // carrier rather than one module away. The rest of that module -- Fabric, Program,
 // ComputeNeed, Opportunity, Connection, connect -- had no decision consumer and was
 // deleted rather than moved.
 
-type HardRequirements { threads: std.measure.HardwareThreadCount }
+type HardRequirements { threads: HardwareThreadCount }
 
-type Shape { hard: HardRequirements }
+// A SHAPE CARRIED ONLY A THREAD COUNT, AND THAT MADE FUNGIBILITY GIVE WRONG ANSWERS.
+//
+// Until this field existed, offer_covers_shape compared threads and nothing else, so an 8 GiB x64
+// workload was declared FUNGIBLE with a 6 GiB arm offer whenever the thread counts and the textual
+// capability ref happened to match. That is a wrong answer, not a missing annotation: the broker
+// would route the work to a machine that cannot run it, and no downstream refusal would fire
+// because fungibility had already said yes. Reported from the first production supplier binding
+// (neat-heron-312, product.supplier.ubicloud), where memory and disk surfaced as
+// UnexpressedSupplyFact -- honest diagnosis that could not repair the decision, because a sidecar
+// saying "memory was dropped" cannot route work.
+//
+// THE ENVELOPE IS CONSUMED, NOT RESTATED. product.fabric.envelope owns the requirement vocabulary
+// (moved there from gunbc.fleet_container, which now consumes it too), so threads keep their own
+// cited home in HardRequirements while every other axis arrives through the one envelope authority
+// rather than growing this record an axis at a time.
+type Shape { hard: HardRequirements, envelope: ResourceEnvelope }
 
 type ExecutionRequirements {
   shape: Shape
   capabilities: CapabilityManifestRef
   trust_domain: TrustDomainRef
+  isolation: IsolationProfile
 }
 
 type Work<P> {
-  id: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>
+  id: FabricIdentity<P, WorkKey>
   contract: WorkContract
   requirements: ExecutionRequirements
 }
@@ -133,7 +149,7 @@ type Work<P> {
 // discipline. Requirements are included because a Work that needs a different
 // architecture or trust domain does not promise the same answer.
 
-fn work_identity_material(contract: WorkContract, requirements: ExecutionRequirements) -> std.types.NonEmptyStr {
+fn work_identity_material(contract: WorkContract, requirements: ExecutionRequirements) -> NonEmptyStr {
   concat(
     contract.program, "\u{1f}",
     work_steps_material(steps: contract.steps), "\u{1f}",
@@ -144,8 +160,29 @@ fn work_identity_material(contract: WorkContract, requirements: ExecutionRequire
     contract.output_contract, "\u{1f}",
     requirements.capabilities, "\u{1f}",
     requirements.trust_domain, "\u{1f}",
+    isolation_material(profile: requirements.isolation), "\u{1f}",
     shape_material(shape: requirements.shape)
   )
+}
+
+// ISOLATION IS A SEMANTIC INPUT, AND OMITTING IT WAS THE SAME DIVERGENCE THE SHAPE NOTE BELOW
+// DESCRIBES -- COMMITTED BY ME, ONE FIELD LATER.
+//
+// The isolation profile landed on ExecutionRequirements without landing here, so two works
+// differing ONLY in what they require of their executor -- one needing a fresh writable root and
+// attempt-scoped secrets, one needing nothing -- derived the SAME key and deduplicated onto each
+// other. Fungibility in product.fabric.supply compares isolation, so identity and matching would
+// have disagreed about whether two things were the same work: exactly the failure the shape note
+// records, reproduced by the next author to add a field.
+//
+// The guarantees are rendered in the order the profile carries them rather than sorted, which is a
+// LIMITATION and not a design: two profiles listing the same guarantees in different orders derive
+// different keys. That is safe in the conservative direction -- it over-distinguishes rather than
+// collapsing two different requirements onto one identity -- and the constructors in
+// product.fabric.isolation all emit a fixed order, so no production caller can currently reach it.
+// Sorting wants a total order on the coproduct, which is a separate carrier.
+fn isolation_material(profile: IsolationProfile) -> NonEmptyStr {
+  concat("isolation:", join(map(profile.guarantees, g => isolation_guarantee_label(g: g)), ","))
 }
 
 // The shape feeds the digest, and leaving it out was a real divergence rather
@@ -160,27 +197,87 @@ fn work_identity_material(contract: WorkContract, requirements: ExecutionRequire
 // record, so a shape that grows an axis fails to compile here instead of
 // silently dropping the new axis out of the identity.
 
-fn shape_material(shape: Shape) -> std.types.NonEmptyStr {
+fn shape_material(shape: Shape) -> NonEmptyStr {
   concat(
     "threads:",
-    to_string(std.measure.hardware_thread_count_value(t: shape.hard.threads))
+    to_string(hardware_thread_count_value(t: shape.hard.threads)),
+    "\u{1f}",
+    envelope_material(envelope: shape.envelope)
   )
 }
 
-fn work_step_material(step: WorkStep) -> std.types.NonEmptyStr {
+// THE ARCHITECTURE TOKEN USES architecture_diagnostic_name, AND THAT NEEDS A WORD BECAUSE THAT
+// FUNCTION'S OWN ANNOTATION SAYS IT IS DELIBERATELY NOT A WIRE LABEL.
+//
+// Its objection is to publishing that name OUTWARD -- every upstream spells architectures
+// differently, and each of those projections refuses the arches its upstream does not publish, so
+// reusing one internal name as a wire label would re-coin those authorities and defeat their
+// fail-closed arms. A work-key material is not published to any upstream: it is an internal
+// discriminator hashed into an identity, and what it needs is totality and injectivity, both of
+// which that function has. No upstream projection is bypassed because no upstream ever sees it.
+//
+// THE ENVELOPE AXES FEED THE DIGEST, EACH RENDERED AS PRESENT-WITH-VALUE OR EXPLICITLY ABSENT.
+//
+// An unstated axis renders as a distinct token rather than as an empty string, because "no memory
+// requirement" and "a memory requirement of zero" are different works and an empty rendering would
+// collapse them. Only the axes fungibility actually compares are rendered; adding an axis to the
+// comparison without adding it here would re-open the identity/matching divergence, which is the
+// obligation the note above records and which no mechanism currently enforces.
+fn envelope_axis_material(label: NonEmptyStr, value: NonEmptyStr?) -> NonEmptyStr {
+  match value {
+    Present { value: v } => concat(label, ":", v)
+    Absent => concat(label, ":unstated")
+  }
+}
+
+fn envelope_material(envelope: ResourceEnvelope) -> NonEmptyStr {
+  concat(
+    envelope_axis_material(
+      label: "min-threads",
+      value: match envelope.cpu {
+        Present { value: c } =>
+          Present { value: to_string(hardware_thread_count_value(t: c.min_threads)) as NonEmptyStr }
+        Absent => none
+      },
+    ),
+    "\u{1f}",
+    envelope_axis_material(
+      label: "architecture",
+      value: match envelope.cpu {
+        Present { value: c } =>
+          match c.architecture {
+            Present { value: a } => Present { value: architecture_diagnostic_name(arch: a) }
+            Absent => none
+          }
+        Absent => none
+      },
+    ),
+    "\u{1f}",
+    envelope_axis_material(
+      label: "min-memory",
+      value: match envelope.memory {
+        Present { value: m } =>
+          Present { value: to_string(byte_size_count(b: m.min_bytes)) as NonEmptyStr }
+        Absent => none
+      },
+    )
+  )
+}
+
+fn work_step_material(step: WorkStep) -> NonEmptyStr {
   concat(step.step_id, "\u{1e}", resumability_material(tier: step.resumability))
 }
 
-fn resumability_material(tier: ResumabilityTier) -> std.types.NonEmptyStr {
+fn resumability_material(tier: ResumabilityTier) -> NonEmptyStr {
   match tier {
     ReceiptSatisfiable => "receipt-satisfiable"
     IdempotentUnderKey { idempotency_key: k } =>
-      concat("idempotent-under-key:", std.content_hash.serialize_content_hash(hash: k))
+      concat("idempotent-under-key:", serialize_content_hash(hash: k))
     OpaqueEffects { reason: _ } => "opaque-effects"
   }
 }
 
-fn work_steps_material(steps: List<WorkStep>) -> std.types.NonEmptyStr {
+fn work_steps_material(steps: List<WorkStep>) -> NonEmptyStr {
   fold(
     steps,
     init: "steps",
@@ -188,9 +285,9 @@ fn work_steps_material(steps: List<WorkStep>) -> std.types.NonEmptyStr {
   )
 }
 
-fn derive_work_key(contract: WorkContract, requirements: ExecutionRequirements) -> product.fabric.identity.WorkKey {
-  std.content_hash.serialize_content_hash(
-    hash: std.content_hash.content_hash_of_value(
+fn derive_work_key(contract: WorkContract, requirements: ExecutionRequirements) -> WorkKey {
+  serialize_content_hash(
+    hash: content_hash_of_value(
       value: work_identity_material(contract: contract, requirements: requirements)
     )
   )
@@ -201,7 +298,7 @@ fn derive_work_key(contract: WorkContract, requirements: ExecutionRequirements) 
 
 fn work_for<P>(principal: P, contract: WorkContract, requirements: ExecutionRequirements) -> Work<P> {
   Work {
-    id: product.fabric.identity.FabricIdentity {
+    id: FabricIdentity {
       principal: principal,
       key: derive_work_key(contract: contract, requirements: requirements),
     },
@@ -224,4 +321,3 @@ fn work_for<P>(principal: P, contract: WorkContract, requirements: ExecutionRequ
 fn work_contract_source(contract: WorkContract) -> SourceManifestRef {
   contract.source
 }
-

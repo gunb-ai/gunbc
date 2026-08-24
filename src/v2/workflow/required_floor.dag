@@ -5,10 +5,10 @@ module v2.workflow.required_floor
 // Every discovered site gets exactly one `RequiredFloorDisposition`, keyed by its qualified
 // `module.function` identity. This is the single authority for that fact: the host loop in
 // `v1_compiler.cli_run` `run_required_floor` computes admission by testing a claim's authored
-// module name against `long_home_prefixes()` above, then REALIZES the arm this type already
-// names — it does not invent a second admission concept. A `Declined*` arm here is a fact about
-// why a site's identity is excluded from the executed roster; it is never itself the mechanism
-// deciding execution order or eligibility for a DIFFERENT gate.
+// module name against `long_home_prefixes()` and `fixture_home_prefixes()` below, then REALIZES
+// the arm this type already names — it does not invent a second admission concept. A `Declined*`
+// arm here is a fact about why a site's identity is excluded from the executed roster; it is
+// never itself the mechanism deciding execution order or eligibility for a DIFFERENT gate.
 //
 // `DeclinedLiveTree` IS RETAINED HERE AND STAGED FOR DELETION AT THE ROOT. Its premise is
 // already known to be stale (below), but the deletion is a behaviour change — 782 sites move
@@ -58,6 +58,7 @@ module v2.workflow.required_floor
 type RequiredFloorDisposition =
     Planned
   | DeclinedLongModule { matched_prefix: String }
+  | DeclinedFixtureMember { matched_prefix: String }
   | DeclinedLiveTree
 
 // LONG-HOME STORAGE HYGIENE — A DIAGNOSTIC, NEVER AN ADMISSION INPUT.
@@ -153,6 +154,61 @@ fn long_home_prefixes() -> List<String> {
     }
   }
 }
+
+// THE THIRD DECLINE: A FIXTURE MEMBER IS NOT A WITNESS, AND ENROLLING ONE IS NOT DEBT.
+//
+// A `test fn` under `v2.test.fixture.walk_plan_stage.` is not a claim about the compiler. It is
+// an INPUT to another claim: `claim_executor --plan-entry
+// src/v2/test/fixture/walk_plan_stage/plan.dag --plan-function <recipe>` drives it as a
+// `RunnableSingleClaim` row authored in that fixture's own `common.dag`, and the recipes in
+// `plan.dag` are what assert on the result. The member is the specimen; the recipe is the
+// witness.
+//
+// WHY THE FOLD MUST NOT RUN THEM, and this is a correctness argument rather than a cost one.
+// Two of the nine are red BY CONSTRUCTION and can never green: `failure_red_member`'s body is
+// the literal `false`, and `recursion_refusal_member` calls itself so the interpreter's
+// call-depth refusal fires — that refusal IS what the recursion-refusal recipe observes. The
+// other seven perform the host effects the recipes are about, and `stage2_marker` is the sharp
+// one: it writes `target/walk_plan_stage_stage2_ran`, the exact path
+// `walk_plan_stage_failure_barrier_recipe` asserts "must stay absent" when stage 1 reds. Giving
+// that member a hermetic route would make the floor write the marker that another fixture's
+// oracle is defined by — a run corrupting the input of the test it is running.
+//
+// WHAT THIS COST WHILE IT WAS UNSTATED. All nine were discovered, planned and enrolled: two on
+// `v2.workflow.floor_expected_red` and seven on `v2.workflow.floor_route_gap`. Both rosters
+// declare themselves temporary, monotone and self-emptying, and neither can ever shed these
+// nine — the first two by construction, the seven because the honest route for them is no route
+// at all. Nine permanent rows on two shrinking ledgers is the skip list both headers are
+// carefully not, arrived at without anyone choosing it. The fixture's own `common.dag` note has
+// asserted the correct state of the world all along — "discovery-excluded at dir grain … and
+// declares no enrolled witness rows" — and that sentence stopped being true at the floor cut,
+// which is when a directory stopped being what discovery reads.
+//
+// THE MECHANISM IS THE ONE ALREADY SANCTIONED, deliberately and not by analogy: the test is on
+// the module's AUTHORED NAME, exactly as `long_home_prefixes` is, for the reason the 2026-08-04
+// ruling gives — a directory must not decide an admission question. `v2.test.fixture.` is NOT
+// the prefix, and the narrower one is not caution: 27 modules declare `v2.test.fixture.` and
+// only the walk_plan_stage family authors `test fn`s, so the broad prefix would pre-admit a
+// decline for 26 modules whose behaviour nobody has examined. A prefix earns its rows.
+//
+// THIS IS NOT A SELECTION SHRINK, which is the objection it will draw. The 2026-08-13 directive
+// forbids SELECTION from shrinking the roster; a home policy answers a different question, and
+// the difference here is that these nine LOSE NO COVERAGE — they keep the executing consumer
+// they have always had, the recipes, which is more than a route-gap row can say. Declining a
+// site whose only consumer is the fold deletes coverage; declining one the fold was never the
+// consumer of returns it to its owner.
+//
+// DISSOLVES when the fixture stops authoring `test fn`s — if `claim_executor` grows a claim form
+// that does not require one, this roster empties and the arm goes with it. There is no
+// empty-roster refusal here, for the same reason `long_home_prefixes` has none.
+fn fixture_home_prefixes() -> List<String> {
+  Cons {
+    head: "v2.test.fixture.walk_plan_stage.",
+    tail: Empty {}
+  }
+}
+
+
 
 
 // THE EVALUATION DEADLINE FOR ONE CLAIM IS WALL TIME, AND IT HAS TWO TIERS.

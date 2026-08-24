@@ -1,7 +1,6 @@
 module gunbc.runner_incarnation
 
-
-data runner_incarnation_authority_disposition: std.disposition.Disposition = SingleAuthority
+data runner_incarnation_authority_disposition: Disposition = SingleAuthority
 
 data runner_incarnation_process_identity_note: String = "LocalRunnerSlotIncarnation deliberately carries NO process/PID field today. Staleness for ReplaceRunnerIncarnation is expressed through slot, unit, unit_active, and registration_name until gunbc.runner_lifecycle ObserveRunnerLocalState grounds a live process identity producer. Adding a phantom process field without that producer would be specification-without-execution (DESIGN section 5). The seam witness proves the modeled fields survive HostEffect projection; a dedicated process identity lands with ObserveRunnerLocalState wet read-back."
 
@@ -20,14 +19,14 @@ type RunnerSlotInstallationState
 
 type RunnerSlotInstallationObservation
   = SlotInstallationObserved { state: RunnerSlotInstallationState }
-  | SlotInstallationUnobserved { host: product.placement_supply.HostIdentity, reason: String }
-  | SlotInstallationReachRefused { host: product.placement_supply.HostIdentity, reason: String }
+  | SlotInstallationUnobserved { host: HostIdentity, reason: String }
+  | SlotInstallationReachRefused { host: HostIdentity, reason: String }
 
 data vivid_eagle_srv3_installation_probe_note: String = "vivid-eagle-131 read-only in-band observation 2026-08-07 via srv2->ubuntu@192.168.1.221 (no units started). srv3-01..08 dirs present; 01..05 active/running+enabled; 06/07/08 complete installs identical to 01; 06/07 .runner present (398B, Ephemeral, AgentIds 111911/111894, mtime 2026-07-21); units @06/@07 disabled+inactive; 08 same shape."
 
 data srv4_installation_reach_refused_note: String = "srv4 NO OBSERVATION (vivid-eagle-131 2026-08-07): srv2->192.168.1.196 as briansrls/ubuntu/ghrunner and srv3 hop all Permission denied or host-key verification failed. Carry ReachRefused — do not infer slot state from srv3."
 
-data runner_slot_installation_predicate_family_disposition: std.disposition.Disposition = std.disposition.Terminal {
+data runner_slot_installation_predicate_family_disposition: Disposition = Terminal {
   reason: "runner_slot_add_requires_incarnation_replace and the runner_slot_installation_is_* / runner_slot_installation_observation_* Bool helpers are total matches over RunnerSlotInstallationState / RunnerSlotInstallationObservation — every variant has an explicit arm, no top-level wildcard false arm. Unlike fleet_runner_connectivity connectivity_verdict_is_* (wildcard false arms, enrolled in non_fold_residue_frontier), these dissolve at authoring; NFR rows would stale the roster."
 }
 
@@ -87,7 +86,7 @@ fn runner_slot_installation_observation_must_not_reextract(observation: RunnerSl
   }
 }
 
-fn vivid_eagle_srv3_slot_installation_observation(slot_index: std.nat.Nat) -> RunnerSlotInstallationObservation {
+fn vivid_eagle_srv3_slot_installation_observation(slot_index: Nat) -> RunnerSlotInstallationObservation {
   if slot_index >= 1 && slot_index <= 5 {
     SlotInstallationObserved { state: SlotCurrentlyActive {} }
   } else if slot_index == 6 || slot_index == 7 {
@@ -114,7 +113,7 @@ fn vivid_eagle_srv3_slot_installation_observation(slot_index: std.nat.Nat) -> Ru
   }
 }
 
-fn srv4_slot_installation_observation(slot_index: std.nat.Nat) -> RunnerSlotInstallationObservation {
+fn srv4_slot_installation_observation(slot_index: Nat) -> RunnerSlotInstallationObservation {
   SlotInstallationReachRefused {
     host: operator_host_srv4,
     reason: srv4_installation_reach_refused_note,
@@ -122,43 +121,21 @@ fn srv4_slot_installation_observation(slot_index: std.nat.Nat) -> RunnerSlotInst
 }
 
 type LocalRunnerSlotIncarnation {
-  slot: gunbc.build_cache_instance.RunnerSlotIdentity
-  unit: std.types.NonEmptyStr
+  slot: RunnerSlotIdentity
+  unit: NonEmptyStr
   unit_active: Bool
-  registration_name: std.types.NonEmptyStr
-}
-
-fn slot_suffix(slot_index: std.nat.Nat) -> String {
-  if slot_index == 1 {
-    "01"
-  } else if slot_index == 2 {
-    "02"
-  } else if slot_index == 3 {
-    "03"
-  } else if slot_index == 4 {
-    "04"
-  } else if slot_index == 5 {
-    "05"
-  } else if slot_index == 6 {
-    "06"
-  } else if slot_index == 7 {
-    "07"
-  } else if slot_index == 8 {
-    "08"
-  } else {
-    "00"
-  }
+  registration_name: NonEmptyStr
 }
 
 fn runner_slot_incarnation(
-  host: product.placement_supply.HostIdentity,
-  slot_index: std.nat.Nat,
+  host: HostIdentity,
+  slot_index: Nat,
   unit_active: Bool,
 ) -> LocalRunnerSlotIncarnation {
-  let registration_name = join([host as String, "-", slot_suffix(slot_index: slot_index)], "") as std.types.NonEmptyStr
+  let registration_name = join([host as String, "-", runner_slot_index_suffix(index: slot_index)], "") as NonEmptyStr
   LocalRunnerSlotIncarnation {
-    slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: host, slot_index: slot_index },
-    unit: join(["actions-runner@", registration_name as String, ".service"], "") as std.types.NonEmptyStr,
+    slot: RunnerSlotIdentity { host: host, slot_index: slot_index },
+    unit: join(["actions-runner@", registration_name as String, ".service"], "") as NonEmptyStr,
     unit_active: unit_active,
     registration_name: registration_name,
   }

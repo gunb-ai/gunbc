@@ -4,7 +4,9 @@
 use self::KeyedMapVerdict::*;
 use self::V1FreeMonoidSupplementalRoute::*;
 pub use crate::extdeps_languages_rust_capabilities::RustCapability;
-use crate::extdeps_languages_rust_capabilities::RustCapability::*;
+use crate::extdeps_languages_rust_capabilities::RustCapability::{
+    RustDebug, RustDeserialize, RustPartialEq, RustSerialize,
+};
 pub use crate::extdeps_languages_rust_capabilities::{
     derive_traits_union, fn_field_derive_traits, kernel_int_arithmetic_traits,
     map_key_required_derive_traits, nullary_coproduct_derive_traits,
@@ -20,33 +22,43 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_supplemental_impls_bool_coproduct, rust_supplemental_impls_group_completion,
     rust_trait_derive_attr_from_traits, rust_trait_derive_spelling,
 };
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
+pub use crate::std_syntax::BinOp;
+use crate::std_syntax::BinOp::*;
 pub use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape;
-use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::*;
+use crate::std_trait_derive_shape::ReprGroundingDeriveElemShape::{
+    ReprDeriveElemKernelInt, ReprDeriveElemNullaryEnumCopy, ReprDeriveElemPayloadCoproduct,
+    ReprDeriveElemSymbolWrappedOrdCarrier, ReprDeriveElemUnknown,
+};
 pub use crate::std_trait_derive_shape::{
     repr_grounding_derive_completeness_predicate, repr_grounding_group_completion_carrier,
     repr_grounding_supplemental_bool_host_bridge_target,
 };
 pub use crate::std_types::{container_template_algebra, is_container_type};
-pub use crate::std_types::{List, Map, Set};
 pub use crate::v1_compiler_artifact::RenderTarget;
-use crate::v1_compiler_artifact::RenderTarget::*;
+use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::{decl_identity_file, lookup_checkpoint};
-pub use crate::v1_compiler_emit::emit_ident;
-pub use crate::v1_compiler_emit_core_support::{is_type_alias_item, to_pascal, unique_strings};
+pub use crate::v1_compiler_emit::{emit_ident, to_pascal};
+pub use crate::v1_compiler_emit_core_support::{is_type_alias_item, unique_strings};
 pub use crate::v1_compiler_emit_rust::item_generic_param_names;
 pub use crate::v1_compiler_infer_types::{child_type_node, is_coproduct_type, resolved_type};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Connective::*;
-use crate::v1_std_core::ContainerSpellingVerdict::*;
+use crate::v1_std_core::Connective::NoConnective;
+use crate::v1_std_core::ContainerSpellingVerdict::{
+    ContainerSpellingDeclared, ContainerSpellingUnknown, NotAContainerSpelling,
+};
+use crate::v1_std_core::MatchPattern::*;
+use crate::v1_std_core::UnaryOpKind::*;
 pub use crate::v1_std_core::{
     authored_container_spelling_verdict, authored_name_at, generic_param_name_at,
-    param_node_type_expr, qualified_last_segment,
+    param_node_type_expr,
 };
 pub use crate::v1_std_core::{Connective, ContainerSpellingVerdict, NewlineIndex, Node};
+pub use crate::v1_std_core::{MatchPattern, UnaryOpKind};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -73,16 +85,7 @@ pub fn trait_derive_emit_item_clone_bound_rule_note() -> String {
 pub fn trait_derive_emit_item_clone_bound_wf_propagation_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "SECOND, INDEPENDENT trigger for an item-level Clone bound, distinct from the derive/lowering trigger above and NOT a widening of it: WELL-FORMEDNESS PROPAGATION. Naming a declared generic type G<A..> at all requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl requires P: Clone, then the item declaring that field is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. This applies to STRUCTS AND ENUMS alike, because it is a property of naming the type, not of deriving Clone for it; the rule note above correctly scopes the DERIVE trigger to structs (derive emits per-impl bounds) and that scoping is unchanged here. The two axes are grounded differently and can disagree: im::Vector<A> carries NO declaration bound (checked against im-15.1.0 vector::Vector), so a container field is a derive-trigger fact only, while Boxed<T: Clone> is a well-formedness fact that propagates through Nested<T> { boxed: Boxed<T> } and List<Boxed<T>> alike. The requirement is a LEAST FIXPOINT over the declared-type graph (v1_clone_bounded_type_params), not a one-field-shape-deep read: each round derives every declared generic type's bounded parameters from the current approximation and stops when a round adds nothing, so a chain Boxed -> Nested -> TwoHop propagates all the way and a recursive type (Cyclic<T> { self_ref: Cyclic<T>? }) saturates instead of diverging. The derive trigger SEEDS the fixpoint (v1_clone_bound_seed_for_item, structs only, reusing v1_item_type_param_needs_clone_bound_struct verbatim rather than restating it) and then propagates, because Boxed<T: Clone> earns its bound from the derive trigger and Nested<T> { boxed: Boxed<T> } inherits it from well-formedness. Two sub-predicates, deliberately separate because they answer different questions about the same type expression: v1_type_expr_clone_impl_needs_param asks whether `tau: Clone` requires P: Clone (every derive(Clone) type and every container bounds all of its parameters, so this reduces to `P occurs in tau`), while v1_type_expr_wf_needs_clone_param asks whether NAMING tau requires it (only the argument positions the fixpoint has already bounded count). The undecidable residue is answered by its own total function rather than fused into either Bool: a type application whose head is neither a container nor a declared type in the closure has no readable parameter list, so v1_type_expr_clone_undecided_head names it and the emit site refuses with compile_error!. It is NOT silently treated as `no bound needed` and NOT widened to `bound everything` -- widening would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). LIVE IN CORPUS as of 2026-08-22, on integration/namespace-cut: 8 firings, 7 of them on std.occurrence_binding. This sentence read \"Dead in corpus as of this landing; kept as the fail-closed arm\" from the landing until that date, and it stayed on the page while the arm fired, because a compile_error! is loud to the BUILD and silent to the CARRIER -- see trait_derive_emit_undecided_head_population_staleness_note.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn trait_derive_emit_undecided_head_population_staleness_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "POPULATION CLAIM WITH NO RE-CHECK (filed 2026-08-22, deep-ant-102). The note above asserted its refusal arm was dead in corpus. Nothing in the repository re-checks that, so when the arm began firing the assertion simply stayed true-looking on the page. The general defect is NOT a mechanism losing information -- every other class chased on this branch was that -- it is a mechanism working exactly as specified while the SENTENCE ABOUT IT decays: compile_error! is a loud, typed, located refusal, section 5 in textbook form, and the louder it is at its own layer the more certain everyone is that someone would have noticed. Nobody did, because a compile_error! reads as build noise rather than as evidence about a documented population. THE RULE: a carrier asserting a population is EMPTY needs something that re-checks the population, or the assertion is specification-without-execution the moment the corpus moves -- an unexecuted claim is not made safe by the arm it describes being fail-closed. TRIGGER HERE, for the record: main writes `containment: ContainmentPath<N>` bare while this branch writes `std.occurrence_binding.ContainmentPath<N>` self-qualified, so the cut is what made the arm reachable -- a real dependency surfaced by the census, NOT a defect in the arm, and repairing the arm to admit it would be exactly the widening the note above refuses. RUNG: mitigatable. The join from firings back to the claim does not exist; this note is review diligence, not a gate. NEXT-RUNG TRIGGER: an emptiness assertion that names its population as a query the floor can evaluate, so the arm firing turns the claim red instead of leaving it stale.".to_string()
+            "SECOND, INDEPENDENT trigger for an item-level Clone bound, distinct from the derive/lowering trigger above and NOT a widening of it: WELL-FORMEDNESS PROPAGATION. Naming a declared generic type G<A..> at all requires satisfying G's own declared bounds, so if G's i-th parameter already carries `: Clone` and the i-th argument's Clone impl requires P: Clone, then the item declaring that field is ill-formed without P: Clone -- rustc E0277 at the field, before any derive is considered. This applies to STRUCTS AND ENUMS alike, because it is a property of naming the type, not of deriving Clone for it; the rule note above correctly scopes the DERIVE trigger to structs (derive emits per-impl bounds) and that scoping is unchanged here. The two axes are grounded differently and can disagree: im::Vector<A> carries NO declaration bound (checked against im-15.1.0 vector::Vector), so a container field is a derive-trigger fact only, while Boxed<T: Clone> is a well-formedness fact that propagates through Nested<T> { boxed: Boxed<T> } and List<Boxed<T>> alike. The requirement is a LEAST FIXPOINT over the declared-type graph (v1_clone_bounded_type_params), not a one-field-shape-deep read: each round derives every declared generic type's bounded parameters from the current approximation and stops when a round adds nothing, so a chain Boxed -> Nested -> TwoHop propagates all the way and a recursive type (Cyclic<T> { self_ref: Cyclic<T>? }) saturates instead of diverging. The derive trigger SEEDS the fixpoint (v1_clone_bound_seed_for_item, structs only, reusing v1_item_type_param_needs_clone_bound_struct verbatim rather than restating it) and then propagates, because Boxed<T: Clone> earns its bound from the derive trigger and Nested<T> { boxed: Boxed<T> } inherits it from well-formedness. Two sub-predicates, deliberately separate because they answer different questions about the same type expression: v1_type_expr_clone_impl_needs_param asks whether `tau: Clone` requires P: Clone (every derive(Clone) type and every container bounds all of its parameters, so this reduces to `P occurs in tau`), while v1_type_expr_wf_needs_clone_param asks whether NAMING tau requires it (only the argument positions the fixpoint has already bounded count). The undecidable residue is answered by its own total function rather than fused into either Bool: a type application whose head is neither a container nor a declared type in the closure has no readable parameter list, so v1_type_expr_clone_undecided_head names it and the emit site refuses with compile_error!. It is NOT silently treated as `no bound needed` and NOT widened to `bound everything` -- widening would zero the deficit's frequency by construction (DESIGN section 5, absorbing fallback). Dead in corpus as of this landing; kept as the fail-closed arm.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -149,7 +152,7 @@ pub fn v1_trait_derive_refuse(message: String) -> String {
 pub fn v1_coproduct_all_variants_nullary(children: Rc<Vec<Rc<Node>>>) -> bool {
     {
         let mut __all = true;
-        for v in children.clone().iter().cloned() {
+        for v in children.iter().cloned() {
             if !((v.children.clone().len() as i64) == 0) {
                 __all = false;
                 break;
@@ -174,10 +177,7 @@ pub fn rust_nominal_identity_carrier_shape_eligible(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((((crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
-        source_indices.clone(),
-        n.clone(),
-    )) == "Symbol".to_string())
+    ((((authored_name_at(source_indices.clone(), n.clone()) == "Symbol".to_string())
         && ((n.children.clone().len() as i64) == 0))
         && ((n.params.clone().len() as i64) == 0))
         && (n.connective.clone() == Connective::NoConnective))
@@ -192,7 +192,7 @@ pub fn rust_symbol_wrapped_ord_carrier_shape_eligible(
     } else {
         match children.clone().first().cloned() {
             Some(child) => rust_nominal_identity_carrier_shape_eligible(
-                crate::v1_compiler_infer_types::child_type_node(child.clone()),
+                child_type_node(child.clone()),
                 source_indices.clone(),
             ),
             None => false,
@@ -216,10 +216,7 @@ pub fn v1_with_map_key_requirement(
     map_key_required: bool,
 ) -> Rc<Vec<RustCapability>> {
     if map_key_required.clone() {
-        crate::extdeps_languages_rust_capabilities::derive_traits_union(
-            base.clone(),
-            crate::extdeps_languages_rust_capabilities::map_key_required_derive_traits(),
-        )
+        derive_traits_union(base.clone(), map_key_required_derive_traits())
     } else {
         base.clone()
     }
@@ -314,7 +311,7 @@ pub fn v1_map_key_head_names_in_type_expr(
                 for ch in type_expr.children.clone().iter().cloned() {
                     __result.extend(
                         (*v1_map_key_head_names_in_type_expr(
-                            crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                            child_type_node(ch.clone()),
                             source_indices.clone(),
                         ))
                         .iter()
@@ -333,7 +330,7 @@ pub fn v1_type_expr_head_names(
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         v1_rt::concat(
-            Rc::new(vec![crate::v1_std_core::authored_name_at(
+            Rc::new(vec![authored_name_at(
                 source_indices.clone(),
                 type_expr.clone(),
             )]),
@@ -342,7 +339,7 @@ pub fn v1_type_expr_head_names(
                 for ch in type_expr.children.clone().iter().cloned() {
                     __result.extend(
                         (*v1_type_expr_head_names(
-                            crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                            child_type_node(ch.clone()),
                             source_indices.clone(),
                         ))
                         .iter()
@@ -400,7 +397,7 @@ pub fn v1_map_key_propagate_round(
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<MapKeyRequirementRound> {
-    declared_type_names.clone().iter().cloned().fold(
+    declared_type_names.iter().cloned().fold(
         round.clone(),
         |acc: Rc<MapKeyRequirementRound>, type_name: String| {
             if !v1_rt::set_contains(&acc.names.clone(), type_name.clone()) {
@@ -439,10 +436,7 @@ pub fn v1_map_key_propagate_round(
 }
 
 pub fn map_has_declared_type(type_decl_items: Rc<HashMap<String, Rc<Node>>>, name: String) -> bool {
-    match v1_rt::map_get(
-        &type_decl_items,
-        crate::v1_std_core::qualified_last_segment(name.clone()),
-    ) {
+    match v1_rt::map_get(&type_decl_items, name.clone()) {
         Some(_) => true,
         None => false,
     }
@@ -491,7 +485,7 @@ pub fn v1_map_key_required_type_names(
 ) -> Rc<BTreeSet<String>> {
     {
         let declared_type_names = Rc::new(v1_rt::map_keys(&type_decl_items));
-        let scanned = seed_type_exprs.clone().iter().cloned().fold(
+        let scanned = seed_type_exprs.iter().cloned().fold(
             Rc::new(MapKeyRequirementRound {
                 names: v1_rt::rc_empty_set::<String>(),
                 added: 0,
@@ -512,7 +506,7 @@ pub fn v1_map_key_required_type_names(
                     )
             },
         );
-        let seeded = extra_seed_names.clone().iter().cloned().fold(
+        let seeded = extra_seed_names.iter().cloned().fold(
             scanned.clone(),
             |acc: Rc<MapKeyRequirementRound>, key_name: String| {
                 if map_has_declared_type(type_decl_items.clone(), key_name.clone()) {
@@ -572,10 +566,17 @@ pub fn v1_freemonoid_unroutable_row_refusal() -> String {
     {
         let unroutable = Rc::new({
             let mut __result = Vec::new();
-            for row in crate::extdeps_languages_rust_derive_contracts::rust_vec_freemonoid_supplemental_generic_bound_rows().iter().cloned() { if match v1_freemonoid_row_route(row.clone()) {
-    Some(_) => false,
-    None => true,
-} { __result.push(row); } }
+            for row in rust_vec_freemonoid_supplemental_generic_bound_rows()
+                .iter()
+                .cloned()
+            {
+                if match v1_freemonoid_row_route(row.clone()) {
+                    Some(_) => false,
+                    None => true,
+                } {
+                    __result.push(row);
+                }
+            }
             __result
         });
         if ((unroutable.clone().len() as i64) == 0) {
@@ -618,7 +619,7 @@ pub fn v1_freemonoid_filter_hand_written(
 ) -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __result = Vec::new();
-        for t in traits.clone().iter().cloned() {
+        for t in traits.iter().cloned() {
             if !{
                 let mut __found = false;
                 for h in v1_freemonoid_hand_written_traits().iter().cloned() {
@@ -643,13 +644,12 @@ pub fn v1_freemonoid_element_params(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for p in generic_param_names.clone().iter().cloned() {
+        for p in generic_param_names.iter().cloned() {
             if {
                 let mut __found = false;
-                for te in field_type_exprs.clone().iter().cloned() {
-                    if ((crate::v1_std_core::qualified_last_segment(
-                        crate::v1_std_core::authored_name_at(source_indices.clone(), te.clone()),
-                    ) == "FreeMonoid".to_string())
+                for te in field_type_exprs.iter().cloned() {
+                    if ((authored_name_at(source_indices.clone(), te.clone())
+                        == "FreeMonoid".to_string())
                         && {
                             let mut __found = false;
                             for c in te.children.clone().iter().cloned() {
@@ -685,7 +685,7 @@ pub fn v1_freemonoid_param_in_fields(
 ) -> bool {
     {
         let mut __found = false;
-        for te in field_type_exprs.clone().iter().cloned() {
+        for te in field_type_exprs.iter().cloned() {
             if v1_type_expr_contains_param_name(
                 param_name.clone(),
                 te.clone(),
@@ -700,7 +700,17 @@ pub fn v1_freemonoid_param_in_fields(
 }
 
 pub fn v1_freemonoid_supplemental_bound_spelling() -> String {
-    crate::v1_compiler_emit_core_support::unique_strings(Rc::new({ let mut __result = Vec::new(); for row in crate::extdeps_languages_rust_derive_contracts::rust_vec_freemonoid_supplemental_generic_bound_rows().iter().cloned() { __result.push(crate::extdeps_languages_rust_emit::rust_trait_derive_spelling(row.required.clone())); } __result })).join(&" + ".to_string())
+    unique_strings(Rc::new({
+        let mut __result = Vec::new();
+        for row in rust_vec_freemonoid_supplemental_generic_bound_rows()
+            .iter()
+            .cloned()
+        {
+            __result.push(rust_trait_derive_spelling(row.required.clone()));
+        }
+        __result
+    }))
+    .join(&" + ".to_string())
 }
 
 pub fn v1_freemonoid_impl_type_params(
@@ -716,12 +726,12 @@ pub fn v1_freemonoid_impl_type_params(
         {
             let entries = Rc::new({
                 let mut __result = Vec::new();
-                for p in generic_param_names.clone().iter().cloned() {
+                for p in generic_param_names.iter().cloned() {
                     __result.push({
-                        let pascal = crate::v1_compiler_emit_core_support::to_pascal(p.clone());
+                        let pascal = to_pascal(p.clone());
                         let supplemental = if {
                             let mut __found = false;
-                            for f in fm_params.clone().iter().cloned() {
+                            for f in fm_params.iter().cloned() {
                                 if (f.clone() == p.clone()) {
                                     __found = true;
                                     break;
@@ -772,8 +782,8 @@ pub fn v1_freemonoid_bare_type_args(generic_param_names: Rc<Vec<String>>) -> Str
                 "<".to_string(),
                 Rc::new({
                     let mut __result = Vec::new();
-                    for p in generic_param_names.clone().iter().cloned() {
-                        __result.push(crate::v1_compiler_emit_core_support::to_pascal(p.clone()));
+                    for p in generic_param_names.iter().cloned() {
+                        __result.push(to_pascal(p.clone()));
                     }
                     __result
                 })
@@ -792,12 +802,12 @@ pub fn v1_freemonoid_serde_bound_attr(
         let supplement = v1_freemonoid_supplemental_bound_spelling();
         let ser_entries = Rc::new({
             let mut __result = Vec::new();
-            for p in generic_param_names.clone().iter().cloned() {
+            for p in generic_param_names.iter().cloned() {
                 __result.push({
-                    let pascal = crate::v1_compiler_emit_core_support::to_pascal(p.clone());
+                    let pascal = to_pascal(p.clone());
                     if {
                         let mut __found = false;
-                        for f in fm_params.clone().iter().cloned() {
+                        for f in fm_params.iter().cloned() {
                             if (f.clone() == p.clone()) {
                                 __found = true;
                                 break;
@@ -821,12 +831,12 @@ pub fn v1_freemonoid_serde_bound_attr(
         });
         let de_entries = Rc::new({
             let mut __result = Vec::new();
-            for p in generic_param_names.clone().iter().cloned() {
+            for p in generic_param_names.iter().cloned() {
                 __result.push({
-                    let pascal = crate::v1_compiler_emit_core_support::to_pascal(p.clone());
+                    let pascal = to_pascal(p.clone());
                     if {
                         let mut __found = false;
-                        for f in fm_params.clone().iter().cloned() {
+                        for f in fm_params.iter().cloned() {
                             if (f.clone() == p.clone()) {
                                 __found = true;
                                 break;
@@ -880,14 +890,11 @@ pub fn v1_set_element_params(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for p in generic_param_names.clone().iter().cloned() {
+        for p in generic_param_names.iter().cloned() {
             if {
                 let mut __found = false;
-                for te in field_type_exprs.clone().iter().cloned() {
-                    if ((crate::v1_std_core::qualified_last_segment(authored_name_at(
-                        source_indices.clone(),
-                        te.clone(),
-                    )) == "Set".to_string())
+                for te in field_type_exprs.iter().cloned() {
+                    if ((authored_name_at(source_indices.clone(), te.clone()) == "Set".to_string())
                         && {
                             let mut __found = false;
                             for c in te.children.clone().iter().cloned() {
@@ -971,7 +978,7 @@ pub fn v1_set_hand_written_traits() -> Rc<Vec<RustCapability>> {
 pub fn v1_set_filter_hand_written(traits: Rc<Vec<RustCapability>>) -> Rc<Vec<RustCapability>> {
     Rc::new({
         let mut __result = Vec::new();
-        for t in traits.clone().iter().cloned() {
+        for t in traits.iter().cloned() {
             if !{
                 let mut __found = false;
                 for h in v1_set_hand_written_traits().iter().cloned() {
@@ -1036,12 +1043,12 @@ pub fn v1_set_serde_bound_attr(
         let de_supplement = v1_set_supplemental_bound_spelling_for(RustCapability::RustDeserialize);
         let ser_entries = Rc::new({
             let mut __result = Vec::new();
-            for p in generic_param_names.clone().iter().cloned() {
+            for p in generic_param_names.iter().cloned() {
                 __result.push({
                     let pascal = to_pascal(p.clone());
                     if {
                         let mut __found = false;
-                        for f in set_params.clone().iter().cloned() {
+                        for f in set_params.iter().cloned() {
                             if (f.clone() == p.clone()) {
                                 __found = true;
                                 break;
@@ -1065,12 +1072,12 @@ pub fn v1_set_serde_bound_attr(
         });
         let de_entries = Rc::new({
             let mut __result = Vec::new();
-            for p in generic_param_names.clone().iter().cloned() {
+            for p in generic_param_names.iter().cloned() {
                 __result.push({
                     let pascal = to_pascal(p.clone());
                     if {
                         let mut __found = false;
-                        for f in set_params.clone().iter().cloned() {
+                        for f in set_params.iter().cloned() {
                             if (f.clone() == p.clone()) {
                                 __found = true;
                                 break;
@@ -1123,7 +1130,7 @@ pub fn v1_set_serde_bound_attr_for_traits(
             } else {
                 if !({
                     let mut __found = false;
-                    for t in traits.clone().iter().cloned() {
+                    for t in traits.iter().cloned() {
                         if (t.clone() == RustCapability::RustSerialize) {
                             __found = true;
                             break;
@@ -1132,7 +1139,7 @@ pub fn v1_set_serde_bound_attr_for_traits(
                     __found
                 } && {
                     let mut __found = false;
-                    for t in traits.clone().iter().cloned() {
+                    for t in traits.iter().cloned() {
                         if (t.clone() == RustCapability::RustDeserialize) {
                             __found = true;
                             break;
@@ -1171,10 +1178,10 @@ pub fn v1_freemonoid_struct_debug_impl(
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
         let field_calls = Rc::new({
             let mut __result = Vec::new();
-            for f in children.clone().iter().cloned() {
+            for f in children.iter().cloned() {
                 __result.push({
-                    let ident = crate::v1_compiler_emit::emit_ident(
-                        crate::v1_std_core::authored_name_at(source_indices.clone(), f.clone()),
+                    let ident = emit_ident(
+                        authored_name_at(source_indices.clone(), f.clone()),
                         RenderTarget::Rust,
                     );
                     v1_rt::concat(
@@ -1214,10 +1221,10 @@ pub fn v1_freemonoid_struct_partial_eq_impl(
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
         let comparisons = Rc::new({
             let mut __result = Vec::new();
-            for f in children.clone().iter().cloned() {
+            for f in children.iter().cloned() {
                 __result.push({
-                    let ident = crate::v1_compiler_emit::emit_ident(
-                        crate::v1_std_core::authored_name_at(source_indices.clone(), f.clone()),
+                    let ident = emit_ident(
+                        authored_name_at(source_indices.clone(), f.clone()),
                         RenderTarget::Rust,
                     );
                     v1_rt::concat(
@@ -1289,14 +1296,10 @@ pub fn v1_freemonoid_enum_debug_impl(
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
         let arms = Rc::new({
             let mut __result = Vec::new();
-            for variant in children.clone().iter().cloned() {
+            for variant in children.iter().cloned() {
                 __result.push({
-                    let vname = crate::v1_compiler_emit_core_support::to_pascal(
-                        crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            variant.clone(),
-                        ),
-                    );
+                    let vname =
+                        to_pascal(authored_name_at(source_indices.clone(), variant.clone()));
                     if ((variant.children.clone().len() as i64) == 0) {
                         v1_rt::concat(
                             v1_rt::concat(
@@ -1313,11 +1316,8 @@ pub fn v1_freemonoid_enum_debug_impl(
                             let fields = Rc::new({
                                 let mut __result = Vec::new();
                                 for f in variant.children.clone().iter().cloned() {
-                                    __result.push(crate::v1_compiler_emit::emit_ident(
-                                        crate::v1_std_core::authored_name_at(
-                                            source_indices.clone(),
-                                            f.clone(),
-                                        ),
+                                    __result.push(emit_ident(
+                                        authored_name_at(source_indices.clone(), f.clone()),
                                         RenderTarget::Rust,
                                     ));
                                 }
@@ -1326,7 +1326,7 @@ pub fn v1_freemonoid_enum_debug_impl(
                             let bindings = fields.clone().join(&", ".to_string());
                             let field_calls = Rc::new({
                                 let mut __result = Vec::new();
-                                for fi in fields.clone().iter().cloned() {
+                                for fi in fields.iter().cloned() {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
@@ -1395,14 +1395,10 @@ pub fn v1_freemonoid_enum_partial_eq_impl(
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
         let arms = Rc::new({
             let mut __result = Vec::new();
-            for variant in children.clone().iter().cloned() {
+            for variant in children.iter().cloned() {
                 __result.push({
-                    let vname = crate::v1_compiler_emit_core_support::to_pascal(
-                        crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            variant.clone(),
-                        ),
-                    );
+                    let vname =
+                        to_pascal(authored_name_at(source_indices.clone(), variant.clone()));
                     if ((variant.children.clone().len() as i64) == 0) {
                         v1_rt::concat(
                             v1_rt::concat(
@@ -1419,11 +1415,8 @@ pub fn v1_freemonoid_enum_partial_eq_impl(
                             let fields = Rc::new({
                                 let mut __result = Vec::new();
                                 for f in variant.children.clone().iter().cloned() {
-                                    __result.push(crate::v1_compiler_emit::emit_ident(
-                                        crate::v1_std_core::authored_name_at(
-                                            source_indices.clone(),
-                                            f.clone(),
-                                        ),
+                                    __result.push(emit_ident(
+                                        authored_name_at(source_indices.clone(), f.clone()),
                                         RenderTarget::Rust,
                                     ));
                                 }
@@ -1431,7 +1424,7 @@ pub fn v1_freemonoid_enum_partial_eq_impl(
                             });
                             let a_bindings = Rc::new({
                                 let mut __result = Vec::new();
-                                for fi in fields.clone().iter().cloned() {
+                                for fi in fields.iter().cloned() {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(fi.clone(), ": a_".to_string()),
                                         fi.clone(),
@@ -1442,7 +1435,7 @@ pub fn v1_freemonoid_enum_partial_eq_impl(
                             .join(&", ".to_string());
                             let b_bindings = Rc::new({
                                 let mut __result = Vec::new();
-                                for fi in fields.clone().iter().cloned() {
+                                for fi in fields.iter().cloned() {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(fi.clone(), ": b_".to_string()),
                                         fi.clone(),
@@ -1453,7 +1446,7 @@ pub fn v1_freemonoid_enum_partial_eq_impl(
                             .join(&", ".to_string());
                             let comparisons = Rc::new({
                                 let mut __result = Vec::new();
-                                for fi in fields.clone().iter().cloned() {
+                                for fi in fields.iter().cloned() {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat("a_".to_string(), fi.clone()),
@@ -1565,12 +1558,12 @@ pub fn v1_set_impl_type_params(
         {
             let entries = Rc::new({
                 let mut __result = Vec::new();
-                for p in generic_param_names.clone().iter().cloned() {
+                for p in generic_param_names.iter().cloned() {
                     __result.push({
                         let pascal = to_pascal(p.clone());
                         let supplemental = if {
                             let mut __found = false;
-                            for f in set_params.clone().iter().cloned() {
+                            for f in set_params.iter().cloned() {
                                 if (f.clone() == p.clone()) {
                                     __found = true;
                                     break;
@@ -1634,7 +1627,7 @@ pub fn v1_set_enum_debug_impl(
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
         let arms = Rc::new({
             let mut __result = Vec::new();
-            for variant in children.clone().iter().cloned() {
+            for variant in children.iter().cloned() {
                 __result.push({
                     let vname =
                         to_pascal(authored_name_at(source_indices.clone(), variant.clone()));
@@ -1664,7 +1657,7 @@ pub fn v1_set_enum_debug_impl(
                             let bindings = fields.clone().join(&", ".to_string());
                             let field_calls = Rc::new({
                                 let mut __result = Vec::new();
-                                for fi in fields.clone().iter().cloned() {
+                                for fi in fields.iter().cloned() {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
@@ -1734,7 +1727,7 @@ pub fn v1_set_enum_partial_eq_impl(
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
         let arms = Rc::new({
             let mut __result = Vec::new();
-            for variant in children.clone().iter().cloned() {
+            for variant in children.iter().cloned() {
                 __result.push({
                     let vname =
                         to_pascal(authored_name_at(source_indices.clone(), variant.clone()));
@@ -1763,7 +1756,7 @@ pub fn v1_set_enum_partial_eq_impl(
                             });
                             let a_bindings = Rc::new({
                                 let mut __result = Vec::new();
-                                for fi in fields.clone().iter().cloned() {
+                                for fi in fields.iter().cloned() {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(fi.clone(), ": a_".to_string()),
                                         fi.clone(),
@@ -1774,7 +1767,7 @@ pub fn v1_set_enum_partial_eq_impl(
                             .join(&", ".to_string());
                             let b_bindings = Rc::new({
                                 let mut __result = Vec::new();
-                                for fi in fields.clone().iter().cloned() {
+                                for fi in fields.iter().cloned() {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(fi.clone(), ": b_".to_string()),
                                         fi.clone(),
@@ -1785,7 +1778,7 @@ pub fn v1_set_enum_partial_eq_impl(
                             .join(&", ".to_string());
                             let comparisons = Rc::new({
                                 let mut __result = Vec::new();
-                                for fi in fields.clone().iter().cloned() {
+                                for fi in fields.iter().cloned() {
                                     __result.push(v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat("a_".to_string(), fi.clone()),
@@ -1920,7 +1913,7 @@ pub fn v1_ord_propagated_zip_loop(
                         generic_param_name_at(decl_param.clone(), source_indices.clone());
                     let here = if {
                         let mut __found = false;
-                        for n in decl_set_affected_names.clone().iter().cloned() {
+                        for n in decl_set_affected_names.iter().cloned() {
                             if (n.clone() == slot_name.clone()) {
                                 __found = true;
                                 break;
@@ -1993,10 +1986,10 @@ pub fn v1_item_ord_propagated_param_names(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for p in generic_param_names.clone().iter().cloned() {
+        for p in generic_param_names.iter().cloned() {
             if {
                 let mut __found = false;
-                for te in field_type_exprs.clone().iter().cloned() {
+                for te in field_type_exprs.iter().cloned() {
                     if v1_field_type_expr_ord_propagated_for_param(
                         p.clone(),
                         te.clone(),
@@ -2036,7 +2029,7 @@ pub fn v1_set_struct_debug_impl(
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
         let field_calls = Rc::new({
             let mut __result = Vec::new();
-            for f in children.clone().iter().cloned() {
+            for f in children.iter().cloned() {
                 __result.push({
                     let ident = emit_ident(
                         authored_name_at(source_indices.clone(), f.clone()),
@@ -2080,7 +2073,7 @@ pub fn v1_set_struct_partial_eq_impl(
         let args = v1_freemonoid_bare_type_args(generic_param_names.clone());
         let comparisons = Rc::new({
             let mut __result = Vec::new();
-            for f in children.clone().iter().cloned() {
+            for f in children.iter().cloned() {
                 __result.push({
                     let ident = emit_ident(
                         authored_name_at(source_indices.clone(), f.clone()),
@@ -2148,9 +2141,7 @@ pub fn v1_emit_struct_derives(
         if map_key_required.clone() {
             v1_trait_derive_refuse(v1_rt::concat(v1_rt::concat("trait_derive_emit: '".to_string(), name.clone()), "' reaches a map-key position and so requires Eq + Hash, but it carries function fields whose only derivable trait is Clone — Rc<dyn Fn> is neither Eq nor Hash, so the key position is the defect, not the roster".to_string()))
         } else {
-            crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
-                crate::extdeps_languages_rust_capabilities::fn_field_derive_traits(),
-            )
+            rust_trait_derive_attr_from_traits(fn_field_derive_traits())
         }
     } else {
         if rust_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone())
@@ -2160,9 +2151,12 @@ pub fn v1_emit_struct_derives(
                     children.clone(),
                     source_indices.clone(),
                 );
-                let traits = v1_with_map_key_requirement(crate::extdeps_languages_rust_capabilities::symbol_wrapped_ord_carrier_derive_traits(), map_key_required.clone());
+                let traits = v1_with_map_key_requirement(
+                    symbol_wrapped_ord_carrier_derive_traits(),
+                    map_key_required.clone(),
+                );
                 if repr_grounding_derive_completeness_predicate(
-                    crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(),
+                    rust_capability_shape_table(),
                     traits.clone(),
                     shape.clone(),
                 ) {
@@ -2175,19 +2169,15 @@ pub fn v1_emit_struct_derives(
             }
         } else {
             if v1_rt::set_contains(&shared_types, name.clone()) {
-                crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
-                    v1_with_map_key_requirement(
-                        crate::extdeps_languages_rust_capabilities::record_derive_traits_heap(),
-                        map_key_required.clone(),
-                    ),
-                )
+                rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(
+                    record_derive_traits_heap(),
+                    map_key_required.clone(),
+                ))
             } else {
-                crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
-                    v1_with_map_key_requirement(
-                        crate::extdeps_languages_rust_capabilities::record_derive_traits_copy(),
-                        map_key_required.clone(),
-                    ),
-                )
+                rust_trait_derive_attr_from_traits(v1_with_map_key_requirement(
+                    record_derive_traits_copy(),
+                    map_key_required.clone(),
+                ))
             }
         }
     }
@@ -2206,9 +2196,7 @@ pub fn v1_emit_enum_derives(
                 if map_key_required.clone() {
                     return v1_trait_derive_refuse("trait_derive_emit: coproduct reaches a map-key position and so requires Eq + Hash, but a variant payload carries a function value whose only derivable trait is Clone — the key position is the defect, not the roster".to_string());
                 }
-                return crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
-                    crate::extdeps_languages_rust_capabilities::fn_field_derive_traits(),
-                );
+                return rust_trait_derive_attr_from_traits(fn_field_derive_traits());
             }
         }
         let fm_params = if map_key_required.clone() {
@@ -2221,7 +2209,18 @@ pub fn v1_emit_enum_derives(
             )
         };
         if ((fm_params.clone().len() as i64) > 0) {
-            return v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_freemonoid_unroutable_row_refusal(), crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(v1_freemonoid_filter_hand_written(crate::extdeps_languages_rust_capabilities::payload_coproduct_derive_traits()))), "\n".to_string()), v1_freemonoid_serde_bound_attr(generic_param_names.clone(), fm_params.clone()));
+            return v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_freemonoid_unroutable_row_refusal(),
+                        rust_trait_derive_attr_from_traits(v1_freemonoid_filter_hand_written(
+                            payload_coproduct_derive_traits(),
+                        )),
+                    ),
+                    "\n".to_string(),
+                ),
+                v1_freemonoid_serde_bound_attr(generic_param_names.clone(), fm_params.clone()),
+            );
         }
         let set_params = if map_key_required.clone() {
             Rc::new(vec![])
@@ -2237,11 +2236,11 @@ pub fn v1_emit_enum_derives(
             source_indices.clone(),
         );
         let nullary_traits = v1_with_map_key_requirement(
-            crate::extdeps_languages_rust_capabilities::nullary_coproduct_derive_traits(),
+            nullary_coproduct_derive_traits(),
             map_key_required.clone(),
         );
         let payload_traits = v1_with_map_key_requirement(
-            crate::extdeps_languages_rust_capabilities::payload_coproduct_derive_traits(),
+            payload_coproduct_derive_traits(),
             map_key_required.clone(),
         );
         let set_row_refusal = if ((set_params.clone().len() as i64) > 0) {
@@ -2252,7 +2251,7 @@ pub fn v1_emit_enum_derives(
         match shape.clone() {
             ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy => {
                 if repr_grounding_derive_completeness_predicate(
-                    crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(),
+                    rust_capability_shape_table(),
                     nullary_traits.clone(),
                     shape.clone(),
                 ) {
@@ -2283,7 +2282,7 @@ pub fn v1_emit_enum_derives(
             }
             ReprGroundingDeriveElemShape::ReprDeriveElemPayloadCoproduct => {
                 if repr_grounding_derive_completeness_predicate(
-                    crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(),
+                    rust_capability_shape_table(),
                     payload_traits.clone(),
                     shape.clone(),
                 ) {
@@ -2326,9 +2325,7 @@ pub fn v1_type_expr_contains_param_name(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone())
-            == param_name.clone())
-        {
+        if (authored_name_at(source_indices.clone(), type_expr.clone()) == param_name.clone()) {
             true
         } else {
             {
@@ -2358,13 +2355,10 @@ pub fn v1_generic_param_used_as_collection_element(
 ) -> bool {
     {
         let mut __found = false;
-        for vp in value_params.clone().iter().cloned() {
+        for vp in value_params.iter().cloned() {
             if {
-                let te = crate::v1_std_core::param_node_type_expr(vp.clone());
-                (crate::std_types::is_container_type(crate::v1_std_core::authored_name_at(
-                    source_indices.clone(),
-                    te.clone(),
-                )) && {
+                let te = param_node_type_expr(vp.clone());
+                (is_container_type(authored_name_at(source_indices.clone(), te.clone())) && {
                     let mut __found = false;
                     for c in te.children.clone().iter().cloned() {
                         if v1_type_expr_mentions_param_non_phantom(
@@ -2396,11 +2390,10 @@ pub fn v1_generic_param_used_as_bare_value_param_type(
 ) -> bool {
     {
         let mut __found = false;
-        for vp in value_params.clone().iter().cloned() {
+        for vp in value_params.iter().cloned() {
             if {
-                let te = crate::v1_std_core::param_node_type_expr(vp.clone());
-                (((crate::v1_std_core::authored_name_at(source_indices.clone(), te.clone())
-                    == param_name.clone())
+                let te = param_node_type_expr(vp.clone());
+                (((authored_name_at(source_indices.clone(), te.clone()) == param_name.clone())
                     && (te.connective.clone() == Connective::NoConnective))
                     && ((te.children.clone().len() as i64) == 0))
             } {
@@ -2421,10 +2414,10 @@ pub fn v1_generic_param_used_in_value_param_type_surface(
 ) -> bool {
     {
         let mut __found = false;
-        for vp in value_params.clone().iter().cloned() {
+        for vp in value_params.iter().cloned() {
             if v1_type_expr_mentions_param_non_phantom(
                 param_name.clone(),
-                crate::v1_std_core::param_node_type_expr(vp.clone()),
+                param_node_type_expr(vp.clone()),
                 bounds.clone(),
                 type_decl_items.clone(),
                 source_indices.clone(),
@@ -2448,10 +2441,7 @@ pub fn v1_item_phantom_only_param_names(
         for p in Rc::new({
             let mut __result = Vec::new();
             for p in item.params.clone().iter().cloned() {
-                __result.push(crate::v1_std_core::generic_param_name_at(
-                    p.clone(),
-                    source_indices.clone(),
-                ));
+                __result.push(generic_param_name_at(p.clone(), source_indices.clone()));
             }
             __result
         })
@@ -2472,7 +2462,7 @@ pub fn v1_item_phantom_only_param_names(
 pub fn v1_phantom_only_param_names_contains(names: Rc<Vec<String>>, param_name: String) -> bool {
     {
         let mut __found = false;
-        for n in names.clone().iter().cloned() {
+        for n in names.iter().cloned() {
             if (n.clone() == param_name.clone()) {
                 __found = true;
                 break;
@@ -2497,10 +2487,8 @@ pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
             Some(decl_param) => match type_args.clone().first().cloned() {
                 None => false,
                 Some(type_arg) => {
-                    let slot_name = crate::v1_std_core::generic_param_name_at(
-                        decl_param.clone(),
-                        source_indices.clone(),
-                    );
+                    let slot_name =
+                        generic_param_name_at(decl_param.clone(), source_indices.clone());
                     let arg_expr = v1_wf_child_type_node(type_arg.clone(), source_indices.clone());
                     let slot_is_phantom = v1_phantom_only_param_names_contains(
                         phantom_slot_names.clone(),
@@ -2588,9 +2576,8 @@ pub fn v1_type_expr_mentions_param_non_phantom(
             true
         } else {
             {
-                let name =
-                    crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone());
-                if (crate::std_types::is_container_type(name.clone()) && {
+                let name = authored_name_at(source_indices.clone(), type_expr.clone());
+                if (is_container_type(name.clone()) && {
                     let mut __found = false;
                     for c in type_expr.children.clone().iter().cloned() {
                         if v1_type_expr_mentions_param_non_phantom(
@@ -2608,10 +2595,7 @@ pub fn v1_type_expr_mentions_param_non_phantom(
                 }) {
                     true
                 } else {
-                    match v1_rt::map_get(
-                        &type_decl_items,
-                        crate::v1_std_core::qualified_last_segment(name.clone()),
-                    ) {
+                    match v1_rt::map_get(&type_decl_items, name.clone()) {
                         Some(decl) => v1_declared_type_app_mentions_param_non_phantom(
                             param_name.clone(),
                             name.clone(),
@@ -2654,13 +2638,13 @@ pub fn v1_fn_phantom_only_generic_param_names(
 ) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for p in generic_param_names.clone().iter().cloned() {
+        for p in generic_param_names.iter().cloned() {
             if (!{
                 let mut __found = false;
-                for vp in value_params.clone().iter().cloned() {
+                for vp in value_params.iter().cloned() {
                     if v1_type_expr_mentions_param_non_phantom(
                         p.clone(),
-                        crate::v1_std_core::param_node_type_expr(vp.clone()),
+                        param_node_type_expr(vp.clone()),
                         bounds.clone(),
                         type_decl_items.clone(),
                         source_indices.clone(),
@@ -2690,9 +2674,7 @@ pub fn v1_type_expr_mentions_type_head(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone())
-            == type_name.clone())
-        {
+        if (authored_name_at(source_indices.clone(), type_expr.clone()) == type_name.clone()) {
             true
         } else {
             {
@@ -2728,16 +2710,13 @@ pub fn v1_fn_generic_clone_bound_via_referenced_decl(
                     let decl_generics = Rc::new({
                         let mut __result = Vec::new();
                         for p in decl.params.clone().iter().cloned() {
-                            __result.push(crate::v1_std_core::generic_param_name_at(
-                                p.clone(),
-                                source_indices.clone(),
-                            ));
+                            __result.push(generic_param_name_at(p.clone(), source_indices.clone()));
                         }
                         __result
                     });
                     if !{
                         let mut __found = false;
-                        for dg in decl_generics.clone().iter().cloned() {
+                        for dg in decl_generics.iter().cloned() {
                             if (dg.clone() == param_name.clone()) {
                                 __found = true;
                                 break;
@@ -2754,12 +2733,10 @@ pub fn v1_fn_generic_clone_bound_via_referenced_decl(
                                 } else {
                                     {
                                         let mut __found = false;
-                                        for vp in value_params.clone().iter().cloned() {
+                                        for vp in value_params.iter().cloned() {
                                             if v1_type_expr_mentions_type_head(
                                                 decl_name.clone(),
-                                                crate::v1_std_core::param_node_type_expr(
-                                                    vp.clone(),
-                                                ),
+                                                param_node_type_expr(vp.clone()),
                                                 source_indices.clone(),
                                             ) {
                                                 __found = true;
@@ -2792,20 +2769,14 @@ pub fn v1_fn_generic_clone_bound_via_bounded_container_element(
 ) -> bool {
     {
         let mut __found = false;
-        for vp in value_params.clone().iter().cloned() {
+        for vp in value_params.iter().cloned() {
             if {
-                let te = crate::v1_std_core::param_node_type_expr(vp.clone());
-                (crate::std_types::is_container_type(crate::v1_std_core::authored_name_at(
-                    source_indices.clone(),
-                    te.clone(),
-                )) && {
+                let te = param_node_type_expr(vp.clone());
+                (is_container_type(authored_name_at(source_indices.clone(), te.clone())) && {
                     let mut __found = false;
                     for c in te.children.clone().iter().cloned() {
                         if {
-                            let head = crate::v1_std_core::authored_name_at(
-                                source_indices.clone(),
-                                c.clone(),
-                            );
+                            let head = authored_name_at(source_indices.clone(), c.clone());
                             match v1_rt::map_get(&clone_bounds, head.clone()) {
                                 Some(bounded) => v1_rt::set_contains(&bounded, param_name.clone()),
                                 None => false,
@@ -2873,7 +2844,7 @@ pub fn v1_fn_param_type_needs_clone_bound(
         let mut __found = false;
         for vp in value_params.clone().iter().cloned() {
             if {
-                let te = crate::v1_std_core::param_node_type_expr(vp.clone());
+                let te = param_node_type_expr(vp.clone());
                 ((((v1_type_expr_is_bare_param(
                     param_name.clone(),
                     te.clone(),
@@ -2933,7 +2904,7 @@ pub fn v1_generic_params_needing_clone_bound(
         );
         Rc::new({
             let mut __result = Vec::new();
-            for g in generic_param_names.clone().iter().cloned() {
+            for g in generic_param_names.iter().cloned() {
                 if (v1_fn_param_wf_needs_clone(
                     g.clone(),
                     value_params.clone(),
@@ -2973,19 +2944,17 @@ pub fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
-        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone());
+        let name = authored_name_at(source_indices.clone(), type_expr.clone());
         if (((name.clone() == param_name.clone())
             && (type_expr.connective.clone() == Connective::NoConnective))
             && ((type_expr.children.clone().len() as i64) == 0))
         {
             true
         } else {
-            if (crate::std_types::is_container_type(name.clone()) && {
+            if (is_container_type(name.clone()) && {
                 let mut __found = false;
                 for c in type_expr.children.clone().iter().cloned() {
-                    if (crate::v1_std_core::authored_name_at(source_indices.clone(), c.clone())
-                        == param_name.clone())
-                    {
+                    if (authored_name_at(source_indices.clone(), c.clone()) == param_name.clone()) {
                         __found = true;
                         break;
                     }
@@ -3007,7 +2976,7 @@ pub fn v1_item_type_param_needs_clone_bound_struct(
 ) -> bool {
     {
         let mut __found = false;
-        for te in field_type_exprs.clone().iter().cloned() {
+        for te in field_type_exprs.iter().cloned() {
             if v1_field_type_expr_needs_clone_bound_for_param_narrow(
                 param_name.clone(),
                 te.clone(),
@@ -3026,10 +2995,8 @@ pub fn v1_wf_child_type_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
-        let resolved = crate::v1_compiler_infer_types::child_type_node(ch.clone());
-        if (crate::v1_std_core::authored_name_at(source_indices.clone(), resolved.clone())
-            != "".to_string())
-        {
+        let resolved = child_type_node(ch.clone());
+        if (authored_name_at(source_indices.clone(), resolved.clone()) != "".to_string()) {
             resolved.clone()
         } else {
             ch.clone()
@@ -3042,8 +3009,7 @@ pub fn v1_type_expr_is_bare_param(
     type_expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (((crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone())
-        == param_name.clone())
+    (((authored_name_at(source_indices.clone(), type_expr.clone()) == param_name.clone())
         && (type_expr.connective.clone() == Connective::NoConnective))
         && ((type_expr.children.clone().len() as i64) == 0))
 }
@@ -3052,11 +3018,7 @@ pub fn v1_type_expr_head_is_known(
     name: String,
     type_decl_items: Rc<HashMap<String, Rc<Node>>>,
 ) -> bool {
-    {
-        let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
-        (crate::std_types::is_container_type(leaf.clone())
-            || (v1_rt::map_get(&type_decl_items, leaf.clone()) != None))
-    }
+    (is_container_type(name.clone()) || (v1_rt::map_get(&type_decl_items, name.clone()) != None))
 }
 
 pub fn v1_item_generic_param_name_set(
@@ -3068,7 +3030,7 @@ pub fn v1_item_generic_param_name_set(
         |acc: Rc<BTreeSet<String>>, p: Rc<Node>| {
             v1_rt::rc_set_insert(
                 acc,
-                crate::v1_std_core::generic_param_name_at(p.clone(), source_indices.clone()),
+                generic_param_name_at(p.clone(), source_indices.clone()),
             )
         },
     )
@@ -3081,7 +3043,7 @@ pub fn v1_type_expr_clone_undecided_head(
     item_generic_params: Rc<BTreeSet<String>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone());
+        let name = authored_name_at(source_indices.clone(), type_expr.clone());
         if ((type_expr.children.clone().len() as i64) == 0) {
             "".to_string()
         } else {
@@ -3095,7 +3057,7 @@ pub fn v1_type_expr_clone_undecided_head(
                             acc.clone()
                         } else {
                             v1_type_expr_clone_undecided_head(
-                                crate::v1_compiler_infer_types::child_type_node(c.clone()),
+                                child_type_node(c.clone()),
                                 type_decl_items.clone(),
                                 source_indices.clone(),
                                 item_generic_params.clone(),
@@ -3118,7 +3080,7 @@ pub fn v1_type_expr_clone_impl_needs_param(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone());
+        let name = authored_name_at(source_indices.clone(), type_expr.clone());
         if v1_type_expr_is_bare_param(
             param_name.clone(),
             type_expr.clone(),
@@ -3129,10 +3091,7 @@ pub fn v1_type_expr_clone_impl_needs_param(
             if ((type_expr.children.clone().len() as i64) == 0) {
                 false
             } else {
-                match v1_rt::map_get(
-                    &type_decl_items,
-                    crate::v1_std_core::qualified_last_segment(name.clone()),
-                ) {
+                match v1_rt::map_get(&type_decl_items, name.clone()) {
                     Some(decl) => v1_declared_type_app_clone_impl_needs_param(
                         param_name.clone(),
                         name.clone(),
@@ -3179,10 +3138,8 @@ pub fn v1_declared_type_app_clone_impl_needs_param_loop(
             Some(decl_param) => match type_args.clone().first().cloned() {
                 None => false,
                 Some(type_arg) => {
-                    let slot_name = crate::v1_std_core::generic_param_name_at(
-                        decl_param.clone(),
-                        source_indices.clone(),
-                    );
+                    let slot_name =
+                        generic_param_name_at(decl_param.clone(), source_indices.clone());
                     let arg_expr = v1_wf_child_type_node(type_arg.clone(), source_indices.clone());
                     let slot_is_phantom = v1_phantom_only_param_names_contains(
                         phantom_slot_names.clone(),
@@ -3271,10 +3228,7 @@ pub fn v1_declared_arg_positions_need_clone_param(
                 Some(type_arg) => {
                     let here = (v1_rt::set_contains(
                         &bound_params,
-                        crate::v1_std_core::generic_param_name_at(
-                            decl_param.clone(),
-                            source_indices.clone(),
-                        ),
+                        generic_param_name_at(decl_param.clone(), source_indices.clone()),
                     ) && v1_type_expr_clone_impl_needs_param(
                         param_name.clone(),
                         v1_wf_child_type_node(type_arg.clone(), source_indices.clone()),
@@ -3320,7 +3274,7 @@ pub fn v1_type_expr_wf_needs_clone_param(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone());
+        let name = authored_name_at(source_indices.clone(), type_expr.clone());
         if ((type_expr.children.clone().len() as i64) == 0) {
             false
         } else {
@@ -3341,15 +3295,9 @@ pub fn v1_type_expr_wf_needs_clone_param(
                     }
                     __found
                 };
-                match v1_rt::map_get(
-                    &type_decl_items,
-                    crate::v1_std_core::qualified_last_segment(name.clone()),
-                ) {
+                match v1_rt::map_get(&type_decl_items, name.clone()) {
                     Some(decl) => {
-                        let bound_params = match v1_rt::map_get(
-                            &bounds,
-                            crate::v1_std_core::qualified_last_segment(name.clone()),
-                        ) {
+                        let bound_params = match v1_rt::map_get(&bounds, name.clone()) {
                             Some(s) => s.clone(),
                             None => v1_rt::rc_empty_set::<String>(),
                         };
@@ -3384,19 +3332,11 @@ pub fn v1_item_alias_hop_type_exprs(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
-    if crate::v1_compiler_emit_core_support::is_type_alias_item(
-        item.clone(),
-        source_indices.clone(),
-    ) {
+    if is_type_alias_item(item.clone(), source_indices.clone()) {
         {
-            let dag_name =
-                crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
-            let decl_file = crate::v1_compiler_coercion::decl_identity_file(item.clone());
-            match crate::v1_compiler_coercion::lookup_checkpoint(
-                RenderTarget::Rust,
-                dag_name.clone(),
-                decl_file.clone(),
-            ) {
+            let dag_name = authored_name_at(source_indices.clone(), item.clone());
+            let decl_file = decl_identity_file(item.clone());
+            match lookup_checkpoint(RenderTarget::Rust, dag_name.clone(), decl_file.clone()) {
                 Some(_) => Rc::new(vec![]),
                 None => Rc::new(vec![resolved_type(item.clone())]),
             }
@@ -3410,7 +3350,7 @@ pub fn v1_item_field_type_exprs(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
-    if crate::v1_compiler_infer_types::is_coproduct_type(item.clone()) {
+    if is_coproduct_type(item.clone()) {
         Rc::new({
             let mut __result = Vec::new();
             for variant in item.children.clone().iter().cloned() {
@@ -3418,8 +3358,7 @@ pub fn v1_item_field_type_exprs(
                     (*Rc::new({
                         let mut __result = Vec::new();
                         for f in variant.children.clone().iter().cloned() {
-                            __result
-                                .push(crate::v1_compiler_infer_types::child_type_node(f.clone()));
+                            __result.push(child_type_node(f.clone()));
                         }
                         __result
                     }))
@@ -3434,7 +3373,7 @@ pub fn v1_item_field_type_exprs(
             Rc::new({
                 let mut __result = Vec::new();
                 for f in item.children.clone().iter().cloned() {
-                    __result.push(crate::v1_compiler_infer_types::child_type_node(f.clone()));
+                    __result.push(child_type_node(f.clone()));
                 }
                 __result
             })
@@ -3482,10 +3421,10 @@ pub fn v1_fn_param_wf_needs_clone(
 ) -> bool {
     ({
         let mut __found = false;
-        for vp in value_params.clone().iter().cloned() {
+        for vp in value_params.iter().cloned() {
             if v1_type_expr_wf_needs_clone_param(
                 param_name.clone(),
-                crate::v1_std_core::param_node_type_expr(vp.clone()),
+                param_node_type_expr(vp.clone()),
                 bounds.clone(),
                 type_decl_items.clone(),
                 source_indices.clone(),
@@ -3571,8 +3510,7 @@ pub fn v1_clone_bound_round_for_item(
     item.params.clone().iter().cloned().fold(
         round.clone(),
         |acc: Rc<CloneBoundRound>, p: Rc<Node>| {
-            let param_name =
-                crate::v1_std_core::generic_param_name_at(p.clone(), source_indices.clone());
+            let param_name = generic_param_name_at(p.clone(), source_indices.clone());
             if v1_item_param_wf_needs_clone(
                 param_name.clone(),
                 item.clone(),
@@ -3594,7 +3532,7 @@ pub fn v1_clone_bound_seed_for_item(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<CloneBoundRound> {
-    if crate::v1_compiler_infer_types::is_coproduct_type(item.clone()) {
+    if is_coproduct_type(item.clone()) {
         round
     } else {
         {
@@ -3602,10 +3540,7 @@ pub fn v1_clone_bound_seed_for_item(
             item.params.clone().iter().cloned().fold(
                 round,
                 |acc: Rc<CloneBoundRound>, p: Rc<Node>| {
-                    let param_name = crate::v1_std_core::generic_param_name_at(
-                        p.clone(),
-                        source_indices.clone(),
-                    );
+                    let param_name = generic_param_name_at(p.clone(), source_indices.clone());
                     if v1_item_type_param_needs_clone_bound_struct(
                         param_name.clone(),
                         field_type_exprs.clone(),
@@ -3632,7 +3567,7 @@ pub fn v1_clone_bound_fixpoint_loop(
         if (remaining.clone() <= 0) {
             break bounds;
         } else {
-            let round = generic_type_names.clone().iter().cloned().fold(
+            let round = generic_type_names.iter().cloned().fold(
                 Rc::new(CloneBoundRound {
                     bounds: bounds,
                     added: 0,
@@ -3689,7 +3624,7 @@ pub fn v1_clone_bounded_type_params(
 ) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
     {
         let generic_type_names = v1_generic_declared_type_names(type_decl_items.clone());
-        let seeded = generic_type_names.clone().iter().cloned().fold(
+        let seeded = generic_type_names.iter().cloned().fold(
             Rc::new(CloneBoundRound {
                 bounds: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                 added: 0,
@@ -3737,8 +3672,7 @@ pub fn v1_clone_impl_seed_for_item(
         item.params.clone().iter().cloned().fold(
             round.clone(),
             |acc: Rc<CloneBoundRound>, p: Rc<Node>| {
-                let param_name =
-                    crate::v1_std_core::generic_param_name_at(p.clone(), source_indices.clone());
+                let param_name = generic_param_name_at(p.clone(), source_indices.clone());
                 if v1_item_type_param_needs_clone_bound_struct(
                     param_name.clone(),
                     field_type_exprs.clone(),
@@ -3759,7 +3693,7 @@ pub fn v1_clone_impl_required_type_params(
 ) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
     {
         let generic_type_names = v1_generic_declared_type_names(type_decl_items.clone());
-        let seeded = generic_type_names.clone().iter().cloned().fold(
+        let seeded = generic_type_names.iter().cloned().fold(
             Rc::new(CloneBoundRound {
                 bounds: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
                 added: 0,
@@ -3795,7 +3729,7 @@ pub fn v1_item_clone_bounded_param_names(
     match v1_rt::map_get(&bounds, item_name.clone()) {
         Some(s) => Rc::new({
             let mut __result = Vec::new();
-            for g in generic_param_names.clone().iter().cloned() {
+            for g in generic_param_names.iter().cloned() {
                 if v1_rt::set_contains(&s, g.clone()) {
                     __result.push(g);
                 }
@@ -3817,7 +3751,7 @@ pub fn v1_emit_type_params_with_bounds(
         {
             let names = Rc::new({
                 let mut __result = Vec::new();
-                for p in params.clone().iter().cloned() {
+                for p in params.iter().cloned() {
                     __result.push({
                         let pname = generic_param_name_at(p.clone(), source_indices.clone());
                         let pascal = to_pascal(pname.clone());
@@ -3853,7 +3787,7 @@ pub fn v1_emit_type_params_with_clone_bounds(
 ) -> String {
     v1_emit_type_params_with_bounds(
         params.clone(),
-        clone_param_names.clone().iter().cloned().fold(
+        clone_param_names.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| {
                 v1_rt::rc_map_insert(m, n.clone(), Rc::new(vec!["Clone".to_string()]))
@@ -3878,8 +3812,8 @@ pub fn v1_emit_struct_from_capability_table(
     {
         let field_type_exprs = Rc::new({
             let mut __result = Vec::new();
-            for f in children.clone().iter().cloned() {
-                __result.push(crate::v1_compiler_infer_types::child_type_node(f.clone()));
+            for f in children.iter().cloned() {
+                __result.push(child_type_node(f.clone()));
             }
             __result
         });
@@ -3901,17 +3835,17 @@ pub fn v1_emit_struct_from_capability_table(
         if ((fm_params.clone().len() as i64) > 0) {
             {
                 let base = if v1_rt::set_contains(&shared_types, name.clone()) {
-                    crate::extdeps_languages_rust_capabilities::record_derive_traits_heap()
+                    record_derive_traits_heap()
                 } else {
-                    crate::extdeps_languages_rust_capabilities::record_derive_traits_copy()
+                    record_derive_traits_copy()
                 };
                 let derive_attr = v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_freemonoid_unroutable_row_refusal(),
-                            crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(
-                                v1_freemonoid_filter_hand_written(base.clone()),
-                            ),
+                            rust_trait_derive_attr_from_traits(v1_freemonoid_filter_hand_written(
+                                base.clone(),
+                            )),
                         ),
                         "\n".to_string(),
                     ),
@@ -3968,9 +3902,9 @@ pub fn v1_emit_struct_from_capability_table(
                 if ((ord_propagated_params.clone().len() as i64) > 0) {
                     {
                         let base = if v1_rt::set_contains(&shared_types, name.clone()) {
-                            crate::extdeps_languages_rust_capabilities::record_derive_traits_heap()
+                            record_derive_traits_heap()
                         } else {
-                            crate::extdeps_languages_rust_capabilities::record_derive_traits_copy()
+                            record_derive_traits_copy()
                         };
                         let set_row_refusal = v1_set_unroutable_row_refusal();
                         let derived_traits = v1_set_filter_hand_written(base.clone());
@@ -4024,8 +3958,17 @@ pub fn v1_emit_struct_from_capability_table(
                             map_key_required.clone(),
                             source_indices.clone(),
                         );
-                        let impl_bodies = if (repr_grounding_group_completion_carrier(module_path.clone(), name.clone()) && repr_grounding_derive_completeness_predicate(crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(), crate::extdeps_languages_rust_capabilities::kernel_int_arithmetic_traits(), ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt)) {
-                            rust_supplemental_impls_group_completion(carrier_param_needs_clone.clone())
+                        let impl_bodies = if (repr_grounding_group_completion_carrier(
+                            module_path.clone(),
+                            name.clone(),
+                        ) && repr_grounding_derive_completeness_predicate(
+                            rust_capability_shape_table(),
+                            kernel_int_arithmetic_traits(),
+                            ReprGroundingDeriveElemShape::ReprDeriveElemKernelInt,
+                        )) {
+                            rust_supplemental_impls_group_completion(
+                                carrier_param_needs_clone.clone(),
+                            )
                         } else {
                             "".to_string()
                         };
@@ -4043,12 +3986,12 @@ pub fn v1_emit_struct_from_capability_table(
 pub fn v1_enum_variant_field_type_exprs(children: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
     Rc::new({
         let mut __result = Vec::new();
-        for variant in children.clone().iter().cloned() {
+        for variant in children.iter().cloned() {
             __result.extend(
                 (*Rc::new({
                     let mut __result = Vec::new();
                     for f in variant.children.clone().iter().cloned() {
-                        __result.push(crate::v1_compiler_infer_types::child_type_node(f.clone()));
+                        __result.push(child_type_node(f.clone()));
                     }
                     __result
                 }))
@@ -4135,11 +4078,11 @@ pub fn v1_emit_enum_supplemental_impls(
                     module_path.clone(),
                     name.clone(),
                 ) && repr_grounding_derive_completeness_predicate(
-                    crate::extdeps_languages_rust_capabilities::rust_capability_shape_table(),
-                    crate::extdeps_languages_rust_capabilities::nullary_coproduct_derive_traits(),
+                    rust_capability_shape_table(),
+                    nullary_coproduct_derive_traits(),
                     ReprGroundingDeriveElemShape::ReprDeriveElemNullaryEnumCopy,
                 )) {
-                    crate::extdeps_languages_rust_emit::rust_supplemental_impls_bool_coproduct()
+                    rust_supplemental_impls_bool_coproduct()
                 } else {
                     "".to_string()
                 }
@@ -4151,7 +4094,7 @@ pub fn v1_emit_enum_supplemental_impls(
 pub fn trait_derive_emit_bool_host_bridge_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("dissolve-on: v1_emit_enum_supplemental_impls / rust_supplemental_impls_bool_coproduct — Bool↔host-bool bridge. Dissolves with the Value::Null-split / Bool True|False ↔ Value::Bool grounding lane (DESIGN open thread; gunbc.plans.value_null_split): when the modeled Bool coproduct and the native Value::Bool (and host bool) are one grounded carrier, the bridge deletes. Do not ground the bridge in an e".to_string())
+            unbound_dissolution("dissolve-on: v1_emit_enum_supplemental_impls / rust_supplemental_impls_bool_coproduct — Bool↔host-bool bridge. Dissolves with the Value::Null-split / Bool True|False ↔ Value::Bool grounding lane (DESIGN open thread; gunbc.plans.value_null_split): when the modeled Bool coproduct and the native Value::Bool (and host bool) are one grounded carrier, the bridge deletes. Do not ground the bridge in an e".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
@@ -4161,7 +4104,7 @@ pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_dissolve_o
 ) -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("DISSOLVE-ON: v1 param_node_type_expr preserves container element applied-type children (or an equivalent typed surface) so v1_fn_generic_clone_bound_via_bounded_container_element / v1_fn_generic_clone_bound_via_referenced_decl derive keyed-row carrier bounds without the module_path arm; then delete trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist, its emit_fn_def consumer, and the g".to_string())
+            unbound_dissolution("DISSOLVE-ON: v1 param_node_type_expr preserves container element applied-type children (or an equivalent typed surface) so v1_fn_generic_clone_bound_via_bounded_container_element / v1_fn_generic_clone_bound_via_referenced_decl derive keyed-row carrier bounds without the module_path arm; then delete trait_derive_emit_fn_clone_bound_keyed_carrier_module_allowlist, its emit_fn_def consumer, and the g".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
@@ -4170,7 +4113,7 @@ pub fn trait_derive_emit_fn_clone_bound_keyed_carrier_module_scaffold_dissolve_o
 pub fn trait_derive_emit_item_clone_bound_contract_fork_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("DISSOLVE-ON: v2 Rust emitter consumes target_derive_supplemental_generic_bound_contract for item-level generic bounds; then delete this structural implementation — do not accumulate beside the contract.".to_string())
+            unbound_dissolution("DISSOLVE-ON: v2 Rust emitter consumes target_derive_supplemental_generic_bound_contract for item-level generic bounds; then delete this structural implementation — do not accumulate beside the contract.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
@@ -4179,7 +4122,7 @@ pub fn trait_derive_emit_item_clone_bound_contract_fork_dissolve_on() -> Rc<Diss
 pub fn trait_derive_emit_symbol_ord_carrier_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("rust_nominal_identity_carrier_shape_eligible gates on authored_name_at == \\\"Symbol\\\"; dissolves when Symbol kernel grounds on target_model.symbol_kernel_type_node (or equivalent typed atom) instead of string match. Single authority: trait_derive_emit (emit_rust imports; duplicate removed review 42525).".to_string())
+            unbound_dissolution("rust_nominal_identity_carrier_shape_eligible gates on authored_name_at == \\\"Symbol\\\"; dissolves when Symbol kernel grounds on target_model.symbol_kernel_type_node (or equivalent typed atom) instead of string match. Single authority: trait_derive_emit (emit_rust imports; duplicate removed review 42525).".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
@@ -4188,7 +4131,7 @@ pub fn trait_derive_emit_symbol_ord_carrier_dissolve_on() -> Rc<DissolutionCondi
 pub fn trait_derive_emit_v1_coproduct_shape_dissolve_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("v1_coproduct_all_variants_nullary duplicates v2.std.compilers.coproduct_variant_shape.coproduct_all_variants_nullary (nullary = zero Conj children on v1 Node); dissolves when v1 trait_derive_emit imports the v2 shape authority instead of minting a parallel walk.".to_string())
+            unbound_dissolution("v1_coproduct_all_variants_nullary duplicates v2.std.compilers.coproduct_variant_shape.coproduct_all_variants_nullary (nullary = zero Conj children on v1 Node); dissolves when v1 trait_derive_emit imports the v2 shape authority instead of minting a parallel walk.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())

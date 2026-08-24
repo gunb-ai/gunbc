@@ -1,6 +1,5 @@
 module extdeps.tools.mkdir
 
-
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -13,8 +12,58 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // interchangeable spellings.
 data mkdir_binary_path: NonEmptyStr = "/usr/bin/mkdir"
 
+// THE PATH-RESOLVED NAME IS A DIFFERENT FACT, declared as one for the reason extdeps.tools.env
+// spells out at length and extdeps.tools.chmod now mirrors: an absolute path is a claim about a
+// filesystem this repository has OBSERVED, and asserting one for a host it has not observed does
+// not repair the decline, it fabricates the host fact -- a DESIGN section 5 violation rather than
+// the fix for one. A caller reaching a fleet host we model cites the path above; a caller reaching
+// a developer box, a runner image or a machine over ssh cites this row.
+//
+// gunbc.devboot is the second kind and that is why this row exists. Its producer compiles wherever
+// the operator invoked it, so the mkdir it runs is whatever that host's PATH resolves. An earlier
+// revision of this migration routed devboot at the absolute path on the reasoning that its own
+// `ldd --version` probe already pins it to glibc Linux. That inference is about what devboot
+// DEMANDS of a host, not about a filesystem layout anyone read, and the two are not the same
+// claim -- /usr/bin/mkdir is false on a busybox image that satisfies the ldd probe perfectly well.
+data mkdir_path_resolved_program: NonEmptyStr = "mkdir"
+
 // -p is the idempotent form: an existing directory is not an error. That is what makes this an
 // ensure rather than a create, and it is the only reason a converge may run it repeatedly.
+fn mkdir_parents_args(path: String) -> List<String> {
+  ["-p", path]
+}
+
+// The full argv is DERIVED from the binary path and the argument tail rather than spelled beside
+// them, exactly as extdeps.tools.chmod derives its own: a caller whose transport shape splits
+// bin_path from args reaches the same authority as one that needs the whole vector, so -p has one
+// home whichever half a caller needs. gunbc.devboot is the split-shape caller -- its
+// WitnessBin.Run seam takes the two halves separately, and it spelled both by hand until this
+// door existed.
 fn mkdir_parents_argv(path: String) -> List<String> {
-  [mkdir_binary_path as String, "-p", path]
+  concat([mkdir_binary_path as String], mkdir_parents_args(path: path))
+}
+
+// The ArgvCommand form, admitted on extdeps.exec.command argv_command. `mkdir_parents_argv` above
+// stays for the transports whose shape splits bin_path from args; this is the same fact addressed
+// as one command, so neither caller re-spells the flag.
+fn mkdir_parents_command(path: String) -> ArgvCommand {
+  mkdir_parents_command_at(mkdir_binary: mkdir_binary_path, path: path)
+}
+
+// THE PROGRAM IS A PARAMETER ON THIS ONE FORM, AND THAT IS NOT A HOLE IN THE PATH RULE. A caller
+// spelling a bare name is normally declining to say which binary it means; there is one live case
+// where it is saying something else. gunbc.bmc_netboot_serve runs mkdir on an OpenBMC image over
+// ssh, where mkdir is a BusyBox APPLET, and this repository has not observed where that image
+// installs it. Writing /usr/bin/mkdir there would be a guess whose failure mode is a hard spawn
+// error on a live BMC, so that site keeps PATH resolution DELIBERATELY and says so at the call
+// site, rather than the guess being made here on its behalf.
+//
+// THERE ARE TWO SUCH CALLERS, NOT ONE, and the second is why this paragraph no longer says "every
+// other caller" takes the absolute path. gunbc.busybox_bmc_build runs its whole command sequence
+// under LocalExec on whichever machine the operator invoked the cross-build from -- a developer box
+// or a runner image, never a host this repository has read -- so it cites this form for the same
+// reason and says so at its own call site. The wrapper above remains the default for callers that
+// reach a modeled fleet host; it is simply not the majority-by-assertion this note once claimed.
+fn mkdir_parents_command_at(mkdir_binary: NonEmptyStr, path: String) -> ArgvCommand {
+  argv_command(program: mkdir_binary, arguments: ["-p", path])
 }

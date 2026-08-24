@@ -1,30 +1,28 @@
 module extdeps.pricing.ubicloud
 
-
-
-data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
-  uri: extdeps.uri.Uri {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
     scheme: Https
     locator: "www.ubicloud.com/docs/about/pricing"
   }
 }
 
-data ubicloud_pricing_provenance_note: String = "Per-minute managed-runner prices live-fetched 2026-07-21 from Ubicloud pricing docs (anchor above). Premium x64 is the default tier for new users (standard deprecated June 2026 per vendor). arm64 single-price column cited from the same page. Hardware facts project from extdeps.cloud.ubicloud catalog rows — not re-stated here."
+data ubicloud_pricing_provenance_note: String = "Per-minute managed-runner prices refreshed 2026-08-22 from the Ubicloud pricing page (anchor above), superseding a 2026-07-21 read that had premium x64 standard-2 at 1600 and arm64 standard-2 at 1000 micros. READ FIRST-PARTY AT THAT DATE: the two standard-2 rows, premium x64 at 2000 micros/min and arm64 at 1250. PROJECTED, NOT READ: the two standard-16 rows, carried at eight times their standard-2 row because Ubicloud prices these families strictly per vCPU and the superseded pair held the same exact ratio; that ratio is the vendor's published structure rather than an observation at the 16 size, and a first-party read at that size would replace it. Standard x64 is NOT represented here at all and its absence is not a judgement: Ubicloud's own two surfaces disagree on whether it remains purchasable, the price-adjustment post describing it as withdrawn from new customers while the live docs describe premium as a default with an opt-out, and a contradiction between first-party sources is a fact about the vendor that needs its own carrier rather than a row picking a side. Hardware facts project from extdeps.cloud.ubicloud catalog rows - not re-stated here."
 
 type UbicloudRunnerPricingTier = PremiumX64 | Arm64
 
 type UbicloudRunnerPriceRow {
-  catalog: extdeps.cloud.ubicloud.UbicloudRunnerCatalogRow
+  catalog: UbicloudRunnerCatalogRow
   tier: UbicloudRunnerPricingTier
-  per_minute: std.measure.MoneyPerMinute
-  pricing_citation: std.types.NonEmptyStr
+  per_minute: MoneyPerMinute
+  pricing_citation: NonEmptyStr
 }
 
 data ubicloud_premium_standard_2_price: UbicloudRunnerPriceRow = UbicloudRunnerPriceRow {
   catalog: ubicloud_standard_2_catalog,
   tier: PremiumX64,
-  per_minute: std.measure.MoneyPerMinute {
-    amount: money_amount_micro(count: 1600),
+  per_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 2000),
     currency: Usd,
   },
   pricing_citation: "ubicloud-pricing#premium-x64/ubicloud-standard-2",
@@ -33,8 +31,8 @@ data ubicloud_premium_standard_2_price: UbicloudRunnerPriceRow = UbicloudRunnerP
 data ubicloud_premium_standard_16_price: UbicloudRunnerPriceRow = UbicloudRunnerPriceRow {
   catalog: ubicloud_standard_16_catalog,
   tier: PremiumX64,
-  per_minute: std.measure.MoneyPerMinute {
-    amount: money_amount_micro(count: 12800),
+  per_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 16000),
     currency: Usd,
   },
   pricing_citation: "ubicloud-pricing#premium-x64/ubicloud-standard-16",
@@ -43,8 +41,8 @@ data ubicloud_premium_standard_16_price: UbicloudRunnerPriceRow = UbicloudRunner
 data ubicloud_arm_standard_2_price: UbicloudRunnerPriceRow = UbicloudRunnerPriceRow {
   catalog: ubicloud_standard_2_arm_catalog,
   tier: Arm64,
-  per_minute: std.measure.MoneyPerMinute {
-    amount: money_amount_micro(count: 1000),
+  per_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 1250),
     currency: Usd,
   },
   pricing_citation: "ubicloud-pricing#arm64/ubicloud-standard-2-arm",
@@ -53,8 +51,8 @@ data ubicloud_arm_standard_2_price: UbicloudRunnerPriceRow = UbicloudRunnerPrice
 data ubicloud_arm_standard_16_price: UbicloudRunnerPriceRow = UbicloudRunnerPriceRow {
   catalog: ubicloud_standard_16_arm_catalog,
   tier: Arm64,
-  per_minute: std.measure.MoneyPerMinute {
-    amount: money_amount_micro(count: 8000),
+  per_minute: MoneyPerMinute {
+    amount: money_amount_micro(count: 10000),
     currency: Usd,
   },
   pricing_citation: "ubicloud-pricing#arm64/ubicloud-standard-16-arm",

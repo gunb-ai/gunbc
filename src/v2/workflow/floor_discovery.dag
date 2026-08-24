@@ -249,6 +249,7 @@ type FloorDiscoveryRow {
 type FloorDiscoverySidecarKind
   = TestMarkedDecl
   | WireContractDecl
+  | BarrenTestSidecar
 
 type FloorDiscoverySidecarViolation {
   entry_path: String

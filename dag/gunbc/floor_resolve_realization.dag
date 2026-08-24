@@ -1,4 +1,0 @@
-module gunbc.floor_resolve_realization
-
-
-data floor_resolve_realization_note: String = "Thin re-export of gunbc.ci_materialization resolve-obligation authority (0B, 2026-08-04). Expected population and finalization law live in ci_materialization; claim_executor records observations at reuse sites; ci_floor_plan transports expected_resolve_obligations only."

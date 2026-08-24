@@ -119,7 +119,7 @@ pub fn dag_collect_nodes_list(
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
-    nodes.clone().iter().cloned().fold(
+    nodes.iter().cloned().fold(
         slots.clone(),
         |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, n: Rc<Node>| {
             dag_collect_insert_slots(n.clone(), s, collision_errors.clone())

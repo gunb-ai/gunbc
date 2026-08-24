@@ -2,13 +2,21 @@
 // Source module: v1.compiler.resolve
 
 pub use crate::std_occurrence_identity::{OccurrenceIndex, OccurrenceTransport};
+pub use crate::std_syntax::BinOp;
+use crate::std_syntax::BinOp::*;
 pub use crate::std_types::kernel_type_set;
-pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::CompilerDiagnostic::*;
-use crate::v1_std_core::Connective::*;
-pub use crate::v1_std_core::{authored_name_at, make_error_node, module_items};
+use crate::v1_std_core::CompilerDiagnostic::{
+    CircularDependency, DuplicateModule, MissingExport, UnresolvedImport,
+};
+use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
+pub use crate::v1_std_core::InferredNode;
+use crate::v1_std_core::InferredNode::*;
+pub use crate::v1_std_core::{
+    authored_name_at, import_is_all, import_node, import_specific_names_at, make_error_node,
+    module_imports, module_items, module_node, no_span,
+};
 pub use crate::v1_std_core::{CompilerDiagnostic, Connective, ErrorNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -51,8 +59,29 @@ pub fn module_occurrence_input_transport(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedModule {
     pub module: Rc<Node>,
+    pub resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     pub dep_order: i64,
     pub occurrence_transport: Rc<OccurrenceTransport>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ResolvedImport {
+    pub module_path: String,
+    pub is_all: bool,
+    pub specific_names: Rc<Vec<String>>,
+    pub target_module: Option<Rc<Node>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DepEdge {
+    pub from_module: String,
+    pub to_module: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ResolveAccum {
+    pub imports_by_name: Rc<HashMap<String, Rc<Vec<Rc<ResolvedImport>>>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
@@ -70,13 +99,13 @@ pub fn resolve_modules_with_occurrence_transport(
     {
         let modules = Rc::new({
             let mut __result = Vec::new();
-            for input in module_inputs.clone().iter().cloned() {
+            for input in module_inputs.iter().cloned() {
                 __result.push(module_occurrence_input_node(input.clone()));
             }
             __result
         });
         let dup_diags = check_duplicate_modules(modules.clone(), source_indices.clone());
-        let module_index = modules.clone().iter().cloned().fold(
+        let module_index = modules.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
             |acc: Rc<HashMap<String, Rc<Node>>>, m: Rc<Node>| {
                 v1_rt::rc_map_insert(
@@ -86,11 +115,11 @@ pub fn resolve_modules_with_occurrence_transport(
                 )
             },
         );
-        let export_sets = modules.clone().iter().cloned().fold(
+        let export_sets = modules.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
             |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, m: Rc<Node>| {
                 let exported = get_exported_names(m.clone(), source_indices.clone());
-                let exported_set = exported.clone().iter().cloned().fold(
+                let exported_set = exported.iter().cloned().fold(
                     v1_rt::rc_empty_map::<String, bool>(),
                     |inner_acc: Rc<HashMap<String, bool>>, name: String| {
                         v1_rt::rc_map_insert(inner_acc, name.clone(), true)
@@ -103,7 +132,33 @@ pub fn resolve_modules_with_occurrence_transport(
                 )
             },
         );
-        let import_diags = Rc::new(vec![]);
+        let resolve_accum = modules.iter().cloned().fold(
+            Rc::new(ResolveAccum {
+                imports_by_name: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<ResolvedImport>>>>(),
+                diagnostics: Rc::new(vec![]),
+            }),
+            |acc: Rc<ResolveAccum>, m: Rc<Node>| {
+                let acc = v1_rt::take_owned(acc);
+                {
+                    let result = resolve_module_imports(
+                        m.clone(),
+                        module_index.clone(),
+                        export_sets.clone(),
+                        source_indices.clone(),
+                    );
+                    Rc::new(ResolveAccum {
+                        imports_by_name: v1_rt::rc_map_insert(
+                            acc.imports_by_name,
+                            authored_name_at(source_indices.clone(), m.clone()),
+                            result.resolved_imports.clone(),
+                        ),
+                        diagnostics: v1_rt::concat(acc.diagnostics, result.diagnostics.clone()),
+                    })
+                }
+            },
+        );
+        let imports_by_name = resolve_accum.imports_by_name.clone();
+        let import_diags = resolve_accum.diagnostics.clone();
         let topo_result = topological_sort(modules.clone(), source_indices.clone());
         let topo_diags = match topo_result.cycle_error.clone() {
             Some(diag) => Rc::new(vec![diag.clone()]),
@@ -129,7 +184,7 @@ pub fn resolve_modules_with_occurrence_transport(
         );
         let acyclic_resolved = Rc::new({
             let mut __result = Vec::new();
-            for input in module_inputs.clone().iter().cloned() {
+            for input in module_inputs.iter().cloned() {
                 __result.extend(
                     (*{
                         let m = module_occurrence_input_node(input.clone());
@@ -137,13 +192,20 @@ pub fn resolve_modules_with_occurrence_transport(
                             &sorted_order_map,
                             authored_name_at(source_indices.clone(), m.clone()),
                         ) {
-                            Some(order) => Rc::new(vec![Rc::new(ResolvedModule {
-                                module: m.clone(),
-                                dep_order: order.clone(),
-                                occurrence_transport: module_occurrence_input_transport(
-                                    input.clone(),
-                                ),
-                            })]),
+                            Some(order) => match v1_rt::map_get(
+                                &imports_by_name,
+                                authored_name_at(source_indices.clone(), m.clone()),
+                            ) {
+                                Some(imps) => Rc::new(vec![Rc::new(ResolvedModule {
+                                    module: m.clone(),
+                                    resolved_imports: imps.clone(),
+                                    dep_order: order.clone(),
+                                    occurrence_transport: module_occurrence_input_transport(
+                                        input.clone(),
+                                    ),
+                                })]),
+                                None => Rc::new(vec![]),
+                            },
                             None => Rc::new(vec![]),
                         }
                     })
@@ -154,7 +216,7 @@ pub fn resolve_modules_with_occurrence_transport(
             __result
         });
         let sorted_resolved = Rc::new({
-            let mut __sorted: Vec<_> = acyclic_resolved.clone().iter().cloned().collect();
+            let mut __sorted: Vec<_> = acyclic_resolved.iter().cloned().collect();
             __sorted.sort_by(|a: &Rc<ResolvedModule>, b: &Rc<ResolvedModule>| {
                 let __ka = (|m: Rc<ResolvedModule>| m.dep_order.clone())(a.clone());
                 let __kb = (|m: Rc<ResolvedModule>| m.dep_order.clone())(b.clone());
@@ -180,13 +242,13 @@ pub fn resolve_modules(
     resolve_modules_with_occurrence_transport(
         Rc::new({
             let mut __result = Vec::new();
-            for module in modules.clone().iter().cloned() {
+            for module in modules.iter().cloned() {
                 __result.push(module_occurrence_input(
                     module.clone(),
                     Rc::new(OccurrenceTransport {
-                        index: OccurrenceIndex {
+                        index: Rc::new(OccurrenceIndex {
                             entries: Rc::new(vec![]),
-                        },
+                        }),
                         declarations: Rc::new(vec![]),
                         references: Rc::new(vec![]),
                     }),
@@ -196,9 +258,9 @@ pub fn resolve_modules(
         }),
         source_indices.clone(),
         Rc::new(OccurrenceTransport {
-            index: OccurrenceIndex {
+            index: Rc::new(OccurrenceIndex {
                 entries: Rc::new(vec![]),
-            },
+            }),
             declarations: Rc::new(vec![]),
             references: Rc::new(vec![]),
         }),
@@ -207,6 +269,161 @@ pub fn resolve_modules(
 
 pub fn find_module(module_index: Rc<HashMap<String, Rc<Node>>>, path: String) -> Option<Rc<Node>> {
     v1_rt::map_get(&module_index, path.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleResolveResult {
+    pub resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+pub fn resolve_module_imports(
+    module: Rc<Node>,
+    module_index: Rc<HashMap<String, Rc<Node>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<ModuleResolveResult> {
+    {
+        let results = Rc::new({
+            let mut __result = Vec::new();
+            for imp in module_imports(module.clone()).iter().cloned() {
+                __result.push(resolve_import(
+                    imp.clone(),
+                    module_index.clone(),
+                    authored_name_at(source_indices.clone(), module.clone()),
+                    export_sets.clone(),
+                    source_indices.clone(),
+                ));
+            }
+            __result
+        });
+        let resolved = Rc::new({
+            let mut __result = Vec::new();
+            for r in Rc::new({
+                let mut __result = Vec::new();
+                for r in results.iter().cloned() {
+                    if ((r.resolved.clone().target_module.clone() != None)
+                        && ((r.diagnostics.clone().len() as i64) == 0))
+                    {
+                        __result.push(r);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(r.resolved.clone());
+            }
+            __result
+        });
+        let diags = Rc::new({
+            let mut __result = Vec::new();
+            for r in results.iter().cloned() {
+                __result.extend((*r.diagnostics.clone()).iter().cloned());
+            }
+            __result
+        });
+        Rc::new(ModuleResolveResult {
+            resolved_imports: resolved.clone(),
+            diagnostics: diags.clone(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ImportResolveResult {
+    pub resolved: Rc<ResolvedImport>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+pub fn resolve_import(
+    import: Rc<Node>,
+    module_index: Rc<HashMap<String, Rc<Node>>>,
+    importing_module: String,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<ImportResolveResult> {
+    {
+        let import_path = authored_name_at(source_indices.clone(), import.clone());
+        let target = find_module(module_index.clone(), import_path.clone());
+        match target.clone() {
+            None => {
+                let diag = make_error_node(
+                    Rc::new(CompilerDiagnostic::UnresolvedImport {
+                        module_path: import_path.clone(),
+                        importing_module: importing_module.clone(),
+                        span: import.span.clone(),
+                    }),
+                    importing_module.clone(),
+                );
+                Rc::new(ImportResolveResult {
+                    resolved: Rc::new(ResolvedImport {
+                        module_path: import_path.clone(),
+                        is_all: import_is_all(import.clone()),
+                        specific_names: import_specific_names_at(
+                            import.clone(),
+                            source_indices.clone(),
+                        ),
+                        target_module: None,
+                    }),
+                    diagnostics: Rc::new(vec![diag.clone()]),
+                })
+            }
+            Some(target_mod) => {
+                let exported_set = match v1_rt::map_get(&export_sets, import_path.clone()) {
+                    Some(set) => set.clone(),
+                    None => v1_rt::rc_empty_map::<String, bool>(),
+                };
+                let name_diags = if import_is_all(import.clone()) {
+                    Rc::new(vec![])
+                } else {
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for child in Rc::new({
+                            let mut __result = Vec::new();
+                            for child in import.children.clone().iter().cloned() {
+                                if (v1_rt::map_has(
+                                    &exported_set,
+                                    authored_name_at(source_indices.clone(), child.clone()),
+                                ) == false)
+                                {
+                                    __result.push(child);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push(make_error_node(
+                                Rc::new(CompilerDiagnostic::MissingExport {
+                                    name: authored_name_at(source_indices.clone(), child.clone()),
+                                    module_path: import_path.clone(),
+                                    importing_module: importing_module.clone(),
+                                    span: child.span.clone(),
+                                }),
+                                importing_module.clone(),
+                            ));
+                        }
+                        __result
+                    })
+                };
+                Rc::new(ImportResolveResult {
+                    resolved: Rc::new(ResolvedImport {
+                        module_path: import_path.clone(),
+                        is_all: import_is_all(import.clone()),
+                        specific_names: import_specific_names_at(
+                            import.clone(),
+                            source_indices.clone(),
+                        ),
+                        target_module: Some(target_mod.clone()),
+                    }),
+                    diagnostics: name_diags.clone(),
+                })
+            }
+        }
+    }
 }
 
 pub fn get_exported_names(
@@ -232,8 +449,26 @@ pub fn get_exported_names(
             }
             __result
         });
+        let imported_names = Rc::new({
+            let mut __result = Vec::new();
+            for imp in module_imports(module.clone()).iter().cloned() {
+                __result.extend(
+                    (*if import_is_all(imp.clone()) {
+                        Rc::new(vec![])
+                    } else {
+                        import_specific_names_at(imp.clone(), source_indices.clone())
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
         v1_rt::concat(
-            v1_rt::concat(item_names.clone(), variant_names.clone()),
+            v1_rt::concat(
+                v1_rt::concat(item_names.clone(), variant_names.clone()),
+                imported_names.clone(),
+            ),
             Rc::new(v1_rt::map_keys(&kernel_type_set())),
         )
     }
@@ -277,7 +512,7 @@ pub fn check_duplicate_modules(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     {
-        let result = modules.clone().iter().cloned().fold(
+        let result = modules.iter().cloned().fold(
             Rc::new(DuplicateCheckState {
                 seen_names: v1_rt::rc_empty_map::<String, bool>(),
                 diagnostics: Rc::new(vec![]),
@@ -321,6 +556,24 @@ pub struct TopoResult {
     pub cycle_error: Option<Rc<ErrorNode>>,
 }
 
+pub fn adjacency_add_edge(
+    adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
+    from_module: String,
+    to_module: String,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    {
+        let existing = match v1_rt::map_get(&adjacency, from_module.clone()) {
+            Some(lst) => lst.clone(),
+            None => Rc::new(vec![]),
+        };
+        v1_rt::rc_map_insert(
+            adjacency.clone(),
+            from_module.clone(),
+            v1_rt::rc_list_push(existing.clone(), to_module.clone()),
+        )
+    }
+}
+
 pub fn topo_sort_key(name: String) -> String {
     if (name.clone() == "std.types".to_string()) {
         "".to_string()
@@ -336,22 +589,261 @@ pub fn topological_sort(
     {
         let module_names = Rc::new({
             let mut __result = Vec::new();
-            for m in modules.clone().iter().cloned() {
+            for m in modules.iter().cloned() {
                 __result.push(authored_name_at(source_indices.clone(), m.clone()));
             }
             __result
         });
-        Rc::new(TopoResult {
-            sorted: Rc::new({
-                let mut __sorted: Vec<_> = module_names.clone().iter().cloned().collect();
-                __sorted.sort_by(|a: &String, b: &String| {
-                    let __ka = (|name: String| topo_sort_key(name.clone()))(a.clone());
-                    let __kb = (|name: String| topo_sort_key(name.clone()))(b.clone());
-                    __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+        let module_name_set = module_names.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
+                v1_rt::rc_map_insert(acc, name.clone(), true)
+            },
+        );
+        let explicit_edges = Rc::new({
+            let mut __result = Vec::new();
+            for m in modules.iter().cloned() {
+                __result.extend(
+                    (*Rc::new({
+                        let mut __result = Vec::new();
+                        for imp in Rc::new({
+                            let mut __result = Vec::new();
+                            for imp in module_imports(m.clone()).iter().cloned() {
+                                if v1_rt::map_has(
+                                    &module_name_set,
+                                    authored_name_at(source_indices.clone(), imp.clone()),
+                                ) {
+                                    __result.push(imp);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push(Rc::new(DepEdge {
+                                from_module: authored_name_at(source_indices.clone(), imp.clone()),
+                                to_module: authored_name_at(source_indices.clone(), m.clone()),
+                            }));
+                        }
+                        __result
+                    }))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let adjacency = explicit_edges.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, edge: Rc<DepEdge>| {
+                adjacency_add_edge(acc, edge.from_module.clone(), edge.to_module.clone())
+            },
+        );
+        let in_degree_map = modules.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, i64>(),
+            |acc: Rc<HashMap<String, i64>>, m: Rc<Node>| {
+                let m_name = authored_name_at(source_indices.clone(), m.clone());
+                v1_rt::rc_map_insert(
+                    acc,
+                    m_name.clone(),
+                    (Rc::new({
+                        let mut __result = Vec::new();
+                        for imp in module_imports(m.clone()).iter().cloned() {
+                            if v1_rt::map_has(
+                                &module_name_set,
+                                authored_name_at(source_indices.clone(), imp.clone()),
+                            ) {
+                                __result.push(imp);
+                            }
+                        }
+                        __result
+                    })
+                    .len() as i64),
+                )
+            },
+        );
+        let initial_queue = Rc::new({
+            let mut __sorted: Vec<_> = Rc::new({
+                let mut __result = Vec::new();
+                for name in module_names.iter().cloned() {
+                    if match v1_rt::map_get(&in_degree_map, name.clone()) {
+                        Some(0) => true,
+                        _ => false,
+                    } {
+                        __result.push(name);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            .collect();
+            __sorted.sort_by(|a: &String, b: &String| {
+                let __ka = (|name: String| topo_sort_key(name.clone()))(a.clone());
+                let __kb = (|name: String| topo_sort_key(name.clone()))(b.clone());
+                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            __sorted
+        });
+        let module_count = (modules.clone().len() as i64);
+        let result = kahn_drain(
+            initial_queue.clone(),
+            Rc::new(vec![]),
+            in_degree_map.clone(),
+            adjacency.clone(),
+            module_count.clone(),
+        );
+        if ((result.sorted.clone().len() as i64) == module_count.clone()) {
+            Rc::new(TopoResult {
+                sorted: result.sorted.clone(),
+                cycle_error: None,
+            })
+        } else {
+            {
+                let sorted_set = result.sorted.clone().iter().cloned().fold(
+                    v1_rt::rc_empty_map::<String, bool>(),
+                    |acc: Rc<HashMap<String, bool>>, name: String| {
+                        v1_rt::rc_map_insert(acc, name.clone(), true)
+                    },
+                );
+                let cycle_members = Rc::new({
+                    let mut __result = Vec::new();
+                    for name in module_names.iter().cloned() {
+                        if (v1_rt::map_has(&sorted_set, name.clone()) == false) {
+                            __result.push(name);
+                        }
+                    }
+                    __result
                 });
-                __sorted
+                let cycle_desc = cycle_members.clone().join(&" -> ".to_string());
+                Rc::new(TopoResult {
+                    sorted: result.sorted.clone(),
+                    cycle_error: Some(make_error_node(
+                        Rc::new(CompilerDiagnostic::CircularDependency {
+                            modules: cycle_members.clone(),
+                            span: no_span(),
+                        }),
+                        "".to_string(),
+                    )),
+                })
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct KahnDrainState {
+    pub sorted: Rc<Vec<String>>,
+    pub in_degree_map: Rc<HashMap<String, i64>>,
+}
+
+pub fn kahn_drain(
+    mut queue: Rc<Vec<String>>,
+    mut sorted: Rc<Vec<String>>,
+    mut in_degree_map: Rc<HashMap<String, i64>>,
+    mut adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
+    mut fuel: i64,
+) -> Rc<KahnDrainState> {
+    loop {
+        if ((queue.clone().len() as i64) == 0) {
+            return Rc::new(KahnDrainState {
+                sorted: sorted.clone(),
+                in_degree_map: in_degree_map.clone(),
+            });
+        }
+        let batch_result = queue.iter().cloned().fold(
+            Rc::new(KahnDrainState {
+                sorted: sorted.clone(),
+                in_degree_map: in_degree_map.clone(),
             }),
-            cycle_error: None,
+            |state: Rc<KahnDrainState>, node: String| {
+                let state = v1_rt::take_owned(state);
+                {
+                    let new_sorted = v1_rt::rc_list_push(state.sorted, node.clone());
+                    let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
+                        Some(ns) => ns.clone(),
+                        None => Rc::new(vec![]),
+                    };
+                    let new_degrees = neighbors.iter().cloned().fold(
+                        state.in_degree_map,
+                        |deg_map: Rc<HashMap<String, i64>>, neighbor: String| {
+                            let current = match v1_rt::map_get(&deg_map, neighbor.clone()) {
+                                Some(d) => d.clone(),
+                                None => 0,
+                            };
+                            v1_rt::rc_map_insert(
+                                deg_map.clone(),
+                                neighbor.clone(),
+                                (current.clone() - 1),
+                            )
+                        },
+                    );
+                    Rc::new(KahnDrainState {
+                        sorted: new_sorted.clone(),
+                        in_degree_map: new_degrees.clone(),
+                    })
+                }
+            },
+        );
+        let new_zero_set = Rc::new({
+            let mut __result = Vec::new();
+            for neighbor in Rc::new({
+                let mut __result = Vec::new();
+                for node in queue.iter().cloned() {
+                    __result.extend(
+                        (*match v1_rt::map_get(&adjacency, node.clone()) {
+                            Some(ns) => ns.clone(),
+                            None => Rc::new(vec![]),
+                        })
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                if match v1_rt::map_get(&batch_result.in_degree_map.clone(), neighbor.clone()) {
+                    Some(0) => true,
+                    _ => false,
+                } {
+                    __result.push(neighbor);
+                }
+            }
+            __result
         })
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
+                v1_rt::rc_map_insert(acc, name.clone(), true)
+            },
+        );
+        let new_zero = Rc::new({
+            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(&new_zero_set))
+                .iter()
+                .cloned()
+                .collect();
+            __sorted.sort_by(|a: &String, b: &String| {
+                let __ka = (|name: String| name.clone())(a.clone());
+                let __kb = (|name: String| name.clone())(b.clone());
+                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            __sorted
+        });
+        {
+            let __tco_0 = new_zero.clone();
+            let __tco_1 = batch_result.sorted.clone();
+            let __tco_2 = batch_result.in_degree_map.clone();
+            let __tco_3 = (fuel - 1);
+            queue = __tco_0;
+            sorted = __tco_1;
+            in_degree_map = __tco_2;
+            fuel = __tco_3;
+            continue;
+        }
     }
 }

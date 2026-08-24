@@ -2,13 +2,17 @@
 // Source module: extdeps.cargo
 
 use self::CargoDepSource::*;
+use self::CargoEnvironmentVariable::*;
 use self::CargoTarget::*;
 use self::RustEdition::*;
 use self::TestHarness::*;
+pub use crate::extdeps_cargo_version::{
+    CargoPackageVersion, CargoToolVersionFloor, CargoVersionRequirement,
+};
 pub use crate::extdeps_external_authority::ExternalAuthority;
-use crate::extdeps_uri::UriScheme::*;
+use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
-pub use crate::std_types::{FilePathParts, List};
+pub use crate::std_types::{FilePathParts, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -20,10 +24,10 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     thread_local! {
             static CACHED: Rc<ExternalAuthority> = {
                 Rc::new(ExternalAuthority {
-        uri: Uri {
+        uri: Rc::new(Uri {
         scheme: UriScheme::Https,
         locator: "doc.rust-lang.org/cargo/".to_string(),
-    },
+    }),
     })
             };
         }
@@ -59,14 +63,14 @@ pub fn default_rust_edition() -> RustEdition {
     CACHED.with(|c: &RustEdition| c.clone())
 }
 
-pub fn min_cargo_version() -> SemVerConstraint {
+pub fn min_cargo_version() -> CargoToolVersionFloor {
     thread_local! {
-        static CACHED: SemVerConstraint = {
+        static CACHED: CargoToolVersionFloor = {
             serde_json::from_value(serde_json::json!(">= 1.56"))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &SemVerConstraint| c.clone())
+    CACHED.with(|c: &CargoToolVersionFloor| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -209,6 +213,40 @@ pub fn default_profile() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn cargo_environment_variables_authority() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "doc.rust-lang.org/cargo/reference/environment-variables.html".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum CargoEnvironmentVariable {
+    CargoHomeEnv,
+    CargoTargetDirEnv,
+    CargoBuildJobsEnv,
+    RustcWrapperEnv,
+}
+
+pub fn cargo_environment_variable_name(variable: CargoEnvironmentVariable) -> String {
+    match variable.clone() {
+        CargoEnvironmentVariable::CargoHomeEnv => "CARGO_HOME".to_string(),
+        CargoEnvironmentVariable::CargoTargetDirEnv => "CARGO_TARGET_DIR".to_string(),
+        CargoEnvironmentVariable::CargoBuildJobsEnv => "CARGO_BUILD_JOBS".to_string(),
+        CargoEnvironmentVariable::RustcWrapperEnv => "RUSTC_WRAPPER".to_string(),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Edition2015;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -221,3 +259,11 @@ pub struct Edition2024;
 pub struct Harness;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NoHarness;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CargoHomeEnv;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CargoTargetDirEnv;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CargoBuildJobsEnv;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RustcWrapperEnv;

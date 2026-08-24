@@ -1,7 +1,6 @@
 module gunbc.fleet_runner_connectivity
 
-
-data fleet_runner_connectivity_authority_disposition: std.disposition.Disposition = std.disposition.Terminal {
+data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
   reason: "Single authority for GITHUB REGISTRATION CONNECTIVITY versus LOCAL RUNNER INCARNATIONS. It joins one org-level registration roster (remote ground truth from the GitHub Actions runners API) to per-slot stable identities (host, index) and their local systemd incarnations. It does NOT repair wedged runners — that is PR B. It refuses to fold connected width into desired width, and it refuses to treat a roster read failure as 'everything detached' (empty-observation narrow)."
 }
 
@@ -10,7 +9,7 @@ data organization_roster_is_one_org_read_note: String = "THE ROSTER IS ONE CENTR
 data achieved_widths_are_orthogonal_to_desired_width_note: String = "THE ACHIEVED AXES HERE ARE ORTHOGONAL TO gunbc.runner_slot_allocation's desired-side widths (#7930 candidate/actuatable/observed). registered_width counts GitHub org roster rows; connected_width counts status == online; schedulable_width counts online AND NOT busy; executing_width counts online AND busy. desired_width is INTENT from gunbc_runner_slots_per_host and does NOT reconcile down when connected collapses during an outage. materialized_width and unit_active_width are LOCAL incarnation facts pinned from the incident corpus until the local producer grounds them."
 
 type OrganizationRunnerRosterEvidence
-  = RosterObserved { observed_on: std.types.NonEmptyStr, registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> }
+  = RosterObserved { observed_on: NonEmptyStr, registrations: List<GitHubSelfHostedRunnerRegistration> }
   | RosterReadUnavailable { reason: String }
 
 type FleetAchievedRunnerWidths
@@ -22,11 +21,88 @@ type FleetAchievedRunnerWidths
     }
   | AchievedWidthsUnobserved { reason: String }
 
+type RegistrationSlotDecoding
+  = RegistrationNamesCommittedSlot { slot: RunnerSlotIdentity }
+  | RegistrationNamesNoCommittedSlot { registration_name: NonEmptyStr }
+
+// THE DECODER DOES NOT PARSE. Splitting "srv3-06" back into a host and an index would be a SECOND
+// naming authority read in the opposite direction from the first, and the two could disagree without
+// anything detecting it. The committed population is finite and already enumerable, so decoding is a
+// total decision over it: which committed identity's own name equals this registration's name. That is
+// the forward naming authority read backward (DESIGN section 4, one grammar in both directions) rather
+// than an inverse re-implemented beside it, and a name matching nothing is not a parse failure -- it is
+// the answer RegistrationNamesNoCommittedSlot, which is a fact about the fleet rather than about text.
+//
+// THE FORK IS DISSOLVED, AND IT WAS FIVE SITES RATHER THAN THE THREE AN EARLIER REVISION OF THIS
+// NOTE CLAIMED. One rule -- pad a slot index to two digits -- had four independent implementations
+// (runner_lifecycle, runner_host_deploy, runner_incarnation, and host_registration_name_for_slot
+// just below, which reached it through a shared bucketed helper). Three derived the pad
+// arithmetically; runner_incarnation's slot_suffix ENUMERATED indices 1 through 8 with an else arm
+// returning the literal "00". Measured before the fix: srv3-09 from the derived sites, srv3-00 from
+// the enumerator -- a COLLISION rather than a wrong name, since every index above 8 produced the
+// same string and two slots would contend for one GitHub registration.
+//
+// All of them now route through gunbc.build_cache_instance runner_slot_index_suffix, which is the
+// identity's own module and therefore the rule's layer. Derived, total over Nat, no fall-through to
+// reach. My census of this fork said three sites twice -- to a reviewer and in a PR body -- and it
+// was five; the two I missed were the ones that reached the rule INDIRECTLY, which is the same
+// shape as every other undercount in this lane: I grepped for the thing I was looking for rather
+// than enumerating the declarations.
+//
+// ONE INDEPENDENT IMPLEMENTATION SURVIVES DELIBERATELY, in host_converge_slice1_witness_test, which
+// builds its own expected name inline. That is not a missed site: a witness that computes its
+// expectation by calling the production function proves only that the function equals itself. Its
+// pad is an independent oracle and consolidating it would convert a check into a tautology.
+fn fleet_committed_slot_identities() -> List<RunnerSlotIdentity> {
+  fold(
+    fleet_hosts(),
+    init: [],
+    f: (acc, h) => concat(acc, committed_slot_identities(host: h))
+  )
+}
+
+fn decode_registration_slot(reg: GitHubSelfHostedRunnerRegistration) -> RegistrationSlotDecoding {
+  match fold(
+    fleet_committed_slot_identities(),
+    init: none,
+    f: (acc, id) =>
+      match acc {
+        Present { value: v } => Present { value: v }
+        Absent =>
+          if runner_slot_instance_name(slot: id) == (reg.name as String) {
+            Present { value: id }
+          } else {
+            none
+          }
+      }
+  ) {
+    Present { value: id } => RegistrationNamesCommittedSlot { slot: id }
+    Absent => RegistrationNamesNoCommittedSlot { registration_name: reg.name }
+  }
+}
+
 type RunnerSlotConnectivityVerdict
-  = SlotConnectivityHealthy { slot: gunbc.build_cache_instance.RunnerSlotIdentity, registration_id: std.nat.Nat }
-  | SlotConnectivityDetached { slot: gunbc.build_cache_instance.RunnerSlotIdentity, registration_id: std.nat.Nat }
-  | SlotConnectivityOrphaned { slot: gunbc.build_cache_instance.RunnerSlotIdentity }
-  | SlotConnectivityUnknown { slot: gunbc.build_cache_instance.RunnerSlotIdentity, reason: String }
+  = SlotConnectivityHealthy { slot: RunnerSlotIdentity, registration_id: Nat }
+  | SlotConnectivityDetached { slot: RunnerSlotIdentity, registration_id: Nat }
+  | SlotConnectivityOrphaned { slot: RunnerSlotIdentity }
+  | SlotConnectivityUnknown { slot: RunnerSlotIdentity, reason: String }
+  | SlotConnectivityUnexpectedRegistration {
+      registration_id: Nat
+      registration_name: NonEmptyStr
+      decoded: RegistrationSlotDecoding
+    }
+
+// THIS ARM CARRIES THE REGISTRATION'S OWN IDENTITY AND NOT A SLOT, AND THAT IS THE WHOLE POINT OF IT.
+// The other four arms each carry a RunnerSlotIdentity taken from a LOCAL incarnation, because they are
+// produced by mapping over local_runner_slot_incarnations. A registration GitHub holds that we never
+// provisioned locally has no incarnation to be mapped from, so it was not mis-reported by those four --
+// it was unsayable, and no check could close it because there was nothing for a check to read.
+// Giving this arm a slot field would have rebuilt that same blindness inside the fix: it would have
+// forced an unexpected registration to be described in terms of a local slot that by construction does
+// not exist. It carries `decoded` instead, so a consumer can tell the two cases apart -- a registration
+// whose name resolves to a COMMITTED slot identity is the disjointness violation this model exists for
+// (an actions-runner sitting on a fabric-purpose slot), while one that resolves to nothing is a
+// foreign runner in the org. Those are different facts and a single Bool would have merged them.
 
 type FleetRunnerCapacityWidthSnapshot {
   desired_width: Int
@@ -39,38 +115,38 @@ data incident_2026_08_06_roster_note: String = "PINNED ACCEPTANCE CORPUS from th
 
 data incident_srv4_committed_width_at_outage: Int = 5
 
-data incident_runner_version: std.types.NonEmptyStr = "2.334.0"
+data incident_runner_version: NonEmptyStr = "2.334.0"
 
-data incident_runner_labels: List<std.types.NonEmptyStr> = [
-  "self-hosted" as std.types.NonEmptyStr,
-  "linux" as std.types.NonEmptyStr,
-  "arm64" as std.types.NonEmptyStr,
-  "gunbc-heavy" as std.types.NonEmptyStr,
+data incident_runner_labels: List<NonEmptyStr> = [
+  "self-hosted" as NonEmptyStr,
+  "linux" as NonEmptyStr,
+  "arm64" as NonEmptyStr,
+  "gunbc-heavy" as NonEmptyStr,
 ]
 
-fn github_organization_ref() -> extdeps.github.effect.GitHubOrganizationRef {
-  extdeps.github.effect.GitHubOrganizationRef { login: gunbc.auth.github_apps.gunbai_ci_declared.owner_login }
+fn github_organization_ref() -> GitHubOrganizationRef {
+  GitHubOrganizationRef { login: gunbai_ci_declared.owner_login }
 }
 
 fn incident_registration(
-  id: std.nat.Nat,
-  name: std.types.NonEmptyStr,
-  status: extdeps.github.ci_runner.GitHubRunnerRegistrationStatus,
+  id: Nat,
+  name: NonEmptyStr,
+  status: GitHubRunnerRegistrationStatus,
   busy: Bool,
-) -> extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration {
-  extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration {
+) -> GitHubSelfHostedRunnerRegistration {
+  GitHubSelfHostedRunnerRegistration {
     id: id,
     name: name,
     status: status,
     busy: busy,
     ephemeral: true,
     version: incident_runner_version,
-    os: "Linux" as std.types.NonEmptyStr,
+    os: "Linux" as NonEmptyStr,
     labels: incident_runner_labels,
   }
 }
 
-data incident_2026_08_06_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [
+data incident_2026_08_06_registrations: List<GitHubSelfHostedRunnerRegistration> = [
   incident_registration(id: 1, name: "srv1-01", status: GitHubRunnerOnline, busy: true),
   incident_registration(id: 2, name: "srv1-02", status: GitHubRunnerOffline, busy: false),
   incident_registration(id: 3, name: "srv1-03", status: GitHubRunnerOffline, busy: false),
@@ -91,35 +167,35 @@ data incident_2026_08_06_registrations: List<extdeps.github.ci_runner.GitHubSelf
 
 fn organization_runner_roster_evidence() -> OrganizationRunnerRosterEvidence {
   RosterObserved {
-    observed_on: "2026-08-06" as std.types.NonEmptyStr,
+    observed_on: "2026-08-06" as NonEmptyStr,
     registrations: incident_2026_08_06_registrations,
   }
 }
 
-data organization_runner_roster_producer_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
+data organization_runner_roster_producer_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: std.decl_ref.DeclarationRef {
+  bind: DeclarationRef {
     module_path: "gunbc.fleet_runner_connectivity",
     decl_name: "organization_runner_roster_show_effective_read",
     field: WholeDeclaration,
   }
 }
 
-data organization_runner_roster_show_effective_read: ShowEffectiveRead<OrganizationRunnerRosterEvidence> = std.realization_reconcile.ReadAbsent {
+data organization_runner_roster_show_effective_read: ShowEffectiveRead<OrganizationRunnerRosterEvidence> = ReadAbsent {
   reason: "no live org-level GET /orgs/gunb-ai/actions/runners has executed through the gunbai-ci GitHub App yet; the incident fixture in organization_runner_roster_evidence is the pinned acceptance corpus until this read binds ReadObserved"
 }
 
 fn registration_matches_name(
-  reg: extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration,
-  name: std.types.NonEmptyStr,
+  reg: GitHubSelfHostedRunnerRegistration,
+  name: NonEmptyStr,
 ) -> Bool {
   (reg.name as String) == (name as String)
 }
 
 fn find_registration_by_name(
-  registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>,
-  name: std.types.NonEmptyStr,
-) -> extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration? {
+  registrations: List<GitHubSelfHostedRunnerRegistration>,
+  name: NonEmptyStr,
+) -> GitHubSelfHostedRunnerRegistration? {
   fold(
     registrations,
     init: none,
@@ -134,7 +210,7 @@ fn find_registration_by_name(
 
 data incident_local_materialized_width_note: String = "ACTIVATED WIDTH vs INSTALL-TREE COUNT (operator correction 2026-08-07): counts ACTIVATED units, not install trees. srv1: 50 trees / 5 active; srv3: 8 materialized trees (includes 08) / 5 active — committed width 7 is memory ceiling, not materialization cap. Dormant trees are SlotMaterializedNotActive; stale .runner does not block ADD."
 
-fn materialized_width_for_host(host: product.placement_supply.HostIdentity) -> Int {
+fn materialized_width_for_host(host: HostIdentity) -> Int {
   if (host as String) == (operator_host_srv1 as String) {
     5
   } else if (host as String) == (operator_host_srv2 as String) {
@@ -148,24 +224,22 @@ fn materialized_width_for_host(host: product.placement_supply.HostIdentity) -> I
   }
 }
 
-fn unit_active_width_for_host(host: product.placement_supply.HostIdentity) -> Int {
+fn unit_active_width_for_host(host: HostIdentity) -> Int {
   materialized_width_for_host(host: host)
 }
 
-data converged_seven_roster_observed_on: std.types.NonEmptyStr = "converged-seven-fixture" as std.types.NonEmptyStr
-
-fn host_registration_name_for_slot(host: product.placement_supply.HostIdentity, slot_index: std.nat.Nat) -> std.types.NonEmptyStr {
-  join([host as String, "-", slot_suffix(slot_index: slot_index)], "") as std.types.NonEmptyStr
+fn host_registration_name_for_slot(host: HostIdentity, slot_index: Nat) -> NonEmptyStr {
+  join([host as String, "-", runner_slot_index_suffix(index: slot_index)], "") as NonEmptyStr
 }
 
-fn slot_indices_for_managed_width(width: Int) -> List<std.nat.Nat> {
+fn slot_indices_for_managed_width(width: Int) -> List<Nat> {
   nat_range_inclusive(lo: 1, hi: width)
 }
 
 fn count_host_registrations_at_width(
-  host: product.placement_supply.HostIdentity,
+  host: HostIdentity,
   width: Int,
-  registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>,
+  registrations: List<GitHubSelfHostedRunnerRegistration>,
 ) -> Int {
   fold(
     slot_indices_for_managed_width(width: width),
@@ -182,9 +256,9 @@ fn count_host_registrations_at_width(
 }
 
 fn count_host_online_at_width(
-  host: product.placement_supply.HostIdentity,
+  host: HostIdentity,
   width: Int,
-  registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>,
+  registrations: List<GitHubSelfHostedRunnerRegistration>,
 ) -> Int {
   fold(
     slot_indices_for_managed_width(width: width),
@@ -205,82 +279,49 @@ fn count_host_online_at_width(
   )
 }
 
-fn roster_is_converged_seven_fixture(roster: OrganizationRunnerRosterEvidence) -> Bool {
-  match roster {
-    RosterObserved { observed_on: observed_on, registrations: _ } =>
-      (observed_on as String) == (converged_seven_roster_observed_on as String)
-    RosterReadUnavailable { reason: _ } => false
-  }
-}
-
-data converged_seven_srv3_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 101, name: "srv3-01" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 102, name: "srv3-02" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 103, name: "srv3-03" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 104, name: "srv3-04" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 105, name: "srv3-05" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 106, name: "srv3-06" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 107, name: "srv3-07" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+// THE CONVERGED-SEVEN FIXTURE CLUSTER IS DELETED HERE -- six declarations, all dead. It described
+// a fleet that stopped existing with the 2026-08-17 16GiB ruling, and once registrations are decoded
+// against the committed population rather than counted, srv3-07 resolves to no committed slot at all,
+// so the planner refused it. Its last consumer was retargeted onto the roster below, which is the
+// same concept authored once: both managed hosts registered 01-05 and online, converged at the
+// materialized width. Keeping the seven-wide rows beside it would have been a second name for a
+// fleet state, and a test fixture is not exempt from that.
+data width_five_online_srv3_registrations: List<GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 301, name: "srv3-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 302, name: "srv3-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 303, name: "srv3-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 304, name: "srv3-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 305, name: "srv3-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
 ]
 
-data converged_seven_srv4_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 201, name: "srv4-01" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 202, name: "srv4-02" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 203, name: "srv4-03" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 204, name: "srv4-04" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 205, name: "srv4-05" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 206, name: "srv4-06" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 207, name: "srv4-07" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+data width_five_online_srv4_registrations: List<GitHubSelfHostedRunnerRegistration> = [
+  incident_registration(id: 401, name: "srv4-01" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 402, name: "srv4-02" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 403, name: "srv4-03" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 404, name: "srv4-04" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
+  incident_registration(id: 405, name: "srv4-05" as NonEmptyStr, status: GitHubRunnerOnline, busy: false),
 ]
 
-data converged_seven_managed_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = concat(
-  converged_seven_srv3_registrations,
-  converged_seven_srv4_registrations,
-)
-
-fn organization_runner_roster_converged_seven_evidence() -> OrganizationRunnerRosterEvidence {
-  RosterObserved {
-    observed_on: converged_seven_roster_observed_on,
-    registrations: converged_seven_managed_registrations,
-  }
-}
-
-data width_five_online_srv3_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 301, name: "srv3-01" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 302, name: "srv3-02" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 303, name: "srv3-03" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 304, name: "srv3-04" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 305, name: "srv3-05" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-]
-
-data width_five_online_srv4_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = [
-  incident_registration(id: 401, name: "srv4-01" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 402, name: "srv4-02" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 403, name: "srv4-03" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 404, name: "srv4-04" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-  incident_registration(id: 405, name: "srv4-05" as std.types.NonEmptyStr, status: GitHubRunnerOnline, busy: false),
-]
-
-data width_five_online_managed_registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration> = concat(
+data width_five_online_managed_registrations: List<GitHubSelfHostedRunnerRegistration> = concat(
   width_five_online_srv3_registrations,
   width_five_online_srv4_registrations,
 )
 
 fn organization_runner_roster_materialized_slots_online_evidence() -> OrganizationRunnerRosterEvidence {
   RosterObserved {
-    observed_on: "2026-08-07" as std.types.NonEmptyStr,
+    observed_on: "2026-08-07" as NonEmptyStr,
     registrations: width_five_online_managed_registrations,
   }
 }
 
-fn local_incarnations_for_host(host: product.placement_supply.HostIdentity, width: Int) -> List<gunbc.runner_incarnation.LocalRunnerSlotIncarnation> {
+fn local_incarnations_for_host(host: HostIdentity, width: Int) -> List<LocalRunnerSlotIncarnation> {
   map(
     slot_indices_for_managed_width(width: width),
     i => runner_slot_incarnation(host: host, slot_index: i, unit_active: true),
   )
 }
 
-fn local_runner_slot_incarnations() -> List<gunbc.runner_incarnation.LocalRunnerSlotIncarnation> {
+fn local_runner_slot_incarnations() -> List<LocalRunnerSlotIncarnation> {
   concat(
     local_incarnations_for_host(host: operator_host_srv1, width: materialized_width_for_host(host: operator_host_srv1)),
     concat(
@@ -294,7 +335,7 @@ fn local_runner_slot_incarnations() -> List<gunbc.runner_incarnation.LocalRunner
 }
 
 fn runner_slot_connectivity_verdict_for_incarnation(
-  incarnation: gunbc.runner_incarnation.LocalRunnerSlotIncarnation,
+  incarnation: LocalRunnerSlotIncarnation,
   roster: OrganizationRunnerRosterEvidence,
 ) -> RunnerSlotConnectivityVerdict {
   if !incarnation.unit_active {
@@ -321,7 +362,7 @@ fn runner_slot_connectivity_verdict_for_incarnation(
   }
 }
 
-fn runner_slot_connectivity_verdict(slot: gunbc.build_cache_instance.RunnerSlotIdentity) -> RunnerSlotConnectivityVerdict {
+fn runner_slot_connectivity_verdict(slot: RunnerSlotIdentity) -> RunnerSlotConnectivityVerdict {
   let roster = organization_runner_roster_evidence()
   let incarnations = local_runner_slot_incarnations()
   match fold(
@@ -345,7 +386,7 @@ fn runner_slot_connectivity_verdict(slot: gunbc.build_cache_instance.RunnerSlotI
   }
 }
 
-fn count_online_registrations(registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>) -> Int {
+fn count_online_registrations(registrations: List<GitHubSelfHostedRunnerRegistration>) -> Int {
   fold(
     registrations,
     init: 0,
@@ -353,7 +394,7 @@ fn count_online_registrations(registrations: List<extdeps.github.ci_runner.GitHu
   )
 }
 
-fn count_schedulable_registrations(registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>) -> Int {
+fn count_schedulable_registrations(registrations: List<GitHubSelfHostedRunnerRegistration>) -> Int {
   fold(
     registrations,
     init: 0,
@@ -361,7 +402,7 @@ fn count_schedulable_registrations(registrations: List<extdeps.github.ci_runner.
   )
 }
 
-fn count_executing_registrations(registrations: List<extdeps.github.ci_runner.GitHubSelfHostedRunnerRegistration>) -> Int {
+fn count_executing_registrations(registrations: List<GitHubSelfHostedRunnerRegistration>) -> Int {
   fold(
     registrations,
     init: 0,
@@ -369,7 +410,7 @@ fn count_executing_registrations(registrations: List<extdeps.github.ci_runner.Gi
   )
 }
 
-fn fleet_hosts() -> List<product.placement_supply.HostIdentity> {
+fn fleet_hosts() -> List<HostIdentity> {
   [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
 }
 
@@ -381,7 +422,7 @@ data incident_srv2_committed_width_at_outage: Int = 5
 
 data incident_srv3_committed_width_at_outage: Int = 7
 
-fn incident_committed_width_at_outage_for(host: product.placement_supply.HostIdentity) -> Int {
+fn incident_committed_width_at_outage_for(host: HostIdentity) -> Int {
   if (host as String) == (operator_host_srv1 as String) {
     incident_srv1_committed_width_at_outage
   } else if (host as String) == (operator_host_srv2 as String) {

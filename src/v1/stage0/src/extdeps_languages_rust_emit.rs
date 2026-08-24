@@ -209,7 +209,7 @@ pub fn rust_trait_derive_attr_from_traits(traits: Rc<Vec<RustCapability>>) -> St
             "#[derive(".to_string(),
             Rc::new({
                 let mut __result = Vec::new();
-                for t in traits.clone().iter().cloned() {
+                for t in traits.iter().cloned() {
                     __result.push(rust_trait_derive_spelling(t.clone()));
                 }
                 __result
@@ -786,7 +786,7 @@ pub fn rust_pair_completion_factor_render(
         .len() as i64);
         if ((repeats_in_term.clone() > 1) || {
             let mut __found = false;
-            for s in later_sources.clone().iter().cloned() {
+            for s in later_sources.iter().cloned() {
                 if (s.clone() == src.clone()) {
                     __found = true;
                     break;

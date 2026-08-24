@@ -1,7 +1,6 @@
 module test.claim.runner_capacity_plan_witness
 
-
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THIS REPLACES A WITNESS THAT ASSERTED TWO ADDITIONS PER HOST AT REQUESTED 7, AND THE OLD
 // ASSERTION WAS WRONG IN A WAY ITS GREEN CONCEALED. It required slots 06 AND 07 on hosts whose
@@ -14,10 +13,20 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // to carry stops at the wall with a typed cause rather than being admitted and then producing
 // nothing. Both hosts plan zero actions and both carry a WidthRefused admission -- the difference
 // from the old behaviour is that the refusal is now VISIBLE in the plan.
+// THE REQUESTED WIDTH IS DERIVED FROM THE CEILING, BECAUSE A LITERAL SEVEN STOPPED BEING ABOVE IT.
+//
+// This row asked for width 7 when the committed ceiling was 6, so the plan refused to add and
+// add_count was 0. The 2026-08-23 CPU-axis change moved srv3 and srv4 to twenty-one, and 7 became
+// an ordinary in-range request that the plan quite correctly fulfils -- so the row went red without
+// the ceiling behaviour it names having changed at all.
+//
+// Retyping 7 as 22 puts the same landmine one width further out. Asking for committed + 1 keeps the
+// request above the ceiling by construction, so this stays a check on the refusal arm rather than
+// on whatever number the fleet happened to commit the day it was written.
 test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled() -> Bool {
   let plan = runner_capacity_plan(
-    srv3_width: 7,
-    srv4_width: 7,
+    srv3_width: gunbc_runner_slots_per_host(host: operator_host_srv3) + 1,
+    srv4_width: gunbc_runner_slots_per_host(host: operator_host_srv4) + 1,
     roster: organization_runner_roster_evidence()
   )
   match plan {
@@ -34,6 +43,32 @@ test fn a_width_above_the_committed_ceiling_is_refused_not_silently_unfulfilled(
 // slot, so its GitHub population is 5, it is already at 5, and NO addition is planned -- the sixth
 // slot exists in the model and is deliberately not a GitHub runner. Same width, same request,
 // different populations.
+fn added_indices(actions: List<RunnerCapacityAction>) -> List<Int> {
+  fold(
+    actions,
+    init: [],
+    f: (acc, a) =>
+      match a {
+        RunnerSlotAdd { to: id } => concat(acc, [id.slot_index])
+        RunnerSlotChange { from: _, to: _ } => acc
+        RunnerSlotRemove { from: _ } => acc
+        RunnerIncarnationReplace { slot: _, cause: _ } => acc
+      }
+  )
+}
+
+// THIS ROW ASSERTS WHICH SLOTS ARE ADDED, AND IT USED TO ASSERT HOW MANY. The change is not
+// cosmetic: against the roster the planner consumes, the COUNTS are identical before and after the
+// repair this commit makes to addition_actions -- srv3 plans one either way, srv4 plans two -- while
+// the identities are completely different. The count-shaped version of this row passed the broken
+// planner and would have passed the fixed one, flickering at neither.
+//
+// WHAT THE BROKEN PLANNER ACTUALLY PROPOSED, measured: srv3 add 05, which is ALREADY REGISTERED,
+// while 03, the slot genuinely missing from the roster, was never planned at any width. That is the
+// dense-prefix comparison surviving in the subtraction after both populations had become sets, and
+// decoding the observation is what made it harmful -- a real roster has holes and a count cannot see
+// them. srv4 must additionally add 06 because it has no fabric member; srv3 must not, because 06 is
+// its fabric slot. So the pair also still discriminates purpose, which is what it was named for.
 test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
   let plan = runner_capacity_plan(
     srv3_width: 6,
@@ -42,9 +77,24 @@ test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
   )
   match plan {
     PlanReady { hosts: _ } =>
-      runner_capacity_add_count(plan: plan, host: operator_host_srv4) == 1
-        && runner_capacity_add_count(plan: plan, host: operator_host_srv3) == 0
+      added_indices(actions: addition_actions(
+        host: operator_host_srv3, requested_width: 6,
+        observed: observed_prefix_from_roster(host: operator_host_srv3)
+      )) == [3]
+        && added_indices(actions: addition_actions(
+             host: operator_host_srv4, requested_width: 6,
+             observed: observed_prefix_from_roster(host: operator_host_srv4)
+           )) == [3, 6]
     PlanRefused { reason: _ } => false
+  }
+}
+
+fn observed_prefix_from_roster(host: HostIdentity) -> List<RunnerSlotIdentity> {
+  match observed_github_slot_identities(host: host, roster: organization_runner_roster_evidence()) {
+    GitHubSlotPopulationObserved { identities: ids } => ids
+    GitHubSlotPopulationUnreadable { reason: _ } => []
+    GitHubSlotPopulationDuplicateRegistration { slot: _ } => []
+    GitHubSlotPopulationForeignRegistration { registration_name: _ } => []
   }
 }
 
@@ -64,14 +114,26 @@ test fn at_the_committed_width_additions_follow_purpose_not_count() -> Bool {
 // case that satisfies them all. And they assert IDENTITIES and counts of real actions, never a bare
 // length: a length cannot tell [6] from [7], so a planner producing the right NUMBER of the WRONG
 // slots would pass.
+// A DENSE PREFIX IS A LEGITIMATE FIXTURE HERE AND WAS AN ILLEGITIMATE PRODUCTION OBSERVATION, which
+// is the same shape appearing on both sides of the change. These rows exercise the addition
+// arithmetic directly and are entitled to hand it any population they like, including a hole-free
+// one. What was wrong was the PLANNER deriving that shape from a width instead of reading it.
+fn observed_prefix(host: HostIdentity, n: Int) -> List<RunnerSlotIdentity> {
+  fold(
+    committed_slot_identities(host: host),
+    init: [],
+    f: (acc, id) => if id.slot_index > n { acc } else { concat(acc, [id]) }
+  )
+}
+
 test fn the_additions_run_is_general_across_transitions() -> Bool {
   nat_range_inclusive(lo: 6, hi: 6) == [6]
     && nat_range_inclusive(lo: 6, hi: 7) == [6, 7]
     && nat_range_inclusive(lo: 1, hi: 3) == [1, 2, 3]
     && nat_range_inclusive(lo: 6, hi: 5) == []
-    && addition_actions(host: operator_host_srv4, requested_width: 6, observed_width: 0).length() == 6
-    && addition_actions(host: operator_host_srv4, requested_width: 3, observed_width: 0).length() == 3
-    && addition_actions(host: operator_host_srv4, requested_width: 6, observed_width: 6).length() == 0
+    && addition_actions(host: operator_host_srv4, requested_width: 6, observed: observed_prefix(host: operator_host_srv4, n: 0)).length() == 6
+    && addition_actions(host: operator_host_srv4, requested_width: 3, observed: observed_prefix(host: operator_host_srv4, n: 0)).length() == 3
+    && addition_actions(host: operator_host_srv4, requested_width: 6, observed: observed_prefix(host: operator_host_srv4, n: 6)).length() == 0
 }
 
 // THE DESIRED GitHub SET SKIPS THE FABRIC MEMBER WHEREVER IT SITS, which is the assumption the
@@ -100,15 +162,15 @@ test fn the_desired_github_set_excludes_the_fabric_member() -> Bool {
 // against the srv4 row beside it, and a future reader who deletes it as redundant removes the half
 // that discriminates.
 test fn the_same_widening_differs_by_purpose_across_two_six_wide_hosts() -> Bool {
-  addition_actions(host: operator_host_srv4, requested_width: 6, observed_width: 5).length() == 1
-    && addition_actions(host: operator_host_srv3, requested_width: 6, observed_width: 5).length() == 0
+  addition_actions(host: operator_host_srv4, requested_width: 6, observed: observed_prefix(host: operator_host_srv4, n: 5)).length() == 1
+    && addition_actions(host: operator_host_srv3, requested_width: 6, observed: observed_prefix(host: operator_host_srv3, n: 5)).length() == 0
 }
 
 test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
   match runner_capacity_plan(
     srv3_width: 6,
     srv4_width: 6,
-    roster: gunbc.fleet_runner_connectivity.RosterReadUnavailable { reason: "503" }
+    roster: RosterReadUnavailable { reason: "503" }
   ) {
     PlanRefused { reason: _ } => true
     PlanReady { hosts: _ } => false
@@ -116,8 +178,8 @@ test fn roster_unavailable_refuses_runner_capacity_plan() -> Bool {
 }
 
 test fn satisfied_observed_width_plans_zero_additions() -> Bool {
-  addition_actions(host: operator_host_srv3, requested_width: 5, observed_width: 5).length() == 0
-    && addition_actions(host: operator_host_srv3, requested_width: 7, observed_width: 7).length() == 0
+  addition_actions(host: operator_host_srv3, requested_width: 5, observed: observed_prefix(host: operator_host_srv3, n: 5)).length() == 0
+    && addition_actions(host: operator_host_srv3, requested_width: 7, observed: observed_prefix(host: operator_host_srv3, n: 7)).length() == 0
 }
 
 fn population_is_refused(v: SlotPopulationVerdict) -> Bool {
@@ -126,7 +188,6 @@ fn population_is_refused(v: SlotPopulationVerdict) -> Bool {
     SlotPopulationReconciled => false
   }
 }
-
 
 fn srv3_slot(i: Nat) -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv3, slot_index: i }
@@ -167,6 +228,16 @@ test fn an_identity_from_another_host_cannot_answer_for_this_one() -> Bool {
     ))
 }
 
+// THE srv1 CLAUSE NOW DERIVES ITS OUT-OF-RANGE INDEX; THE srv3 CLAUSES NEEDED NOTHING.
+//
+// The last clause observed srv1 slots [1, 6] and required a refusal. Six was outside srv1's
+// five-wide population when this was written; at twenty-one it is an ordinary committed member, so
+// the refusal correctly did not fire and only this fixture was wrong. It now asks for committed + 1.
+//
+// Every srv3 clause is untouched and that is the informative half: srv3-06 refuses because it is
+// the AUTHORED fabric identity, not because of where it sits relative to a width. The width moved
+// from six to twenty-one underneath these clauses and they did not notice -- which is the property
+// runner_slot_allocation was built to have, observed rather than asserted.
 test fn a_github_runner_in_a_fabric_slot_refuses_instead_of_reading_converged() -> Bool {
   population_is_refused(v: validate_observed_github_slot_members(
     host: operator_host_srv3,
@@ -186,7 +257,7 @@ test fn a_github_runner_in_a_fabric_slot_refuses_instead_of_reading_converged() 
     ))
     && population_is_refused(v: validate_observed_github_slot_members(
       host: operator_host_srv1,
-      observed: [srv1_slot(i: 1), srv1_slot(i: 6)],
+      observed: [srv1_slot(i: 1), srv1_slot(i: gunbc_runner_slots_per_host(host: operator_host_srv1) + 1)],
     ))
 }
 
@@ -223,4 +294,154 @@ test fn every_positive_width_is_spellable_at_the_apply_boundary() -> Bool {
     && width_refuses(value: "-3")
     && width_refuses(value: "")
     && width_refuses(value: "six")
+}
+
+// THESE FOUR WITNESSES EXIST BECAUSE THE REFUSAL ABOVE COULD NOT FIRE, AND THE REASON IT COULD NOT
+// FIRE WAS NOT STALENESS. observed_slot_identities measured LOCAL SYSTEMD INCARNATIONS and handed
+// them to validate_observed_github_slot_members, which decides a question about GITHUB REGISTRATIONS.
+// Two different populations wearing one name, and neither the type nor the check could tell them
+// apart because both are lists of slot identities.
+//
+// THE NUMBERS BELOW ARE ABOUT A FIXTURE AND NOT ABOUT THE FLEET, AND AN EARLIER REVISION OF THIS
+// BLOCK SAID OTHERWISE. Measured by execution against what the production path currently supplies:
+// srv1 synthesized 5 / decoded 5, srv2 5 / 3, srv3 5 / 4, srv4 5 / 4, twenty against sixteen. What
+// it supplies is organization_runner_roster_evidence, a declared Scaffold returning the pinned
+// 2026-08-06 incident corpus, so this decodes a sixteen-day-old constant. The earlier revision also
+// called the incident note's fifteen-offline-of-sixteen line an INDEPENDENT corroboration; it is the
+// prose describing the same fixture, so the two agreements are one source agreeing with itself.
+// That makes this a consistency check on the decoder, which is worth having, and it is not evidence
+// about today's fleet -- nothing on the production path has read GitHub since the pin.
+//
+// WHAT IS TRUE AGAINST ANY ROSTER, AND IS THE HALF THAT MATTERS: the category error is a fact about
+// the wiring rather than the data, and the direction of the error is fixed -- addition_actions
+// derives additions from observed_width, so OVER-counting the observed population plans FEWER
+// additions than convergence needs. A host short of registrations reads as converged with nothing
+// to plan, whatever roster it is handed.
+fn one_registration(name: String, id: Nat) -> GitHubSelfHostedRunnerRegistration {
+  GitHubSelfHostedRunnerRegistration {
+    id: id,
+    name: name as NonEmptyStr,
+    status: GitHubRunnerOnline,
+    busy: false,
+    ephemeral: true,
+    version: "2.334.0" as NonEmptyStr,
+    os: "Linux" as NonEmptyStr,
+    labels: [],
+  }
+}
+
+fn roster_of(names: List<String>) -> OrganizationRunnerRosterEvidence {
+  RosterObserved {
+    observed_on: "witness-fixture" as NonEmptyStr,
+    registrations: fold(
+      names,
+      init: [],
+      f: (acc, n) => concat(acc, [one_registration(name: n, id: 1)])
+    ),
+  }
+}
+
+fn plan_is_refused(host: HostIdentity, width: Int, roster: OrganizationRunnerRosterEvidence) -> Bool {
+  match plan_runner_capacity_host(host: host, requested_width: width, roster: roster) {
+    HostCapacityPlanRefused { reason: _ } => true
+    HostCapacityPlanReady { plan: _ } => false
+  }
+}
+
+// THE DISCRIMINATING PAIR IS THE WITNESS, NOT THE REFUSAL. A lone refusing row cannot distinguish
+// "the fabric slot was detected" from "this planner refuses every roster I hand it", which is
+// exactly how the previous version stayed green while its subject was unreachable. The two rosters
+// differ in ONE element, srv3-06, and they must disagree.
+test fn a_github_registration_on_the_fabric_slot_now_refuses_the_plan() -> Bool {
+  plan_is_refused(
+    host: operator_host_srv3,
+    width: 5,
+    roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05", "srv3-06"]),
+  )
+}
+
+test fn the_same_roster_without_the_fabric_slot_is_not_refused() -> Bool {
+  !plan_is_refused(
+    host: operator_host_srv3,
+    width: 5,
+    roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05"]),
+  )
+}
+
+// A NAME THE FLEET CANNOT ACCOUNT FOR REFUSES RATHER THAN BEING SKIPPED. Skipping it and folding on
+// is the empty-observation narrow one layer inside the fix: a dropped member is an under-count, and
+// an under-count reads as a host with slots missing, so the planner would propose adding a slot
+// GitHub already holds.
+test fn a_registration_naming_no_committed_slot_refuses_instead_of_being_dropped() -> Bool {
+  plan_is_refused(
+    host: operator_host_srv3,
+    width: 5,
+    roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05", "srv9-01"]),
+  )
+}
+
+// THE OBSERVATION IS THE ROSTER'S, NOT THIS HOST'S DENSE PREFIX. Handed a roster made entirely of
+// another host's registrations, srv3 must observe ZERO. The synthesized form could not express this
+// at all -- it never read the roster, so it answered materialized_width_for_host regardless of what
+// GitHub held, and would have said five.
+test fn another_hosts_registrations_do_not_widen_this_host() -> Bool {
+  match observed_github_slot_identities(
+    host: operator_host_srv3,
+    roster: roster_of(names: ["srv1-01", "srv1-02", "srv1-03"]),
+  ) {
+    GitHubSlotPopulationObserved { identities: ids } => length(ids) == 0
+    GitHubSlotPopulationUnreadable { reason: _ } => false
+    GitHubSlotPopulationDuplicateRegistration { slot: _ } => false
+    GitHubSlotPopulationForeignRegistration { registration_name: _ } => false
+  }
+}
+
+// A POPULATION IS A SET AND A FOLD OVER A LIST IS NOT ONE UNLESS IT SAYS SO. Two registrations
+// decoding to the same identity -- reachable on GitHub after a re-register -- would otherwise count
+// twice, and the count is exactly what addition_actions derives additions from. So a duplicate
+// inflates the observed width and plans one fewer addition than convergence needs: the same
+// over-counting this whole change removes, arriving by a second route. The control below it is the
+// same roster with the duplicate collapsed, which must NOT refuse.
+test fn a_duplicate_registration_refuses_because_the_observed_population_is_a_set() -> Bool {
+  plan_is_refused(
+    host: operator_host_srv3,
+    width: 5,
+    roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-02", "srv3-03", "srv3-04", "srv3-05"]),
+  )
+}
+
+test fn the_same_roster_without_the_duplicate_is_not_refused() -> Bool {
+  !plan_is_refused(
+    host: operator_host_srv3,
+    width: 5,
+    roster: roster_of(names: ["srv3-01", "srv3-02", "srv3-03", "srv3-04", "srv3-05"]),
+  )
+}
+
+// THE REGISTRATION-WITHOUT-A-LOCAL-UNIT CASE, WHICH WENT FROM UNSAYABLE TO SAYABLE-AND-DROPPED
+// BEFORE IT WAS REFUSED. connectivity_actions_for_observed asks find_local_incarnation_for_slot,
+// which searches a dense local prefix bounded by materialized_width_for_host. While the observation
+// was synthesized FROM that prefix, every observed slot had a local incarnation by construction and
+// an Absent could only mean "healthy, nothing to do". Decoding the roster broke that identity:
+// measured, srv4 observed six GitHub registrations against five local incarnations and the fold
+// returned ZERO actions -- srv4-06 registered, no local unit, planner silent.
+//
+// THAT IS STRICTLY WORSE THAN THE GAP IT CAME FROM. A case with no representation is a modeling
+// gap; the same case dropped inside a fold is an answer that is wrong, and the fold's own caller
+// cannot tell the two apart. The arm refuses now, and this pair is what proves the refusal is about
+// the unaccounted registration rather than about the planner disliking every roster.
+test fn a_github_registration_with_no_local_incarnation_refuses_instead_of_being_dropped() -> Bool {
+  plan_is_refused(
+    host: operator_host_srv4,
+    width: 5,
+    roster: roster_of(names: ["srv4-01", "srv4-02", "srv4-03", "srv4-04", "srv4-05", "srv4-06"]),
+  )
+}
+
+test fn the_same_roster_within_the_materialized_width_is_not_refused() -> Bool {
+  !plan_is_refused(
+    host: operator_host_srv4,
+    width: 5,
+    roster: roster_of(names: ["srv4-01", "srv4-02", "srv4-03", "srv4-04", "srv4-05"]),
+  )
 }

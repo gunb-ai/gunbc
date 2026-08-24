@@ -1,6 +1,5 @@
 module test.claim.spark_serving_terminal_health_witness_test
 
-
 // The version the cited release row carries, as the API reports it: bare, without the `v` the
 // release tag carries. Written here as the API would send it so the fixture exercises the prefix
 // rule in `ollama_reported_version_matches_release` rather than sidestepping it.
@@ -14,14 +13,14 @@ fn good_generation() -> String {
   generation(model: "gpt-oss:20b", done: "true", response: "pong")
 }
 
-fn health(version_stdout: String, generate_stdout: String) -> gunbc.spark.serving_terminal_health.SparkServingTerminalHealth {
+fn health(version_stdout: String, generate_stdout: String) -> SparkServingTerminalHealth {
   spark_serving_health_from_captures(
-    version_stdout: version_stdout,
-    generate_stdout: generate_stdout,
+    version: ProbeAnswered { stdout: version_stdout },
+    generate: ProbeAnswered { stdout: generate_stdout },
   )
 }
 
-fn defect_wire(h: gunbc.spark.serving_terminal_health.SparkServingTerminalHealth) -> String {
+fn defect_wire(h: SparkServingTerminalHealth) -> String {
   match h {
     ServingConverged { reported_version: _, served_model: _ } => "<converged>"
     ServingHealthUnobserved { cause: _ } => "<unobserved>"
@@ -161,4 +160,158 @@ test fn the_health_wire_distinguishes_the_three_states() -> Bool {
          spark_serving_health_wire(health: health(version_stdout: good_version, generate_stdout: generation(model: "gpt-oss:20b", done: "false", response: "pong"))),
          "resources-converged-but-serving-unhealthy",
        )
+}
+
+// ── The conflation these arms exist to keep closed ───────────────────────────────────────────────
+//
+// Before the repair, three different empty captures produced ONE cause string, and that string
+// asserted a specific explanation the code had not observed. These witnesses go red the moment the
+// three collapse again, because they assert the causes are pairwise DISTINCT rather than asserting
+// any particular wording -- wording is prose and would make this a change detector.
+fn cause_of(h: SparkServingTerminalHealth) -> String {
+  match h {
+    ServingHealthUnobserved { cause: c } => c as String
+    ServingConverged { reported_version: _, served_model: _ } => ""
+    ResourcesConvergedButServingUnhealthy { defect: _ } => ""
+  }
+}
+
+fn cause_for_version(capture: SparkServingProbeCapture) -> String {
+  cause_of(
+    h: spark_serving_health_from_captures(
+      version: capture,
+      generate: ProbeAnswered { stdout: good_generation() },
+    ),
+  )
+}
+
+fn never_ran_capture() -> SparkServingProbeCapture {
+  ProbeNeverRan { cause: "no transport result" as NonEmptyStr }
+}
+
+fn failed_capture() -> SparkServingProbeCapture {
+  ProbeFailed { exit_code: 7, stderr: "curl: could not connect" }
+}
+
+fn empty_answer_capture() -> SparkServingProbeCapture {
+  ProbeAnswered { stdout: "" }
+}
+
+test fn a_never_ran_differs_from_ran_and_failed() -> Bool {
+  cause_for_version(capture: never_ran_capture())
+    != cause_for_version(capture: failed_capture())
+}
+
+test fn b_ran_and_failed_differs_from_answered_empty() -> Bool {
+  cause_for_version(capture: failed_capture())
+    != cause_for_version(capture: empty_answer_capture())
+}
+
+test fn c_never_ran_differs_from_answered_empty() -> Bool {
+  cause_for_version(capture: never_ran_capture())
+    != cause_for_version(capture: empty_answer_capture())
+}
+
+test fn d_every_unobserved_cause_is_non_empty() -> Bool {
+  if cause_for_version(capture: never_ran_capture()) == "" {
+    false
+  } else if cause_for_version(capture: failed_capture()) == "" {
+    false
+  } else {
+    cause_for_version(capture: empty_answer_capture()) != ""
+  }
+}
+
+// POSITIVE CONTROL: the repair must not have broken the path that already worked. A good version
+// capture and a good generation capture still decode to converged.
+test fn e_control_good_captures_still_converge() -> Bool {
+  match health(version_stdout: good_version, generate_stdout: good_generation()) {
+    ServingConverged { reported_version: _, served_model: _ } => true
+    ServingHealthUnobserved { cause: _ } => false
+    ResourcesConvergedButServingUnhealthy { defect: _ } => false
+  }
+}
+
+// ── Residency: the arms that keep "nothing resident" from becoming "on CPU" ──────────────────────
+data ps_resident_gpu: String = "{\"models\":[{\"name\":\"gpt-oss:20b\",\"size_vram\":13421772800}]}"
+data ps_resident_cpu: String = "{\"models\":[{\"name\":\"gpt-oss:20b\",\"size_vram\":0}]}"
+data ps_empty_set: String = "{\"models\":[]}"
+data ps_other_model: String = "{\"models\":[{\"name\":\"llama3:8b\",\"size_vram\":999}]}"
+
+// The proof is OBTAINED, never fabricated. sole_constructor refuses a literal here, so this
+// helper must walk the same route production does: a converged verdict or nothing. That is the
+// ordering claim being asserted rather than described -- if it ever stops holding, every
+// residency witness below reads "no-proof" and reds, instead of quietly testing a fiction.
+fn served_proof() -> SparkServingServedProof? {
+  spark_serving_served_proof(
+    health: health(version_stdout: good_version, generate_stdout: good_generation()),
+  )
+}
+
+fn residency_tag_of(stdout: String) -> String {
+  match served_proof() {
+    Present { value: p } =>
+      residency_tag(
+        r: spark_serving_residency_from_capture(
+          proof: p,
+          capture: ProbeAnswered { stdout: stdout },
+        ),
+      )
+    Absent => "no-proof"
+  }
+}
+
+fn residency_tag(r: SparkServingResidency) -> String {
+  match r {
+    ResidencyUnobserved { cause: _ } => "unobserved"
+    NothingResident => "nothing-resident"
+    ResidentInVram { vram_lexeme: _ } => "in-vram"
+    ResidentOutsideVram => "outside-vram"
+  }
+}
+
+test fn f_vram_nonzero_reads_in_vram() -> Bool {
+  residency_tag_of(stdout: ps_resident_gpu) == "in-vram"
+}
+
+test fn g_vram_zero_reads_outside_vram() -> Bool {
+  residency_tag_of(stdout: ps_resident_cpu) == "outside-vram"
+}
+
+// THE ARM THIS WHOLE TYPE EXISTS FOR: an empty resident set must NOT read as CPU. If this ever
+// returns "outside-vram" the probe has fabricated a placement claim out of an absence.
+test fn h_empty_set_is_not_cpu() -> Bool {
+  residency_tag_of(stdout: ps_empty_set) == "nothing-resident"
+}
+
+// A DIFFERENT model being resident says nothing about ours -- same absence, same arm.
+test fn i_other_model_resident_is_not_ours() -> Bool {
+  residency_tag_of(stdout: ps_other_model) == "nothing-resident"
+}
+
+test fn j_unparseable_ps_refuses_rather_than_guessing() -> Bool {
+  residency_tag_of(stdout: "not json at all") == "unobserved"
+}
+
+// ORDERING IS STRUCTURAL: a proof exists only for a converged verdict, so residency cannot be
+// decoded off an unhealthy or unobserved host at all.
+test fn k_no_proof_from_unobserved_health() -> Bool {
+  match spark_serving_served_proof(
+    health: spark_serving_health_from_captures(
+      version: never_ran_capture(),
+      generate: ProbeAnswered { stdout: good_generation() },
+    ),
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn l_proof_exists_for_converged_health() -> Bool {
+  match spark_serving_served_proof(
+    health: health(version_stdout: good_version, generate_stdout: good_generation()),
+  ) {
+    Present { value: p } => p.served_model as String == "gpt-oss:20b"
+    Absent => false
+  }
 }

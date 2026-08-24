@@ -1,34 +1,34 @@
 module test.claim.memory_provisioning_witness_test
 
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data gb: Nat = 1000000000
 
-data gb: std.nat.Nat = 1000000000
-
-fn rdimm(part: std.types.NonEmptyStr, capacity: std.nat.Nat) -> extdeps.memory.types.DramModuleCatalogRow {
-  extdeps.memory.types.DramModuleCatalogRow {
+fn rdimm(part: NonEmptyStr, capacity: Nat) -> DramModuleCatalogRow {
+  DramModuleCatalogRow {
     part_number: part,
-    manufacturer: extdeps.vendor.samsung.samsung,
-    generation: extdeps.memory.types.dram_generation_ddr4,
-    capacity_bytes: std.measure.byte_size(count: capacity),
+    manufacturer: samsung,
+    generation: dram_generation_ddr4,
+    capacity_bytes: byte_size(count: capacity),
     data_rate_mts: 3200,
     ecc: true,
-    buffering: extdeps.memory.types.Registered,
-    chip_width: std.measure.bit_width(count: 4),
+    buffering: Registered,
+    die_stacking: MonolithicDie,
+    chip_width: bit_width(count: 4),
     rank_count: 2,
   }
 }
 
-fn rdimm_16g() -> extdeps.memory.types.DramModuleCatalogRow { rdimm(part: "SYNTH-16G", capacity: 16 * gb) }
-fn rdimm_32g() -> extdeps.memory.types.DramModuleCatalogRow { rdimm(part: "SYNTH-32G", capacity: 32 * gb) }
-fn rdimm_64g() -> extdeps.memory.types.DramModuleCatalogRow { rdimm(part: "SYNTH-64G", capacity: 64 * gb) }
+fn rdimm_16g() -> DramModuleCatalogRow { rdimm(part: "SYNTH-16G", capacity: 16 * gb) }
+fn rdimm_32g() -> DramModuleCatalogRow { rdimm(part: "SYNTH-32G", capacity: 32 * gb) }
+fn rdimm_64g() -> DramModuleCatalogRow { rdimm(part: "SYNTH-64G", capacity: 64 * gb) }
 
 // A DDR5 module, identical to the rows above on every axis EXCEPT generation.
 // Used only as the discriminating input for the platform-compatibility join:
 // keeping every other field equal is what makes the refusal attributable to
 // the generation axis rather than to synthetic rows generally.
-fn rdimm_32g_ddr5() -> extdeps.memory.types.DramModuleCatalogRow {
-  extdeps.memory.types.DramModuleCatalogRow {
+fn rdimm_32g_ddr5() -> DramModuleCatalogRow {
+  DramModuleCatalogRow {
     part_number: "SYNTH-32G-DDR5",
     manufacturer: samsung,
     generation: dram_generation_ddr5,
@@ -36,11 +36,11 @@ fn rdimm_32g_ddr5() -> extdeps.memory.types.DramModuleCatalogRow {
     data_rate_mts: 4800,
     ecc: true,
     buffering: Registered,
+    die_stacking: MonolithicDie,
     chip_width: bit_width(count: 4),
     rank_count: 2,
   }
 }
-
 
 // ---------------------------------------------------------------------------
 // The surveyed market: the ratios are READ from cited rows, not asserted.
@@ -49,14 +49,14 @@ fn rdimm_32g_ddr5() -> extdeps.memory.types.DramModuleCatalogRow {
 // The two providers whose arm64 surfaces publish three GB per vCPU. Asserted
 // through the derivation so the number comes from the fetched rows.
 test fn ubicloud_and_blacksmith_publish_three_gb_per_arm_vcpu() -> Bool {
-  let rows = gunbc.runner_shape_census.surveyed_runner_shapes()
-  match gunbc.runner_shape_census.memory_per_vcpu(rows: rows, provider: extdeps.cloud.ubicloud.ubicloud_provider_identity, architecture: extdeps.toolchain.types.Aarch64) {
+  let rows = surveyed_runner_shapes()
+  match memory_per_vcpu(rows: rows, provider: ubicloud_provider_identity, architecture: Aarch64) {
     UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } =>
-      extdeps.ci_runner.types.quoted_numeral(quoted: per_vcpu) == 3
+      quoted_numeral(quoted: per_vcpu) == 3
         && sizes_agreeing == 5
-        && match gunbc.runner_shape_census.memory_per_vcpu(rows: rows, provider: extdeps.ci_runner.blacksmith.blacksmith_provider_identity, architecture: extdeps.toolchain.types.Aarch64) {
+        && match memory_per_vcpu(rows: rows, provider: blacksmith_provider_identity, architecture: Aarch64) {
           UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } =>
-            extdeps.ci_runner.types.quoted_numeral(quoted: per_vcpu) == 3 && sizes_agreeing == 5
+            quoted_numeral(quoted: per_vcpu) == 3 && sizes_agreeing == 5
           RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
           NonIntegralRatioInSizes { label } => false
           UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
@@ -71,12 +71,12 @@ test fn ubicloud_and_blacksmith_publish_three_gb_per_arm_vcpu() -> Bool {
 
 // Depot publishes four GB per arm vCPU, so the market is not one ratio.
 test fn depot_publishes_four_gb_per_arm_vcpu() -> Bool {
-  match gunbc.runner_shape_census.memory_per_vcpu(
-    rows: gunbc.runner_shape_census.surveyed_runner_shapes(),
-    provider: extdeps.ci_runner.depot.depot_provider_identity,
-    architecture: extdeps.toolchain.types.Aarch64,
+  match memory_per_vcpu(
+    rows: surveyed_runner_shapes(),
+    provider: depot_provider_identity,
+    architecture: Aarch64,
   ) {
-    UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } => extdeps.ci_runner.types.quoted_numeral(quoted: per_vcpu) == 4
+    UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } => quoted_numeral(quoted: per_vcpu) == 4
     RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
     NonIntegralRatioInSizes { label } => false
     UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
@@ -89,10 +89,10 @@ test fn depot_publishes_four_gb_per_arm_vcpu() -> Bool {
 // are mostly four GB per vCPU but include a 5-vCPU/14 GB size, so a collapsed
 // figure would have silently discarded a real published shape.
 test fn a_provider_with_non_uniform_sizes_refuses_a_single_ratio() -> Bool {
-  match gunbc.runner_shape_census.memory_per_vcpu(
-    rows: gunbc.runner_shape_census.surveyed_runner_shapes(),
-    provider: extdeps.ci_runner.github_actions.github_actions_provider_identity,
-    architecture: extdeps.toolchain.types.Aarch64,
+  match memory_per_vcpu(
+    rows: surveyed_runner_shapes(),
+    provider: github_actions_provider_identity,
+    architecture: Aarch64,
   ) {
     NonIntegralRatioInSizes { label } => true
     UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
@@ -105,12 +105,12 @@ test fn a_provider_with_non_uniform_sizes_refuses_a_single_ratio() -> Bool {
 // The x64 side is not uniformly four either: CircleCI's x86 Docker classes are
 // two GB per vCPU. This is the row that refutes "1:4 everywhere".
 test fn circleci_x86_docker_is_two_gb_per_vcpu() -> Bool {
-  match gunbc.runner_shape_census.memory_per_vcpu(
-    rows: gunbc.runner_shape_census.surveyed_runner_shapes(),
-    provider: extdeps.ci_runner.circleci.circleci_provider_identity,
-    architecture: extdeps.toolchain.types.X86_64,
+  match memory_per_vcpu(
+    rows: surveyed_runner_shapes(),
+    provider: circleci_provider_identity,
+    architecture: X86_64,
   ) {
-    UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } => extdeps.ci_runner.types.quoted_numeral(quoted: per_vcpu) == 2
+    UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } => quoted_numeral(quoted: per_vcpu) == 2
     RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
     NonIntegralRatioInSizes { label } => false
     UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
@@ -123,12 +123,12 @@ test fn circleci_x86_docker_is_two_gb_per_vcpu() -> Bool {
 // real reading of the pages and not a constructor nobody reaches.
 test fn only_ubicloud_states_a_dedicated_core_entitlement() -> Bool {
   let ubicloud_arm = filter(
-    extdeps.ci_runner.types.runner_shape_rows(availability: extdeps.cloud.ubicloud.ubicloud_runner_catalog_shapes),
-    r => r.architecture == extdeps.toolchain.types.Aarch64,
+    runner_shape_rows(availability: ubicloud_runner_catalog_shapes),
+    r => r.architecture == Aarch64,
   )
   let blacksmith_arm = filter(
-    extdeps.ci_runner.types.runner_shape_rows(availability: extdeps.ci_runner.blacksmith.blacksmith_runner_catalog),
-    r => r.architecture == extdeps.toolchain.types.Aarch64,
+    runner_shape_rows(availability: blacksmith_runner_catalog),
+    r => r.architecture == Aarch64,
   )
   count(ubicloud_arm) != 0
     && all(ubicloud_arm, r => match r.entitlement {
@@ -149,7 +149,7 @@ test fn only_ubicloud_states_a_dedicated_core_entitlement() -> Bool {
 // make visible.
 test fn ubicloud_x64_entitlement_is_an_smt_thread() -> Bool {
   all(
-    filter(extdeps.ci_runner.types.runner_shape_rows(availability: extdeps.cloud.ubicloud.ubicloud_runner_catalog_shapes), r => r.architecture == extdeps.toolchain.types.X86_64),
+    filter(runner_shape_rows(availability: ubicloud_runner_catalog_shapes), r => r.architecture == X86_64),
     r => match r.entitlement {
       SmtSharedVcpu { threads_per_core } => threads_per_core == 2
       DedicatedPhysicalCore => false
@@ -159,7 +159,6 @@ test fn ubicloud_x64_entitlement_is_an_smt_thread() -> Bool {
 }
 
 // ---------------------------------------------------------------------------
-
 
 // ---------------------------------------------------------------------------
 // EVIDENCE POLARITY IS DERIVED, NOT DECLARED.
@@ -348,7 +347,7 @@ test fn the_x64_sku_refuses_on_the_q8030() -> Bool {
     policy: FullChannelRequiredForSellableRunner,
     cpu: altra_q8030_catalog,
     profile: x64_standard_profile,
-    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g(), rdimm_64g()],
+    modules: [rdimm_32g(), rdimm_64g()],
   ) {
     ProfileCapacityRefused { profile_label, cause } =>
       profile_label == "x64-standard"
@@ -396,9 +395,9 @@ test fn an_arm_sku_refuses_on_an_x64_processor() -> Bool {
   match derive_profile_capacity(
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
-    cpu: extdeps.cpu.amd.ryzen_9_7950x3d_catalog,
+    cpu: ryzen_9_7950x3d_catalog,
     profile: arm_value_profile,
-    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
+    modules: [rdimm_32g()],
   ) {
     ProfileCapacityRefused { profile_label, cause } =>
       match cause {
@@ -422,7 +421,7 @@ test fn a_matching_architecture_still_derives() -> Bool {
     policy: FullChannelRequiredForSellableRunner,
     cpu: altra_q8030_catalog,
     profile: arm_value_profile,
-    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g(), rdimm_64g()],
+    modules: [rdimm_32g(), rdimm_64g()],
   ) {
     ProfileCapacitiesDerived { capacities, declined_by_policy } => count(capacities) == 2
     ProfileCapacityRefused { profile_label, cause } => false
@@ -475,7 +474,7 @@ test fn one_incompatible_module_refuses_the_whole_offer() -> Bool {
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
     required: byte_size(count: 192 * gb),
-    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g(), rdimm_32g_ddr5()],
+    modules: [rdimm_32g(), rdimm_32g_ddr5()],
   ) {
     PopulationDerivationRefused { board_label, cause } =>
       match cause {
@@ -617,7 +616,7 @@ test fn the_documented_four_module_shape_is_declined_not_invalid() -> Bool {
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
     required: byte_size(count: 192 * gb),
-    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
+    modules: [rdimm_32g()],
   ) {
     PopulationsDerived { options, declined_by_policy } =>
       count(options) == 1
@@ -666,7 +665,7 @@ test fn a_board_without_a_cited_population_table_refuses_the_permissive_policy()
     geometry: supermicro_r12spd_a_geometry,
     policy: AnyBoardDocumentedPopulation,
     required: byte_size(count: 192 * gb),
-    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
+    modules: [rdimm_32g()],
   ) {
     PopulationDerivationRefused { board_label, cause } =>
       board_label == "Supermicro R12SPD-A"
@@ -695,7 +694,7 @@ test fn the_same_uncited_board_derives_under_the_full_channel_policy() -> Bool {
     geometry: supermicro_r12spd_a_geometry,
     policy: FullChannelRequiredForSellableRunner,
     required: byte_size(count: 192 * gb),
-    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
+    modules: [rdimm_32g()],
   ) {
     PopulationsDerived { options, declined_by_policy } =>
       count(options) == 2
@@ -737,7 +736,7 @@ test fn a_2dpc_board_reaches_a_target_the_1dpc_board_cannot() -> Bool {
     policy: FullChannelRequiredForSellableRunner,
     cpu: altra_max_m12830_catalog,
     profile: arm_memory_profile,
-    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
+    modules: [rdimm_32g()],
   ) {
     ProfileCapacityRefused { profile_label, cause } =>
       match cause {
@@ -751,7 +750,7 @@ test fn a_2dpc_board_reaches_a_target_the_1dpc_board_cannot() -> Bool {
                   policy: FullChannelRequiredForSellableRunner,
                   cpu: altra_max_m12830_catalog,
                   profile: arm_memory_profile,
-                  modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
+                  modules: [rdimm_32g()],
                 ) {
                   ProfileCapacitiesDerived { capacities, declined_by_policy } =>
                     count(capacities) == 1 && any(capacities, c => c.dimm_count == 16)
@@ -774,7 +773,6 @@ test fn a_2dpc_board_reaches_a_target_the_1dpc_board_cannot() -> Bool {
     ProfileCapacitiesDerived { capacities, declined_by_policy } => false
   }
 }
-
 
 // GitHub's x64 sizes are unreadable for the same reason its arm64 sizes are:
 // the two-vCPU/seven-GB standard runner makes the ratio non-integral. Asserted
@@ -838,16 +836,16 @@ test fn a_declared_decimal_basis_converts_to_bytes() -> Bool {
 // between two DIMM SKUs.
 test fn the_same_quoted_figure_differs_under_a_binary_basis() -> Bool {
   match entitlement_bytes(
-    profile: gunbc.memory_provisioning.RunnerProductProfile {
+    profile: RunnerProductProfile {
       label: "synthetic-binary",
       architecture: Aarch64,
       advertised_entitlement: DedicatedPhysicalCore,
-      guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedBinaryGibibytes { value: gibibyte(count: 3) },
+      guaranteed_memory_per_entitlement: QuotedBinaryGibibytes { value: gibibyte(count: 3) },
       consulted_benchmarks: [ubicloud_arm_benchmark],
     },
   ) {
     EntitlementBytesDeclared { bytes } =>
-      std.measure.byte_size_count(b: bytes) == 3 * 1073741824 && std.measure.byte_size_count(b: bytes) != 3 * gb
+      byte_size_count(b: bytes) == 3 * 1073741824 && byte_size_count(b: bytes) != 3 * gb
     EntitlementBytesBasisUndeclared => false
   }
 }
@@ -859,14 +857,14 @@ test fn an_undeclared_basis_refuses_the_capacity_derivation() -> Bool {
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
     cpu: altra_q6430_catalog,
-    profile: gunbc.memory_provisioning.RunnerProductProfile {
+    profile: RunnerProductProfile {
       label: "synthetic-unbased",
       architecture: Aarch64,
       advertised_entitlement: DedicatedPhysicalCore,
-      guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedWithoutBasis { numeral: 3, unit_label: "GB" },
+      guaranteed_memory_per_entitlement: QuotedWithoutBasis { numeral: 3, unit_label: "GB" },
       consulted_benchmarks: [ubicloud_arm_benchmark],
     },
-    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g(), rdimm_64g()],
+    modules: [rdimm_32g(), rdimm_64g()],
   ) {
     ProfileCapacityRefused { profile_label, cause } =>
       match cause {
@@ -897,14 +895,14 @@ test fn an_unstated_entitlement_refuses_through_the_fold() -> Bool {
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
     cpu: altra_q6430_catalog,
-    profile: gunbc.memory_provisioning.RunnerProductProfile {
+    profile: RunnerProductProfile {
       label: "synthetic-unstated",
       architecture: Aarch64,
       advertised_entitlement: EntitlementUnstated,
-      guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedDecimalGigabytes { value: gigabyte(count: 3) },
+      guaranteed_memory_per_entitlement: QuotedDecimalGigabytes { value: gigabyte(count: 3) },
       consulted_benchmarks: [ubicloud_arm_benchmark],
     },
-    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
+    modules: [rdimm_32g()],
   ) {
     ProfileCapacityRefused { profile_label, cause } =>
       match cause {
@@ -976,7 +974,7 @@ test fn the_fan_out_answers_once_per_sku_and_refuses_the_x64_one() -> Bool {
     policy: FullChannelRequiredForSellableRunner,
     cpu: altra_q6430_catalog,
     profiles: declared_product_profiles(),
-    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g(), rdimm_64g()],
+    modules: [rdimm_32g(), rdimm_64g()],
   )
   count(results) == 3
     && count(filter(results, r => match r {
@@ -1006,7 +1004,7 @@ test fn full_channel_populations_are_topology_derived() -> Bool {
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
     required: byte_size(count: 192 * gb),
-    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
+    modules: [rdimm_32g()],
   ) {
     PopulationsDerived { options, declined_by_policy } =>
       count(options) == 1
@@ -1031,7 +1029,7 @@ test fn the_population_names_its_overshoot() -> Bool {
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
     required: byte_size(count: 192 * gb),
-    modules: [test.claim.memory_provisioning_witness_test.rdimm_32g()],
+    modules: [rdimm_32g()],
   ) {
     PopulationsDerived { options, declined_by_policy } =>
       !any(options, o => byte_size_count(b: o.total_bytes) != 256 * gb)
@@ -1039,7 +1037,6 @@ test fn the_population_names_its_overshoot() -> Bool {
     PopulationDerivationRefused { board_label, cause } => false
   }
 }
-
 
 // RED CONTROL for the labelling seam (review 53633). A sample mixing "GB" and
 // "GiB" rows has no single ratio, and the census REFUSES rather than adopting
@@ -1052,13 +1049,13 @@ test fn the_population_names_its_overshoot() -> Bool {
 // "GiB" happily, so the control fails against the defect rather than merely
 // passing against the fix.
 test fn a_mixed_unit_label_sample_refuses_a_ratio() -> Bool {
-  match gunbc.runner_shape_census.memory_per_vcpu(
+  match memory_per_vcpu(
     rows: [
       synthetic_shape(vcpus: 2, numeral: 6, decimal: false),
       synthetic_shape(vcpus: 4, numeral: 12, decimal: true),
     ],
     provider: synthetic_provider(),
-    architecture: extdeps.toolchain.types.Aarch64,
+    architecture: Aarch64,
   ) {
     UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => first_label != divergent_label
     UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } => false
@@ -1072,16 +1069,16 @@ test fn a_mixed_unit_label_sample_refuses_a_ratio() -> Bool {
 // yield a ratio, so the refusal above is discriminating on the label axis and
 // not on the synthetic rows generally.
 test fn the_same_sample_in_one_unit_yields_a_ratio() -> Bool {
-  match gunbc.runner_shape_census.memory_per_vcpu(
+  match memory_per_vcpu(
     rows: [
       synthetic_shape(vcpus: 2, numeral: 6, decimal: true),
       synthetic_shape(vcpus: 4, numeral: 12, decimal: true),
     ],
     provider: synthetic_provider(),
-    architecture: extdeps.toolchain.types.Aarch64,
+    architecture: Aarch64,
   ) {
     UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } =>
-      extdeps.ci_runner.types.quoted_numeral(quoted: per_vcpu) == 3 && sizes_agreeing == 2
+      quoted_numeral(quoted: per_vcpu) == 3 && sizes_agreeing == 2
     UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
     RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
     NonIntegralRatioInSizes { label } => false
@@ -1089,25 +1086,25 @@ test fn the_same_sample_in_one_unit_yields_a_ratio() -> Bool {
   }
 }
 
-fn synthetic_provider() -> std.decl_ref.DeclarationRef {
-  std.decl_ref.decl_ref(module_path: "test.claim.memory_provisioning_witness_test", decl_name: "synthetic_provider")
+fn synthetic_provider() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.memory_provisioning_witness_test", decl_name: "synthetic_provider")
 }
 
-fn synthetic_shape(vcpus: std.nat.Nat, numeral: std.nat.Nat, decimal: Bool) -> extdeps.ci_runner.types.RunnerShapeRow {
-  extdeps.ci_runner.types.RunnerShapeRow {
+fn synthetic_shape(vcpus: Nat, numeral: Nat, decimal: Bool) -> RunnerShapeRow {
+  RunnerShapeRow {
     provider: synthetic_provider(),
     label: "synthetic",
-    architecture: extdeps.toolchain.types.Aarch64,
-    entitlement: extdeps.ci_runner.types.EntitlementUnstated,
-    vcpus: std.measure.hardware_thread_count(vcpus),
+    architecture: Aarch64,
+    entitlement: EntitlementUnstated,
+    vcpus: hardware_thread_count(vcpus),
     memory: synthetic_memory(numeral: numeral, decimal: decimal),
   }
 }
 
-fn synthetic_memory(numeral: std.nat.Nat, decimal: Bool) -> extdeps.ci_runner.types.QuotedByteMagnitude {
+fn synthetic_memory(numeral: Nat, decimal: Bool) -> QuotedByteMagnitude {
   if decimal {
-    extdeps.ci_runner.types.QuotedDecimalGigabytes { value: std.measure.gigabyte(count: numeral) }
+    QuotedDecimalGigabytes { value: gigabyte(count: numeral) }
   } else {
-    extdeps.ci_runner.types.QuotedBinaryGibibytes { value: std.measure.gibibyte(count: numeral) }
+    QuotedBinaryGibibytes { value: gibibyte(count: numeral) }
   }
 }

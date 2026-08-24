@@ -1,6 +1,5 @@
 module gunbc.live_deploy.deployed_tree_observation
 
-
 // ONE HOST, SEALED WITH ITS CREDENTIAL AND ITS REPO PATH, SO A CROSS-HOST JOIN HAS NO CONSTRUCTOR.
 //
 // The revision and the tree state are two facts that only mean something together: the deployed tree
@@ -21,21 +20,21 @@ module gunbc.live_deploy.deployed_tree_observation
 // attempt touches. Binding the host here rather than widening that context keeps one attempt able to
 // observe many hosts while keeping any single observation about exactly one.
 type DeployedTreeLocus sole_constructor {
-  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext
-  target: gunbc.fleet_known_hosts_anchor.SshTarget
-  repo: std.types.NonEmptyStr
+  context: FleetSshExecutionContext
+  target: SshTarget
+  repo: NonEmptyStr
 }
 
 fn deployed_tree_locus(
-  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
-  target: gunbc.fleet_known_hosts_anchor.SshTarget,
-  repo: std.types.NonEmptyStr,
+  context: FleetSshExecutionContext,
+  target: SshTarget,
+  repo: NonEmptyStr,
 ) -> DeployedTreeLocus {
   DeployedTreeLocus { context: context, target: target, repo: repo }
 }
 
-fn deployed_tree_locus_transport(locus: DeployedTreeLocus) -> gunbc.host_effect.HostEffectTransport {
-  gunbc.host_effect.FleetSsh { target: locus.target, context: locus.context }
+fn deployed_tree_locus_transport(locus: DeployedTreeLocus) -> HostEffectTransport {
+  FleetSsh { target: locus.target, context: locus.context }
 }
 
 // THE INSTRUMENT IS GIT, AND IT IS FOUR SINGLE COMMANDS BECAUSE IT HAS TO BE.
@@ -57,7 +56,7 @@ fn deployed_tree_locus_transport(locus: DeployedTreeLocus) -> gunbc.host_effect.
 // the whole locus would also make the builders unreachable to any witness, because the execution
 // context is sealed with an admitted caller list and no test can mint one. A wall that makes the
 // wrong factoring untestable is the wall doing its job.
-fn deployed_tree_revision_argv(repo: std.types.NonEmptyStr) -> List<String> {
+fn deployed_tree_revision_argv(repo: NonEmptyStr) -> List<String> {
   ["git", "-C", repo as String, "rev-parse", "HEAD"]
 }
 
@@ -161,18 +160,18 @@ fn deployed_tree_temp_index_path(locus: DeployedTreeLocus) -> String {
 // sparse-checkout configuration can set skip-worktree bits in the temporary index, and a MISSING
 // tracked path then reads as intentionally absent rather than as drift. That is a false CLEAN on
 // precisely the failure this observation exists to catch -- a path the sync did not deliver.
-fn deployed_tree_read_tree_argv(repo: std.types.NonEmptyStr, revision_hex: String, index_path: String) -> List<String> {
+fn deployed_tree_read_tree_argv(repo: NonEmptyStr, revision_hex: String, index_path: String) -> List<String> {
   [
-    "env", join(["GIT_INDEX_FILE=", index_path], ""),
+    env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""),
     "git", "-C", repo as String, "read-tree", "--no-sparse-checkout", revision_hex,
   ]
 }
 
 // `env` carries GIT_INDEX_FILE because that variable has no command-line equivalent, and every word
 // here stays inside the portable alphabet: letters, digits and `_ = / . -`. No shell, no pipe.
-fn deployed_tree_status_argv(repo: std.types.NonEmptyStr, index_path: String) -> List<String> {
+fn deployed_tree_status_argv(repo: NonEmptyStr, index_path: String) -> List<String> {
   [
-    "env", join(["GIT_INDEX_FILE=", index_path], ""),
+    env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""),
     "git", "-C", repo as String, "--no-optional-locks",
     "status", "--porcelain=v1", "-z", "--untracked-files=all",
   ]
@@ -189,9 +188,9 @@ fn deployed_tree_status_argv(repo: std.types.NonEmptyStr, index_path: String) ->
 // It runs under the same temporary index for the same reason the status leg does: `ls-files --others`
 // consults the index to decide what "other" means, and the deployed repo's index is the artifact this
 // module refuses to trust.
-fn deployed_tree_ignored_argv(repo: std.types.NonEmptyStr, index_path: String) -> List<String> {
+fn deployed_tree_ignored_argv(repo: NonEmptyStr, index_path: String) -> List<String> {
   [
-    "env", join(["GIT_INDEX_FILE=", index_path], ""),
+    env_path_resolved_program as String, join(["GIT_INDEX_FILE=", index_path], ""),
     "git", "-C", repo as String,
     "ls-files", "--others", "--ignored", "--exclude-standard", "-z",
   ]
@@ -201,7 +200,7 @@ fn deployed_tree_ignored_argv(repo: std.types.NonEmptyStr, index_path: String) -
 // attempted as `exit_code: 127` manufactures a plausible observation of a host nobody contacted, and
 // every downstream reader then cannot distinguish "the command ran and failed" from "no command ran".
 type DeployedTreeLegOutcome
-  = DeployedTreeLegRan { result: extdeps.ssh.session.SshSessionExecResult }
+  = DeployedTreeLegRan { result: SshSessionExecResult }
   | DeployedTreeLegNotAttempted { reason: String }
 
 fn deployed_tree_leg(locus: DeployedTreeLocus, argv: List<String>) -> DeployedTreeLegOutcome {
@@ -237,7 +236,7 @@ type DeployedTreeUnobservableCause
   | TreeStatusUnreadable { detail: String }
 
 type DeployedTreeObservation
-  = DeployedTreeObserved { revision: extdeps.git.object_store.GitObjectId, content: DeployedTreeContentState }
+  = DeployedTreeObserved { revision: GitObjectId, content: DeployedTreeContentState }
   | DeployedTreeUnobservable { cause: DeployedTreeUnobservableCause }
 
 // ONE RENDERING, so every consumer that needs prose derives it from the arms rather than each
@@ -262,7 +261,7 @@ fn deployed_tree_unobservable_text(cause: DeployedTreeUnobservableCause) -> Stri
 // it disagreed.
 type DeployedTreeContentState
   = DeployedScopeMatchesCommit
-  | DeployedScopeDiverged { changed_paths: std.types.NonEmptyStr }
+  | DeployedScopeDiverged { changed_paths: NonEmptyStr }
 
 // A SCAN THAT CANNOT PARSE ITS INPUT REFUSES; IT DOES NOT ANSWER CLEAN. Both refusals are the ones
 // candidate admission already names, because the grammar is the same grammar: a field that is neither
@@ -292,7 +291,7 @@ fn deployed_tree_content_reading(entries_nul: String, ignored_nul: String) -> De
     if length(changed) == 0 {
       ContentRead { state: DeployedScopeMatchesCommit }
     } else {
-      ContentRead { state: DeployedScopeDiverged { changed_paths: join(changed, " ") as std.types.NonEmptyStr } }
+      ContentRead { state: DeployedScopeDiverged { changed_paths: join(changed, " ") as NonEmptyStr } }
     }
   }
 }
@@ -345,7 +344,7 @@ fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
 // differs between the two revisions, which is drift wearing a modification's label.
 fn observe_deployed_tree_against_revision(
   locus: DeployedTreeLocus,
-  revision: extdeps.git.object_store.GitObjectId,
+  revision: GitObjectId,
   revision_hex: String,
 ) -> DeployedTreeObservation {
   let index_path = deployed_tree_temp_index_path(locus: locus)
@@ -414,9 +413,9 @@ fn observe_deployed_tree_against_revision(
 // being folded into drift, because the remedies differ -- drift is answered by moving to another
 // commit, modification by restoring the one already named.
 type DeployedTreeStanding
-  = DeployedTreeConverged { revision: extdeps.git.object_store.GitObjectId }
-  | DeployedTreeRevisionDrifted { desired: extdeps.git.object_store.GitObjectId, local: extdeps.git.object_store.GitObjectId }
-  | DeployedTreeModifiedAtRevision { revision: extdeps.git.object_store.GitObjectId, changed_paths: std.types.NonEmptyStr }
+  = DeployedTreeConverged { revision: GitObjectId }
+  | DeployedTreeRevisionDrifted { desired: GitObjectId, local: GitObjectId }
+  | DeployedTreeModifiedAtRevision { revision: GitObjectId, changed_paths: NonEmptyStr }
   | DeployedTreeStandingUnobserved { cause: DeployedTreeUnobservableCause }
 
 // DRIFT DOMINATES MODIFICATION, and the reason is about meaning rather than precedence. The
@@ -431,7 +430,7 @@ type DeployedTreeStanding
 // without a host -- the same extraction the belt revision gate needed before its arms could be
 // tested at all.
 fn deployed_tree_standing(
-  desired: extdeps.git.object_store.GitObjectId,
+  desired: GitObjectId,
   observation: DeployedTreeObservation,
 ) -> DeployedTreeStanding {
   match observation {

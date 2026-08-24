@@ -101,7 +101,7 @@ pub fn new_expected_red_roster_join_report(
         run_note: run_note.clone(),
         rows: Rc::new({
             let mut __result = Vec::new();
-            for identity in roster.clone().iter().cloned() {
+            for identity in roster.iter().cloned() {
                 __result.push(Rc::new(ExpectedRedRosterJoinRow {
                     identity: identity.clone(),
                     disposition: Rc::new(ExpectedRedJoinDisposition::NotEvaluated {

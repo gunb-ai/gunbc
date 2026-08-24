@@ -6,24 +6,24 @@ type DashboardActuationPosture
 
 type DashboardProvisionTransport
   = DashboardLocalProvision
-  | DashboardSshProvision { host: std.types.NonEmptyStr }
+  | DashboardSshProvision { host: NonEmptyStr }
 
 type DashboardSourceSeed
-  = DashboardExistingRepo { anchor_ref: std.types.NonEmptyStr }
+  = DashboardExistingRepo { anchor_ref: NonEmptyStr }
   | DashboardGitBundle {
-      controller_repo: std.types.FilePath,
-      staged_bundle: std.types.FilePath,
-      anchor_ref: std.types.NonEmptyStr,
-      history_remote: std.types.NonEmptyStr,
+      controller_repo: FilePath,
+      staged_bundle: FilePath,
+      anchor_ref: NonEmptyStr,
+      history_remote: NonEmptyStr,
     }
 
 data provider_state_requires_admission_note: String = "THE ADMITTED BINDING IS A FIELD, NOT A CHECK SOMEONE MAY RUN. gunbc.provider_account models which account a credential belongs to and how many concurrent sessions its persistence behaviour can carry, and its admission function refuses the combinations that cannot hold — but this record used to carry only a root and an executable, so every instance in the fleet was built along a path that admission never saw. The model said the invalid architecture was unwritable while the constructor two files away wrote it four times.\\n\\nAdding the binding as a required field is what closes it. There is no default and no second constructor, so a provider state cannot come into existence without naming an admitted binding, and the account a deployment uses is no longer a bare path that happens to end in a directory name — it is a selection the admission agreed to.\\n\\nThe four declarations below bind ONE session each, which is what a serve process is, and take the total single-session path admitted_single_session_binding provides. That path cannot refuse, because a single session is admissible under every discipline resting on evidence; what it cannot do is accept an unobserved credential, since EvidencedSharingDiscipline has no unknown arm to pass it. A deployment wanting more than one session goes through the partial admission and must match its refusal."
 
 type DashboardProviderStateBinding
   = DashboardExistingProviderState {
-      root: std.types.FilePath,
-      executable: std.types.FilePath?,
-      binding: gunbc.provider_account.AdmittedAccountBinding,
+      root: FilePath,
+      executable: FilePath?,
+      binding: AdmittedAccountBinding,
     }
 
 data dispatch_state_scope_note: String = "WHOSE STATE THE DISPATCH ROOTS ARE IS A DECLARATION, NOT AN INFERENCE, and it is the axis this record was missing when blue/green landed. An instance owns two roots a dispatch WRITES — the worktree root and the published attempt-state root — and until now both were derived from instance_root for every instance, which silently answered a question nobody had asked: that dispatch evidence belongs to the SLOT.\\n\\nFor an isolated lab that answer is right and load-bearing. A lab exists to be disjoint from production, and handing it the host-shared roots would let one lab's apply or retract disturb another lab's live worktrees and published attempts. For a production blue/green SLOT the same answer is wrong, and wrong in two directions at once. The cutover retracts the retiring slot, so slot-scoped roots put a teardown of live dispatch evidence on the per-push path — the empty-directory wall then refuses, correctly, and every main push reds (measured 2026-08-01: seven consecutive deploy jobs, alternating by candidate, both directions failing once each slot had served long enough to accumulate evidence). And because each slot reads its OWN roots, a flip moves the dashboard to a process that cannot see the attempts dispatched under its predecessor.\\n\\nThe defect is not that either answer is wrong. It is that ONE derivation answered for both kinds of instance, so the two could not disagree. Making it a field with no default means an instance cannot come into existence without stating which it is, and the two laws below read the declaration rather than guessing from instance_root, instance_id, or actuation posture — none of which separate a lab from a production slot, since labs and slots are both DashboardActuating.\\n\\nTHIS DOES NOT REOPEN isolated_instance_own_binary_note (operator ruling, 2026-07-30). That ruling is about serve_binary and its argument is mutual exclusion of PROCESSES: a lab testing a new seed must not overwrite the binary production executes, and retract tears Owned members down. Nothing here touches serve_binary, which stays instance-derived for labs and instance-declared for production under both scopes. The two rulings partition cleanly because they are about different members with opposite sharing requirements — the binary must NOT be shared because a retract would delete a running program, and the dispatch state MUST be shared across production slots because a flip would otherwise orphan live agent sessions.\n\nWHAT THE 2026-08-19 SINGLE-DEPLOYMENT CUT DID TO THIS NOTE, recorded here rather than left as prose arguing from a mechanism that no longer exists. Everything above about the CUTOVER -- the retiring slot, the per-push teardown of live dispatch evidence, the flip that moves the dashboard to a process blind to its predecessor's attempts -- describes events that can no longer occur: blue/green was deleted at the root and there is one deployment. The seven-deploy measurement stands as the history that produced the field and is kept for that reason, not as a live hazard.\n\nThe FIELD survives with a real meaning, which is why this is prose repair and not a model change: it still separates an isolated lab from a production instance, and that distinction is load-bearing for exactly the reason the lab paragraph gives. But one consequence must be declared rather than discovered. For srv1_live_dashboard_instance the host-shared roots /opt/gunbc/dispatch-worktrees and /opt/gunbc/attempt-state are UNDER its own instance_root /opt/gunbc, so DispatchStateHostShared and DispatchStateInstanceOwned are now observationally identical on the only production instance. The containment-exemption law therefore holds over ZERO declared subjects, and its witness (host_shared_slots_are_exempt_from_containment_but_labs_are_not) had to move to a counterfactual slot to stay discriminating. That is honest but weak: the law is enforced only against a constructed instance, so a real production instance whose roots stopped being host-shared would not be caught by it. NEXT-RUNG TRIGGER: a second production instance on any host, at which point the exemption regains a declared subject and the witness returns to the live population."
@@ -32,31 +32,31 @@ data dispatch_state_scope_carries_its_roots_note: String = "THE SCOPE AND THE RO
 
 type DispatchStateScope
   = DispatchStateInstanceOwned {
-      worktree_child: std.types.NonEmptyStr,
-      attempt_state_child: std.types.NonEmptyStr,
+      worktree_child: NonEmptyStr,
+      attempt_state_child: NonEmptyStr,
     }
   | DispatchStateHostShared {
-      worktree_root: std.types.FilePath,
-      attempt_state_root: std.types.FilePath,
+      worktree_root: FilePath,
+      attempt_state_root: FilePath,
     }
 
 type HostDashboardInstance {
-  instance_id: std.types.NonEmptyStr
-  host_identity: std.types.NonEmptyStr
-  provision_parent_root: std.types.FilePath
-  instance_root: std.types.FilePath
-  local_origin_root: std.types.FilePath
-  local_origin_publish_ref: std.types.NonEmptyStr
-  repo_root: std.types.FilePath
-  dispatch_base_ref: std.types.NonEmptyStr
+  instance_id: NonEmptyStr
+  host_identity: NonEmptyStr
+  provision_parent_root: FilePath
+  instance_root: FilePath
+  local_origin_root: FilePath
+  local_origin_publish_ref: NonEmptyStr
+  repo_root: FilePath
+  dispatch_base_ref: NonEmptyStr
   dispatch_state_scope: DispatchStateScope
-  execution_environment: gunbc.roadmap_execution_contract.DispatchHostEnvironment
+  execution_environment: DispatchHostEnvironment
   provider_state: DashboardProviderStateBinding
-  serve_binary: std.types.FilePath
-  serve_function: std.types.NonEmptyStr
-  listen_host: std.types.NonEmptyStr
-  listen_port: std.types.Port
-  tmux_server: extdeps.tmux.TmuxServerScope
+  serve_binary: FilePath
+  serve_function: NonEmptyStr
+  listen_host: NonEmptyStr
+  listen_port: Port
+  tmux_server: TmuxServerScope
   actuation: DashboardActuationPosture
   provision_transport: DashboardProvisionTransport
   source_seed: DashboardSourceSeed
@@ -64,32 +64,39 @@ type HostDashboardInstance {
 
 data dashboard_instance_note: String = "A dashboard is an explicit host instance, not an ambient serve process. One value moves the source repository, local Git origin, attempt-worktree root, semantic execution-capability realizations, provider state binding, tmux server, listen address, handler entrypoint, and actuation posture together. Selection is by the serve entry function that receives this value; no environment variable may replace one projection independently. Production uses the user's default tmux server for compatibility. Labs and previews use named tmux servers and roots disjoint from production. Provider credentials remain pre-existing user-authored state and are referenced, never copied into a deployment payload. Capability realizations name exact executable paths and identity probes; observe-only means absence refuses admission until a separate capability-specific provisioner exists, never that generic Ensure guesses an installer."
 
-data srv1_dashboard_live_id: std.types.NonEmptyStr = "srv1-live" as std.types.NonEmptyStr
-data srv1_dashboard_lab_id: std.types.NonEmptyStr = "srv1-lab-codex-feedback-v0" as std.types.NonEmptyStr
-data srv2_dashboard_preview_id: std.types.NonEmptyStr = "srv2-preview-codex-feedback-v0" as std.types.NonEmptyStr
+data srv1_dashboard_live_id: NonEmptyStr = "srv1-live" as NonEmptyStr
+data srv1_dashboard_lab_id: NonEmptyStr = "srv1-lab-codex-feedback-v0" as NonEmptyStr
+data srv2_dashboard_preview_id: NonEmptyStr = "srv2-preview-codex-feedback-v0" as NonEmptyStr
 
-data srv1_dashboard_lab_root: std.types.FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0" as std.types.FilePath
-data srv2_dashboard_preview_root: std.types.FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-preview-v0" as std.types.FilePath
-data dashboard_environment_binding_executable: std.types.FilePath = "/usr/bin/env" as std.types.FilePath
+data srv1_dashboard_lab_root: FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0" as FilePath
+data srv2_dashboard_preview_root: FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-preview-v0" as FilePath
+// DERIVED FROM THE TOOL AUTHORITY, NOT A SECOND DECLARATION OF IT. This row is a product-layer
+// NAME for a fact that belongs to env(1): which absolute path this deployment's capability
+// bindings exec. It used to be the only place in the repository where env's path was declared at
+// all, which made a product module the upstream authority for a coreutils binary -- a section-3
+// layer inversion sitting underneath the nickname. extdeps.tools.env owns the fact now; the name
+// survives here because the binding surface reads better for it, and because a name that resolves
+// to the authority is not a fork.
+data dashboard_environment_binding_executable: FilePath = env_binary_path as String as FilePath
 
-fn dashboard_instance_child(root: std.types.FilePath, child: String) -> std.types.FilePath {
-  join([root as String, "/", child], "") as std.types.FilePath
+fn dashboard_instance_child(root: FilePath, child: String) -> FilePath {
+  join([root as String, "/", child], "") as FilePath
 }
 
-fn dashboard_instance_provider_state_root(instance: HostDashboardInstance) -> std.types.FilePath {
+fn dashboard_instance_provider_state_root(instance: HostDashboardInstance) -> FilePath {
   match instance.provider_state {
     DashboardExistingProviderState { root, executable: _, binding: _ } => root
   }
 }
 
-fn dashboard_instance_provider_executable(instance: HostDashboardInstance) -> std.types.FilePath? {
+fn dashboard_instance_provider_executable(instance: HostDashboardInstance) -> FilePath? {
   match instance.provider_state {
     DashboardExistingProviderState { root: _, executable, binding: _ } => executable
   }
 }
 
 fn dashboard_instance_provider_executable_matches(
-  executable: std.types.FilePath,
+  executable: FilePath,
   instance: HostDashboardInstance,
 ) -> Bool {
   match dashboard_instance_provider_executable(instance: instance) {
@@ -108,9 +115,9 @@ fn dashboard_instance_provider_executable_refusal_detail(instance: HostDashboard
 
 fn dashboard_instance_capability_executable(
   instance: HostDashboardInstance,
-  cap: gunbc.roadmap_execution_contract.ExecutionCapability,
-) -> std.types.FilePath? {
-  match gunbc.roadmap_execution_contract.dispatch_host_realization(
+  cap: ExecutionCapability,
+) -> FilePath? {
+  match dispatch_host_realization(
     environment: instance.execution_environment,
     capability: cap,
   ) {
@@ -122,8 +129,8 @@ fn dashboard_instance_capability_executable(
 
 fn dashboard_instance_dispatch_platform_executables(
   instance: HostDashboardInstance,
-) -> List<std.types.FilePath> {
-  gunbc.roadmap_execution_contract.dispatch_platform_required_capabilities()
+) -> List<FilePath> {
+  dispatch_platform_required_capabilities()
     |> flat_map(cap =>
       match dashboard_instance_capability_executable(
         instance: instance,
@@ -134,26 +141,26 @@ fn dashboard_instance_dispatch_platform_executables(
       })
 }
 
-fn dashboard_instance_ownership_marker_path(instance: HostDashboardInstance) -> std.types.FilePath {
+fn dashboard_instance_ownership_marker_path(instance: HostDashboardInstance) -> FilePath {
   dashboard_instance_child(
     root: instance.instance_root,
     child: join([".gunbc-dashboard-instance-", instance.instance_id as String], ""),
   )
 }
 
-fn dashboard_instance_service_session_name(instance: HostDashboardInstance) -> std.types.NonEmptyStr {
-  join(["gunbc-dashboard-", instance.instance_id as String], "") as std.types.NonEmptyStr
+fn dashboard_instance_service_session_name(instance: HostDashboardInstance) -> NonEmptyStr {
+  join(["gunbc-dashboard-", instance.instance_id as String], "") as NonEmptyStr
 }
 
-fn dashboard_instance_checkout_branch(instance: HostDashboardInstance) -> std.types.NonEmptyStr {
+fn dashboard_instance_checkout_branch(instance: HostDashboardInstance) -> NonEmptyStr {
   replace(
     s: instance.local_origin_publish_ref as String,
     from: "refs/heads/",
     to: "",
-  ) as std.types.NonEmptyStr
+  ) as NonEmptyStr
 }
 
-fn dashboard_instance_controller_workdir(instance: HostDashboardInstance) -> std.types.FilePath {
+fn dashboard_instance_controller_workdir(instance: HostDashboardInstance) -> FilePath {
   match instance.source_seed {
     DashboardExistingRepo { anchor_ref: _ } => instance.repo_root
     DashboardGitBundle {
@@ -197,104 +204,104 @@ data dashboard_instance_health_schema: String = "roadmap-dashboard-instance/v1"
 data dashboard_instance_health_identity_note: String = "The served health document leads with schema then instance_id, so a reader can identify it POSITIONALLY instead of scanning the body — the same rule dispatch_environment_receipt_identity_prefix states for the admission receipt. A health reader that scanned for an instance_id fragment would accept any document carrying it in any nested value, which is how a foreign or stale server on the polled port fabricates a converged apply."
 
 fn dashboard_instance_health_identity_prefix(instance_id: String) -> String {
-  extdeps.languages.json.emit.serialize_json_object_prefix(members: [
-    extdeps.languages.json.emit.json_kv(key: "schema", value: extdeps.languages.json.emit.json_string(s: dashboard_instance_health_schema)),
-    extdeps.languages.json.emit.json_kv(key: "instance_id", value: extdeps.languages.json.emit.json_string(s: instance_id)),
+  serialize_json_object_prefix(members: [
+    json_kv(key: "schema", value: json_string(s: dashboard_instance_health_schema)),
+    json_kv(key: "instance_id", value: json_string(s: instance_id)),
   ])
 }
 
-fn dashboard_named_tmux_server(instance_id: std.types.NonEmptyStr) -> extdeps.tmux.TmuxServerScope {
-  extdeps.tmux.NamedTmuxServer { socket_name: instance_id }
+fn dashboard_named_tmux_server(instance_id: NonEmptyStr) -> TmuxServerScope {
+  NamedTmuxServer { socket_name: instance_id }
 }
 
 fn dashboard_execution_environment(
-  serve_binary: std.types.FilePath,
-) -> gunbc.roadmap_execution_contract.DispatchHostEnvironment {
-  gunbc.roadmap_execution_contract.DispatchHostEnvironment {
+  serve_binary: FilePath,
+) -> DispatchHostEnvironment {
+  DispatchHostEnvironment {
     realizations: [
-      gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: gunbc.roadmap_execution_contract.GitWorkspaceCapability,
-        executable: "/usr/bin/git" as std.types.FilePath,
+      CapabilityRealization {
+        capability: GitWorkspaceCapability,
+        executable: "/usr/bin/git" as FilePath,
         identity_args: ["--version"],
-        identity_contains: "git version" as std.types.NonEmptyStr,
-        ensure_policy: gunbc.ensure.EnsureObserveOnly,
+        identity_contains: "git version" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
       },
-      gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: gunbc.roadmap_execution_contract.TmuxSessionCapability,
-        executable: "/usr/bin/tmux" as std.types.FilePath,
+      CapabilityRealization {
+        capability: TmuxSessionCapability,
+        executable: "/usr/bin/tmux" as FilePath,
         identity_args: ["-V"],
-        identity_contains: "tmux" as std.types.NonEmptyStr,
-        ensure_policy: gunbc.ensure.EnsureObserveOnly,
+        identity_contains: "tmux" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
       },
-      gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: gunbc.roadmap_execution_contract.TmuxPipeShellCapability,
-        executable: "/usr/bin/sh" as std.types.FilePath,
+      CapabilityRealization {
+        capability: TmuxPipeShellCapability,
+        executable: "/usr/bin/sh" as FilePath,
         identity_args: ["-c", "printf gunbc-tmux-pipe-shell"],
-        identity_contains: "gunbc-tmux-pipe-shell" as std.types.NonEmptyStr,
-        ensure_policy: gunbc.ensure.EnsureObserveOnly,
+        identity_contains: "gunbc-tmux-pipe-shell" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
       },
-      gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: gunbc.roadmap_execution_contract.TeeEventCaptureCapability,
-        executable: "/usr/bin/tee" as std.types.FilePath,
+      CapabilityRealization {
+        capability: TeeEventCaptureCapability,
+        executable: "/usr/bin/tee" as FilePath,
         identity_args: ["--version"],
-        identity_contains: "coreutils" as std.types.NonEmptyStr,
-        ensure_policy: gunbc.ensure.EnsureObserveOnly,
+        identity_contains: "coreutils" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
       },
-      gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: gunbc.roadmap_execution_contract.ProviderEventProjectionCapability,
-        executable: "/usr/bin/jq" as std.types.FilePath,
+      CapabilityRealization {
+        capability: ProviderEventProjectionCapability,
+        executable: "/usr/bin/jq" as FilePath,
         identity_args: ["--version"],
-        identity_contains: "jq-" as std.types.NonEmptyStr,
-        ensure_policy: gunbc.ensure.EnsureObserveOnly,
+        identity_contains: "jq-" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
       },
-      gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: gunbc.roadmap_execution_contract.EnvironmentBindingCapability,
+      CapabilityRealization {
+        capability: EnvironmentBindingCapability,
         executable: dashboard_environment_binding_executable,
         identity_args: ["--version"],
-        identity_contains: "coreutils" as std.types.NonEmptyStr,
-        ensure_policy: gunbc.ensure.EnsureObserveOnly,
+        identity_contains: "coreutils" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
       },
-      gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: gunbc.roadmap_execution_contract.AttemptStateDirectoryCapability,
-        executable: "/usr/bin/install" as std.types.FilePath,
+      CapabilityRealization {
+        capability: AttemptStateDirectoryCapability,
+        executable: "/usr/bin/install" as FilePath,
         identity_args: ["--version"],
-        identity_contains: "coreutils" as std.types.NonEmptyStr,
-        ensure_policy: gunbc.ensure.EnsureObserveOnly,
+        identity_contains: "coreutils" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
       },
-      gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: gunbc.roadmap_execution_contract.AttemptCurrentPointerCapability,
-        executable: "/usr/bin/ln" as std.types.FilePath,
+      CapabilityRealization {
+        capability: AttemptCurrentPointerCapability,
+        executable: "/usr/bin/ln" as FilePath,
         identity_args: ["--version"],
-        identity_contains: "coreutils" as std.types.NonEmptyStr,
-        ensure_policy: gunbc.ensure.EnsureObserveOnly,
+        identity_contains: "coreutils" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
       },
-      gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: gunbc.roadmap_execution_contract.GunbcClaimRunnerCapability,
+      CapabilityRealization {
+        capability: GunbcClaimRunnerCapability,
         executable: serve_binary,
         identity_args: ["--help"],
-        identity_contains: "A causal compiler" as std.types.NonEmptyStr,
-        ensure_policy: gunbc.ensure.EnsureObserveOnly,
+        identity_contains: "A causal compiler" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
       },
-      gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: gunbc.roadmap_execution_contract.CargoCapability,
-        executable: "/home/briansrls/.cargo/bin/cargo" as std.types.FilePath,
+      CapabilityRealization {
+        capability: CargoCapability,
+        executable: "/home/briansrls/.cargo/bin/cargo" as FilePath,
         identity_args: ["--version"],
-        identity_contains: "cargo" as std.types.NonEmptyStr,
-        ensure_policy: gunbc.ensure.EnsureObserveOnly,
+        identity_contains: "cargo" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
       },
-      gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: gunbc.roadmap_execution_contract.RustcCapability,
-        executable: "/home/briansrls/.cargo/bin/rustc" as std.types.FilePath,
+      CapabilityRealization {
+        capability: RustcCapability,
+        executable: "/home/briansrls/.cargo/bin/rustc" as FilePath,
         identity_args: ["--version"],
-        identity_contains: "rustc" as std.types.NonEmptyStr,
-        ensure_policy: gunbc.ensure.EnsureObserveOnly,
+        identity_contains: "rustc" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
       },
-      gunbc.roadmap_execution_contract.CapabilityRealization {
-        capability: gunbc.roadmap_execution_contract.RustfmtCapability,
-        executable: "/home/briansrls/.cargo/bin/rustfmt" as std.types.FilePath,
+      CapabilityRealization {
+        capability: RustfmtCapability,
+        executable: "/home/briansrls/.cargo/bin/rustfmt" as FilePath,
         identity_args: ["--version"],
-        identity_contains: "rustfmt" as std.types.NonEmptyStr,
-        ensure_policy: gunbc.ensure.EnsureObserveOnly,
+        identity_contains: "rustfmt" as NonEmptyStr,
+        ensure_policy: EnsureObserveOnly,
       },
     ],
   }
@@ -303,36 +310,36 @@ fn dashboard_execution_environment(
 fn srv1_live_dashboard_instance() -> HostDashboardInstance {
   HostDashboardInstance {
     instance_id: srv1_dashboard_live_id,
-    host_identity: "srv1" as std.types.NonEmptyStr,
-    provision_parent_root: "/opt/gunbc" as std.types.FilePath,
-    instance_root: "/opt/gunbc" as std.types.FilePath,
-    local_origin_root: gunbc.host_layout.srv1_gunbc_repo_root,
-    local_origin_publish_ref: "refs/heads/main" as std.types.NonEmptyStr,
-    repo_root: gunbc.host_layout.srv1_gunbc_repo_root,
-    dispatch_base_ref: "origin/main" as std.types.NonEmptyStr,
+    host_identity: "srv1" as NonEmptyStr,
+    provision_parent_root: "/opt/gunbc" as FilePath,
+    instance_root: "/opt/gunbc" as FilePath,
+    local_origin_root: srv1_gunbc_repo_root,
+    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
+    repo_root: srv1_gunbc_repo_root,
+    dispatch_base_ref: "origin/main" as NonEmptyStr,
     dispatch_state_scope: DispatchStateHostShared {
-      worktree_root: gunbc.host_layout.srv1_dispatch_worktree_root,
-      attempt_state_root: gunbc.host_layout.srv1_dispatch_attempt_state_root,
+      worktree_root: srv1_dispatch_worktree_root,
+      attempt_state_root: srv1_dispatch_attempt_state_root,
     },
     execution_environment: dashboard_execution_environment(
-      serve_binary: gunbc.host_layout.srv1_gunbc_serve_binary,
+      serve_binary: srv1_gunbc_serve_binary,
     ),
     provider_state: DashboardExistingProviderState {
-      root: gunbc.host_layout.srv1_roadmap_codex_home,
-      executable: gunbc.host_layout.srv1_codex_bundled_executable(),
-      binding: gunbc.provider_account.admitted_single_session_binding(
-        selection: gunbc.provider_account.codex_roadmap_account_selection(),
-        evidence: gunbc.provider_account.codex_roadmap_account_evidence,
+      root: srv1_roadmap_codex_home,
+      executable: srv1_codex_bundled_executable(),
+      binding: admitted_single_session_binding(
+        selection: codex_roadmap_account_selection(),
+        evidence: codex_roadmap_account_evidence,
       ),
     },
-    serve_binary: gunbc.host_layout.srv1_gunbc_serve_binary,
-    serve_function: "roadmap_serve_handle" as std.types.NonEmptyStr,
-    listen_host: "0.0.0.0" as std.types.NonEmptyStr,
+    serve_binary: srv1_gunbc_serve_binary,
+    serve_function: "roadmap_serve_handle" as NonEmptyStr,
+    listen_host: "0.0.0.0" as NonEmptyStr,
     listen_port: 8080,
-    tmux_server: extdeps.tmux.DefaultTmuxServer,
+    tmux_server: DefaultTmuxServer,
     actuation: DashboardActuating,
-    provision_transport: DashboardSshProvision { host: "srv1" as std.types.NonEmptyStr },
-    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as std.types.NonEmptyStr },
+    provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
+    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
   }
 }
 
@@ -343,27 +350,27 @@ data isolated_instance_own_binary_note: String = "EACH INSTANCE OWNS ITS BINARY,
 data isolated_instance_anchor_parameter_note: String = "WHICH REF A LAB SERVES IS THE LAB'S OWN FACT, and it was the fourth srv1-preview literal hiding in this constructor — found by probing the served endpoints after the other three were lifted, not by reading the diff. Every isolated instance inherited anchor_ref refs/heads/session/codex-provider-feedback-v0, so a newly added lab would have provisioned itself from a stale feedback branch belonging to a different lane while its page, its instance id, and its posture all read correctly. Nothing would have refused; it would simply have served the wrong source.\\n\\nThat is worse than the host-fact defect above, which produced identical values and no wrong output. This one produces a plausible page from unintended content — the failure that looks like success. It is a parameter rather than a layout field because two labs on ONE host may legitimately serve different refs; the ref belongs to the instance, not the machine."
 
 fn isolated_dashboard_instance(
-  instance_id: std.types.NonEmptyStr,
-  layout: gunbc.host_layout.GunbcHostLayout,
-  root: std.types.FilePath,
-  serve_function: std.types.NonEmptyStr,
-  listen_port: std.types.Port,
-  source_anchor_ref: std.types.NonEmptyStr,
+  instance_id: NonEmptyStr,
+  layout: GunbcHostLayout,
+  root: FilePath,
+  serve_function: NonEmptyStr,
+  listen_port: Port,
+  source_anchor_ref: NonEmptyStr,
   actuation: DashboardActuationPosture,
   provision_transport: DashboardProvisionTransport,
 ) -> HostDashboardInstance {
   HostDashboardInstance {
     instance_id: instance_id,
     host_identity: layout.host_identity,
-    provision_parent_root: "/home/briansrls/.local/share" as std.types.FilePath,
+    provision_parent_root: "/home/briansrls/.local/share" as FilePath,
     instance_root: root,
     local_origin_root: dashboard_instance_child(root: root, child: "origin.git"),
-    local_origin_publish_ref: "refs/heads/main" as std.types.NonEmptyStr,
+    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
     repo_root: dashboard_instance_child(root: root, child: "source"),
-    dispatch_base_ref: "origin/main" as std.types.NonEmptyStr,
+    dispatch_base_ref: "origin/main" as NonEmptyStr,
     dispatch_state_scope: DispatchStateInstanceOwned {
-      worktree_child: "attempts" as std.types.NonEmptyStr,
-      attempt_state_child: "attempt-state" as std.types.NonEmptyStr,
+      worktree_child: "attempts" as NonEmptyStr,
+      attempt_state_child: "attempt-state" as NonEmptyStr,
     },
     execution_environment: dashboard_execution_environment(
       serve_binary: dashboard_instance_child(root: root, child: "bin/gunbc"),
@@ -371,14 +378,14 @@ fn isolated_dashboard_instance(
     provider_state: DashboardExistingProviderState {
       root: layout.roadmap_codex_home,
       executable: layout.codex_bundled_executable,
-      binding: gunbc.provider_account.admitted_single_session_binding(
-        selection: gunbc.provider_account.codex_roadmap_account_selection(),
-        evidence: gunbc.provider_account.codex_roadmap_account_evidence,
+      binding: admitted_single_session_binding(
+        selection: codex_roadmap_account_selection(),
+        evidence: codex_roadmap_account_evidence,
       ),
     },
     serve_binary: dashboard_instance_child(root: root, child: "bin/gunbc"),
     serve_function: serve_function,
-    listen_host: "0.0.0.0" as std.types.NonEmptyStr,
+    listen_host: "0.0.0.0" as NonEmptyStr,
     listen_port: listen_port,
     tmux_server: dashboard_named_tmux_server(instance_id: instance_id),
     actuation: actuation,
@@ -387,7 +394,7 @@ fn isolated_dashboard_instance(
       controller_repo: layout.controller_repo,
       staged_bundle: dashboard_instance_child(root: root, child: "inbox/source.bundle"),
       anchor_ref: source_anchor_ref,
-      history_remote: "origin" as std.types.NonEmptyStr,
+      history_remote: "origin" as NonEmptyStr,
     },
   }
 }
@@ -395,24 +402,24 @@ fn isolated_dashboard_instance(
 fn srv1_lab_dashboard_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
     instance_id: srv1_dashboard_lab_id,
-    layout: gunbc.host_layout.srv1_host_layout(),
+    layout: srv1_host_layout(),
     root: srv1_dashboard_lab_root,
-    serve_function: "roadmap_serve_handle_srv1_lab" as std.types.NonEmptyStr,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
     listen_port: 18081,
-    source_anchor_ref: "refs/heads/session/codex-provider-feedback-v0" as std.types.NonEmptyStr,
+    source_anchor_ref: "refs/heads/session/codex-provider-feedback-v0" as NonEmptyStr,
     actuation: DashboardActuating,
-    provision_transport: DashboardSshProvision { host: "srv1" as std.types.NonEmptyStr },
+    provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
   )
 }
 
 fn srv2_preview_dashboard_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
     instance_id: srv2_dashboard_preview_id,
-    layout: gunbc.host_layout.srv2_host_layout(),
+    layout: srv2_host_layout(),
     root: srv2_dashboard_preview_root,
-    serve_function: "roadmap_serve_handle_srv2_preview" as std.types.NonEmptyStr,
+    serve_function: "roadmap_serve_handle_srv2_preview" as NonEmptyStr,
     listen_port: 18080,
-    source_anchor_ref: "refs/heads/session/codex-provider-feedback-v0" as std.types.NonEmptyStr,
+    source_anchor_ref: "refs/heads/session/codex-provider-feedback-v0" as NonEmptyStr,
     actuation: DashboardObserveOnly,
     provision_transport: DashboardLocalProvision,
   )
@@ -420,24 +427,24 @@ fn srv2_preview_dashboard_instance() -> HostDashboardInstance {
 
 data srv2_lab_instance_note: String = "THE ACTUATING srv2 INSTANCE, added because the preview one could never have worked and its failure mode was silent until someone ran it. srv2_preview above is DashboardObserveOnly, so its dispatch endpoint refuses by construction — correct, and invisible on a page whose buttons simply read disabled. It also had no entry in gunbc.roadmap_dashboard_instance_apply, which contained zero srv2 references, so nothing in the tree could provision the directories its observations refuse against. Declared, servable, and unreachable in the same value.\\n\\nThis row is the actuating peer: same isolated layout, its own root and named tmux server, DashboardActuating so dispatch is admitted, DashboardLocalProvision because srv2 provisions itself rather than over SSH. It listens on 18082 — 18080 is the preview's declared port and 18081 is srv1's lab, and a port collision resolved by passing a different --port on the command line is how the last deployment ended up serving one instance's page under another instance's identity.\\n\\nThe preview row is deliberately kept rather than repointed. It is the observe-only posture's only live specimen, several witnesses discriminate against it, and deleting a row because a better one arrived is how the 2026-07-27 authority refresh lost the only execution contract it had."
 
-data srv2_dashboard_lab_id: std.types.NonEmptyStr = "srv2-lab-v1-deletion" as std.types.NonEmptyStr
+data srv2_dashboard_lab_id: NonEmptyStr = "srv2-lab-v1-deletion" as NonEmptyStr
 
-data srv2_dashboard_lab_root: std.types.FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/srv2-lab-v1-deletion" as std.types.FilePath
+data srv2_dashboard_lab_root: FilePath = "/home/briansrls/.local/share/gunbc-dashboard-instances/srv2-lab-v1-deletion" as FilePath
 
 fn srv2_lab_dashboard_instance() -> HostDashboardInstance {
   isolated_dashboard_instance(
     instance_id: srv2_dashboard_lab_id,
-    layout: gunbc.host_layout.srv2_host_layout(),
+    layout: srv2_host_layout(),
     root: srv2_dashboard_lab_root,
-    serve_function: "roadmap_serve_handle_srv2_lab" as std.types.NonEmptyStr,
+    serve_function: "roadmap_serve_handle_srv2_lab" as NonEmptyStr,
     listen_port: 18082,
-    source_anchor_ref: "refs/remotes/origin/main" as std.types.NonEmptyStr,
+    source_anchor_ref: "refs/remotes/origin/main" as NonEmptyStr,
     actuation: DashboardActuating,
     provision_transport: DashboardLocalProvision,
   )
 }
 
-fn dashboard_path_is_under(path: std.types.FilePath, root: std.types.FilePath) -> Bool {
+fn dashboard_path_is_under(path: FilePath, root: FilePath) -> Bool {
   starts_with(s: path as String, prefix: concat(root as String, "/"))
 }
 
@@ -445,7 +452,7 @@ data owned_paths_omitted_the_binary_note: String = "serve_binary WAS MISSING FRO
 
 data owned_paths_split_by_scope_note: String = "ONE ROSTER USED TO CARRY TWO KINDS OF MEMBER, and the disjointness law could not be right about both once production slots began sharing dispatch state. The roster mixed paths that are the instance's own FOOTPRINT — its origin, its source tree, its binary — with paths that hold DISPATCH EVIDENCE, and then applied a single rule to the union: every path sits under instance_root, and no two instances share any path.\\n\\nThat rule is exactly right for the footprint and exactly wrong for host-shared dispatch state, whose whole purpose is to be the same path in two slots. Weakening the law to admit overlap would have been the cheap fix and the wrong one: overlap is precisely the hazard owned_paths_omitted_the_binary_note records, where a lab's retract would have deleted the binary production was executing. So the roster splits and each half keeps the law that is true of it, rather than one roster keeping a law that is true of neither.\\n\\nFootprint paths keep BOTH original laws at full strength, for every instance and every scope. Dispatch-state paths get the law their scope declares: instance-owned must sit under instance_root and stay disjoint from every other instance, which is the old behaviour preserved for labs; host-shared must EQUAL the layout rows and therefore agree with every other host-shared instance on the same host. Agreement is a stronger statement than the absence of a check — it goes red if a production slot is given its own attempt-state root, which is the regression this change exists to prevent recurring."
 
-fn dashboard_instance_footprint_paths(instance: HostDashboardInstance) -> List<std.types.FilePath> {
+fn dashboard_instance_footprint_paths(instance: HostDashboardInstance) -> List<FilePath> {
   [
     instance.local_origin_root,
     instance.repo_root,
@@ -453,7 +460,7 @@ fn dashboard_instance_footprint_paths(instance: HostDashboardInstance) -> List<s
   ]
 }
 
-fn dashboard_instance_dispatch_worktree_root(instance: HostDashboardInstance) -> std.types.FilePath {
+fn dashboard_instance_dispatch_worktree_root(instance: HostDashboardInstance) -> FilePath {
   match instance.dispatch_state_scope {
     DispatchStateInstanceOwned { worktree_child, attempt_state_child: _ } =>
       dashboard_instance_child(root: instance.instance_root, child: worktree_child)
@@ -461,7 +468,7 @@ fn dashboard_instance_dispatch_worktree_root(instance: HostDashboardInstance) ->
   }
 }
 
-fn dashboard_instance_dispatch_attempt_state_root(instance: HostDashboardInstance) -> std.types.FilePath {
+fn dashboard_instance_dispatch_attempt_state_root(instance: HostDashboardInstance) -> FilePath {
   match instance.dispatch_state_scope {
     DispatchStateInstanceOwned { worktree_child: _, attempt_state_child } =>
       dashboard_instance_child(root: instance.instance_root, child: attempt_state_child)
@@ -469,14 +476,14 @@ fn dashboard_instance_dispatch_attempt_state_root(instance: HostDashboardInstanc
   }
 }
 
-fn dashboard_instance_dispatch_state_paths(instance: HostDashboardInstance) -> List<std.types.FilePath> {
+fn dashboard_instance_dispatch_state_paths(instance: HostDashboardInstance) -> List<FilePath> {
   [
     dashboard_instance_dispatch_worktree_root(instance: instance),
     dashboard_instance_dispatch_attempt_state_root(instance: instance),
   ]
 }
 
-fn dashboard_paths_all_under(paths: List<std.types.FilePath>, root: std.types.FilePath) -> Bool {
+fn dashboard_paths_all_under(paths: List<FilePath>, root: FilePath) -> Bool {
   all(paths, path => dashboard_path_is_under(path: path, root: root))
 }
 
@@ -495,7 +502,7 @@ fn dashboard_instance_paths_are_owned(instance: HostDashboardInstance) -> Bool {
     }
 }
 
-fn dashboard_paths_are_disjoint(a: List<std.types.FilePath>, b: List<std.types.FilePath>) -> Bool {
+fn dashboard_paths_are_disjoint(a: List<FilePath>, b: List<FilePath>) -> Bool {
   all(
     a,
     ap => all(
@@ -554,57 +561,57 @@ data provider_state_root_ensure_note: String = "THE MODEL VERIFIED AUTH AGAINST 
 
 type DashboardInstanceProvisionOp
   = DashboardHydrateControllerHistory {
-      controller_repo: std.types.FilePath,
-      history_remote: std.types.NonEmptyStr,
+      controller_repo: FilePath,
+      history_remote: NonEmptyStr,
     }
   | DashboardPrepareGitBundle {
-      controller_repo: std.types.FilePath,
-      anchor_ref: std.types.NonEmptyStr,
+      controller_repo: FilePath,
+      anchor_ref: NonEmptyStr,
     }
   | DashboardStageGitBundle {
-      controller_repo: std.types.FilePath,
-      staged_bundle: std.types.FilePath,
+      controller_repo: FilePath,
+      staged_bundle: FilePath,
     }
-  | DashboardEnsureDirectory { path: std.types.FilePath }
-  | DashboardEnsureProviderStateRoot { path: std.types.FilePath }
+  | DashboardEnsureDirectory { path: FilePath }
+  | DashboardEnsureProviderStateRoot { path: FilePath }
   | DashboardEnsureServeBinary {
-      controller_repo: std.types.FilePath,
-      built_binary: std.types.FilePath,
-      path: std.types.FilePath,
+      controller_repo: FilePath,
+      built_binary: FilePath,
+      path: FilePath,
     }
   | DashboardEnsureOwnershipMarker {
-      path: std.types.FilePath,
-      instance_id: std.types.NonEmptyStr,
+      path: FilePath,
+      instance_id: NonEmptyStr,
     }
   | DashboardEnsureLocalOrigin {
-      bundle: std.types.FilePath,
-      origin: std.types.FilePath,
-      source_ref: std.types.NonEmptyStr,
-      publish_ref: std.types.NonEmptyStr,
+      bundle: FilePath,
+      origin: FilePath,
+      source_ref: NonEmptyStr,
+      publish_ref: NonEmptyStr,
     }
   | DashboardEnsureSourceRepo {
-      origin: std.types.FilePath,
-      repo: std.types.FilePath,
-      anchor_ref: std.types.NonEmptyStr,
+      origin: FilePath,
+      repo: FilePath,
+      anchor_ref: NonEmptyStr,
     }
   | DashboardEnsureService {
-      instance_id: std.types.NonEmptyStr,
-      binary: std.types.FilePath,
-      workdir: std.types.FilePath,
-      handler: std.types.NonEmptyStr,
-      host: std.types.NonEmptyStr,
+      instance_id: NonEmptyStr,
+      binary: FilePath,
+      workdir: FilePath,
+      handler: NonEmptyStr,
+      host: NonEmptyStr,
       port: Int,
-      tmux_server: extdeps.tmux.TmuxServerScope,
+      tmux_server: TmuxServerScope,
     }
   | DashboardVerifyProviderRuntime {
-      executable: std.types.FilePath,
-      state_root: std.types.FilePath,
+      executable: FilePath,
+      state_root: FilePath,
     }
   | DashboardVerifyProviderAuth {
-      executable: std.types.FilePath,
-      state_root: std.types.FilePath,
+      executable: FilePath,
+      state_root: FilePath,
     }
-  | DashboardVerifyHealth { host: std.types.NonEmptyStr, port: std.types.Port }
+  | DashboardVerifyHealth { host: NonEmptyStr, port: Port }
 
 fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<DashboardInstanceProvisionOp> {
   let controller_source_ops = match instance.source_seed {
@@ -709,7 +716,7 @@ fn dashboard_instance_provider_verification_ops(
 }
 
 type DashboardInstanceProvisionPlanRow {
-  kind: std.types.NonEmptyStr
+  kind: NonEmptyStr
   target: String
   detail: String
 }
@@ -720,7 +727,7 @@ fn dashboard_instance_provision_op_row(
   match op {
     DashboardHydrateControllerHistory { controller_repo, history_remote } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "hydrate-controller-history" as std.types.NonEmptyStr,
+        kind: "hydrate-controller-history" as NonEmptyStr,
         target: controller_repo as String,
         detail: join([
           "complete shallow history from named remote ",
@@ -730,7 +737,7 @@ fn dashboard_instance_provision_op_row(
       }
     DashboardPrepareGitBundle { controller_repo, anchor_ref } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "prepare-git-bundle" as std.types.NonEmptyStr,
+        kind: "prepare-git-bundle" as NonEmptyStr,
         target: controller_repo as String,
         detail: join([
           anchor_ref as String,
@@ -739,25 +746,25 @@ fn dashboard_instance_provision_op_row(
       }
     DashboardStageGitBundle { controller_repo: _, staged_bundle } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "stage-git-bundle" as std.types.NonEmptyStr,
+        kind: "stage-git-bundle" as NonEmptyStr,
         target: staged_bundle as String,
         detail: "copy proven temporary bundle to .next, then atomically rename",
       }
     DashboardEnsureDirectory { path } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "ensure-directory" as std.types.NonEmptyStr,
+        kind: "ensure-directory" as NonEmptyStr,
         target: path as String,
         detail: "mkdir parents; idempotent",
       }
     DashboardEnsureProviderStateRoot { path } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "ensure-provider-state-root" as std.types.NonEmptyStr,
+        kind: "ensure-provider-state-root" as NonEmptyStr,
         target: path as String,
         detail: "mkdir parents so the provider login has somewhere to write; never torn down, never populated by the deploy",
       }
     DashboardEnsureServeBinary { controller_repo: _, built_binary, path } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "ensure-serve-binary" as std.types.NonEmptyStr,
+        kind: "ensure-serve-binary" as NonEmptyStr,
         target: path as String,
         detail: join([
           "copy the controller's built seed from ",
@@ -767,13 +774,13 @@ fn dashboard_instance_provision_op_row(
       }
     DashboardEnsureOwnershipMarker { path, instance_id } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "ensure-ownership-marker" as std.types.NonEmptyStr,
+        kind: "ensure-ownership-marker" as NonEmptyStr,
         target: path as String,
         detail: instance_id as String,
       }
     DashboardEnsureLocalOrigin { bundle, origin, source_ref, publish_ref } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "ensure-local-origin" as std.types.NonEmptyStr,
+        kind: "ensure-local-origin" as NonEmptyStr,
         target: origin as String,
         detail: join([
           bundle as String,
@@ -785,7 +792,7 @@ fn dashboard_instance_provision_op_row(
       }
     DashboardEnsureSourceRepo { origin, repo, anchor_ref } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "ensure-source-repo" as std.types.NonEmptyStr,
+        kind: "ensure-source-repo" as NonEmptyStr,
         target: repo as String,
         detail: join([origin as String, " @ ", anchor_ref as String], ""),
       }
@@ -799,7 +806,7 @@ fn dashboard_instance_provision_op_row(
       tmux_server: _,
     } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "ensure-service" as std.types.NonEmptyStr,
+        kind: "ensure-service" as NonEmptyStr,
         target: instance_id as String,
         detail: join([
           binary as String,
@@ -815,7 +822,7 @@ fn dashboard_instance_provision_op_row(
       }
     DashboardVerifyProviderRuntime { executable, state_root } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "verify-provider-runtime" as std.types.NonEmptyStr,
+        kind: "verify-provider-runtime" as NonEmptyStr,
         target: executable as String,
         detail: join([
           "run --version through the modeled environment binding with CODEX_HOME=",
@@ -825,13 +832,13 @@ fn dashboard_instance_provision_op_row(
       }
     DashboardVerifyProviderAuth { executable, state_root } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "verify-provider-auth" as std.types.NonEmptyStr,
+        kind: "verify-provider-auth" as NonEmptyStr,
         target: state_root as String,
         detail: executable as String,
       }
     DashboardVerifyHealth { host, port } =>
       DashboardInstanceProvisionPlanRow {
-        kind: "verify-health" as std.types.NonEmptyStr,
+        kind: "verify-health" as NonEmptyStr,
         target: join([host as String, ":", to_string(port)], ""),
         detail: "/instance.json must name the intended instance within the bounded readiness poll",
       }
@@ -892,7 +899,7 @@ fn dashboard_source_seed_ready(
 type DashboardInstanceReconcile
   = DashboardInstanceConverged
   | DashboardInstanceApply { plan: List<DashboardInstanceProvisionOp> }
-  | DashboardInstanceRefused { reason: std.types.NonEmptyStr }
+  | DashboardInstanceRefused { reason: NonEmptyStr }
 
 // THE REFUSAL CHANNEL IS READ BEFORE ANY FIELD, because after a refused probe no field in the record is evidence. Every branch below reasons from Bools — origin present, source present, health current — and each of those is false when the probe could not run just as surely as when the thing is genuinely missing. Reaching them with an unread refusal means deriving a plan from an observation that never happened.\n\nThe order is the whole point. Placing this check second, after the ownership law, would already be too late for anything the ownership law consults; placing it first means a transport failure produces one refusal naming what could not be observed, rather than a confident Apply plan built to create files that may well already exist.\n\nIt refuses rather than retrying or widening. A probe that could not run is not a slow probe, and a reconcile that responded by planning the superset — create everything, it is safe if it already exists — would be the absorbing fallback wearing a plausible justification.
 fn dashboard_instance_reconcile(
@@ -904,31 +911,31 @@ fn dashboard_instance_reconcile(
       reason: join([
         "observation incomplete; no field is evidence: ",
         join(observed.observation_refusals, " | "),
-      ], "") as std.types.NonEmptyStr,
+      ], "") as NonEmptyStr,
     }
   } else if !dashboard_instance_paths_are_owned(instance: instance) {
     DashboardInstanceRefused {
-      reason: "instance-owned paths escape the instance root" as std.types.NonEmptyStr,
+      reason: "instance-owned paths escape the instance root" as NonEmptyStr,
     }
   } else if !observed.production_untouched {
     DashboardInstanceRefused {
-      reason: "production isolation read-back failed" as std.types.NonEmptyStr,
+      reason: "production isolation read-back failed" as NonEmptyStr,
     }
   } else if (observed.origin_present || observed.source_present)
       && !observed.ownership_marker_present {
     DashboardInstanceRefused {
-      reason: "source or origin exists without the matching instance ownership marker" as std.types.NonEmptyStr,
+      reason: "source or origin exists without the matching instance ownership marker" as NonEmptyStr,
     }
   } else if observed.source_present && !observed.source_anchor_matches {
     DashboardInstanceRefused {
-      reason: "source repo exists at a different anchor; replacement is destructive and must be adjudicated" as std.types.NonEmptyStr,
+      reason: "source repo exists at a different anchor; replacement is destructive and must be adjudicated" as NonEmptyStr,
     }
   } else if observed.source_present && !observed.source_revision_observed {
     DashboardInstanceRefused {
       reason: join([
         "source revision read-back refused: ",
         observed.source_revision_detail,
-      ], "") as std.types.NonEmptyStr,
+      ], "") as NonEmptyStr,
     }
   } else if observed.health_current
       && observed.root_present
@@ -951,17 +958,17 @@ fn dashboard_instance_reconcile(
 
 type DashboardInstanceRetractOp
   = DashboardStopService {
-      instance_id: std.types.NonEmptyStr,
-      tmux_server: extdeps.tmux.TmuxServerScope,
+      instance_id: NonEmptyStr,
+      tmux_server: TmuxServerScope,
     }
-  | DashboardRefuseUnlessAttemptsEmpty { path: std.types.FilePath }
-  | DashboardRemoveSourceRepo { path: std.types.FilePath }
-  | DashboardRemoveLocalOrigin { path: std.types.FilePath }
-  | DashboardPreserveSourceBundle { path: std.types.FilePath }
+  | DashboardRefuseUnlessAttemptsEmpty { path: FilePath }
+  | DashboardRemoveSourceRepo { path: FilePath }
+  | DashboardRemoveLocalOrigin { path: FilePath }
+  | DashboardPreserveSourceBundle { path: FilePath }
 
 type DashboardInstanceRetract
   = DashboardInstanceRetractPlan { plan: List<DashboardInstanceRetractOp> }
-  | DashboardInstanceRetractRefused { reason: std.types.NonEmptyStr }
+  | DashboardInstanceRetractRefused { reason: NonEmptyStr }
 
 data dashboard_instance_retract_note: String = "Retraction is modeled independently from provisioning and is deliberately narrower than recursive deletion. Existing-repo instances (including production) are not owned by this model and refuse retraction. Isolated bundle-seeded instances stop only their named service, refuse while any attempt worktree remains, remove the reproducible source clone and local origin, and preserve the staged bundle as the recovery anchor. Provider state is referenced secret state and is never in the retract plan."
 
@@ -970,13 +977,13 @@ fn dashboard_instance_retract_plan(
 ) -> DashboardInstanceRetract {
   if !dashboard_instance_paths_are_owned(instance: instance) {
     DashboardInstanceRetractRefused {
-      reason: "instance-owned paths escape the instance root" as std.types.NonEmptyStr,
+      reason: "instance-owned paths escape the instance root" as NonEmptyStr,
     }
   } else {
     match instance.source_seed {
       DashboardExistingRepo { anchor_ref: _ } =>
         DashboardInstanceRetractRefused {
-          reason: "existing-repo dashboard instances are not owned by the isolated-instance retractor" as std.types.NonEmptyStr,
+          reason: "existing-repo dashboard instances are not owned by the isolated-instance retractor" as NonEmptyStr,
         }
       DashboardGitBundle {
         controller_repo: _,

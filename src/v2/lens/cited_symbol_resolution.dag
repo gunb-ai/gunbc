@@ -1,31 +1,30 @@
 module v2.lens.cited_symbol_resolution
 
-
 data cited_symbol_resolution_law: String = "feature:cited-symbol-resolution — every typed DeclarationRef enrolled in hand_authored_production_doc_declaration_refs (HandAuthoredDocBind primary_work + additional_works, excluding permanent g1-cited-symbol-control-* probe rows) resolves to exactly one decl_facts row over a declared module, or refuses with a typed five-arm result. Population is structural, not corpus text scan. Permanent planted controls in hand_authored_cited_symbol_control_declaration_refs stay enrolled for mutation witnesses — they never retire when production goes green (operator ruling 2026-08-03, DESIGN 4b(4)). Resolution semantics live in v2.std.decl_ref_resolution.resolve_declaration_ref over decl_facts + module_declaration_facts — single authority, no per-kind fork. dissolve-on: substrate refuses unwritable DeclarationRef at construction; enrollment widens to every structural DeclarationRef carrier when the Node-tree reader lands."
 
-data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SubstrateMandatoryTag }
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }
 
-data cited_symbol_planted_ambiguous_control_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
+data cited_symbol_planted_ambiguous_control_ref: DeclarationRef = DeclarationRef {
   module_path: "v2.std.node",
   decl_name: "G1_planted_ambiguous_control_RED",
-  field: std.decl_ref.WholeDeclaration,
+  field: WholeDeclaration,
 }
 
-data cited_symbol_planted_ambiguous_control_facts: List<v2.std.decl_index.DeclFact> = [
-  v2.std.decl_index.DeclFact {
+data cited_symbol_planted_ambiguous_control_facts: List<DeclFact> = [
+  DeclFact {
     qualified_name: "std.node.G1_planted_ambiguous_control_RED",
     name: "G1_planted_ambiguous_control_RED",
-    kind: v2.std.decl_index.FnItem,
-    node: v2.lens.enforcement.receipts.enforcement_red_probe_body_leaf,
+    kind: FnItem,
+    node: enforcement_red_probe_body_leaf,
     rel_path: "synthetic/g1_ambiguous_a.dag",
   },
-  v2.std.decl_index.DeclFact {
+  DeclFact {
     qualified_name: "std.node.G1_planted_ambiguous_control_RED",
     name: "G1_planted_ambiguous_control_RED",
-    kind: v2.std.decl_index.FnItem,
-    node: v2.lens.enforcement.receipts.enforcement_red_probe_body_leaf,
+    kind: FnItem,
+    node: enforcement_red_probe_body_leaf,
     rel_path: "synthetic/g1_ambiguous_b.dag",
   },
 ]
@@ -47,28 +46,89 @@ fn cited_symbol_production_declaration_refs() -> List<DeclarationRef> {
 }
 
 fn cited_symbol_resolution_violation_count() -> Int {
-  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
-  v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
+  let pool = hand_authored_works_resolution_pool_roots()
+  cited_declaration_ref_refusal_count(
     refs: cited_symbol_production_declaration_refs(),
-    facts: v2.std.decl_index.decl_facts(pool_roots: pool),
-    modules: v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
+    facts: decl_facts(pool_roots: pool),
+    modules: module_declaration_facts_live(pool_roots: pool)
   )
 }
 
 fn cited_symbol_enrolled_refusal_count() -> Int {
-  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
-  v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
-    refs: gunbc.doc_graph_roots.hand_authored_doc_declaration_refs(),
-    facts: v2.std.decl_index.decl_facts(pool_roots: pool),
-    modules: v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
+  let pool = hand_authored_works_resolution_pool_roots()
+  cited_declaration_ref_refusal_count(
+    refs: hand_authored_doc_declaration_refs(),
+    facts: decl_facts(pool_roots: pool),
+    modules: module_declaration_facts_live(pool_roots: pool)
   )
 }
 
 fn cited_symbol_planted_control_refusal_count() -> Int {
-  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
-  v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
-    refs: gunbc.doc_graph_roots.hand_authored_cited_symbol_control_declaration_refs(),
-    facts: v2.std.decl_index.decl_facts(pool_roots: pool),
-    modules: v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
+  let pool = hand_authored_works_resolution_pool_roots()
+  cited_declaration_ref_refusal_count(
+    refs: hand_authored_cited_symbol_control_declaration_refs(),
+    facts: decl_facts(pool_roots: pool),
+    modules: module_declaration_facts_live(pool_roots: pool)
   )
+}
+
+data cited_symbol_required_check_note: String = "THE LENS EXECUTES ON EVERY CI RUN AS ITS OWN REQUIRED CHECK, NOT AS A WITNESS, AND THE REASON IS STRUCTURAL RATHER THAN BUDGETARY. Until 2026-08-21 the live-corpus claim was carried only by cited_symbol_resolution_lens_is_green_on_live_corpus in dag/test/claim/long/, whose whole file is classified OfflineLocalRecipe — so nothing executed it, and it was RED on unmodified main with 27 refusing production references while every required check stayed green. The refusals were real: the floor cut, the regen cut and the falsifier deletion each removed a module while its citations stayed authored, which is precisely the DESIGN section 3 stale-citation class this lens exists to make decidable.\n\nWHY NOT THE REQUIRED FLOOR. run_required_floor admits an identity only if its module is outside the long home AND the entry does not read the live tree; the second arm is the fatal one here, because reading the live corpus IS this census's subject — decl_facts and module_declaration_facts over compile_clean_source_roots. Relocating the file moves the identity from DeclinedLongModule to DeclinedLiveTree and never to Planned (measured at identity grain in test.claim.transport_script_wall_compile_red). No amount of making it cheaper changes that, so the floor was never the route.\n\nWHAT THE ROUTE IS. claim_executor --required-cited-symbol, its own top-level mode, invoked by the cited-symbol JOB in .github/workflows/witnesses.yml — a GitHub check-run is a job rather than a step, so a separately named required check must be a second job. It is NOT a phase of --required-ci: the operator narrowed that mode to three phases on 2026-08-21 (#8791) and this rework leaves that invocation byte-unchanged. An earlier revision of this note said phase, and it was true when written; the separate-check ruling falsified it, and a stale mechanism claim inside the carrier whose lens exists to catch stale citations is the failure this file is named for. Being a mode rather than a claim is what puts it outside both the per-claim safety deadline and the floor's live-tree arm. The sixteen witnesses stay where they are: they are the discriminating mechanism evidence (planted controls, five-arm refusals, the ambiguity fixture), and DESIGN 4b(4) keeps them enrolled rather than retiring them when production goes green."
+
+data cited_symbol_outside_index_guard_note: String = "THE GUARD AGAINST THE ONE DODGE THE OUTSIDE-INDEX DISPOSITION ADMITS, AND IT EXECUTES RATHER THAN BEING REVIEWED. gunbc.doc_graph_roots marks four references as outside the declaration index because decl_facts does not index test modules; a counted, typed disposition is the sanctioned remedy, but nothing in the marking itself stops an author from marking a RESOLVABLE reference outside-index to escape a red — at which point the population silently shrinks and the census reports green over a reference nobody checked.\n\nSo the report below refuses such a row by execution: a reference marked outside-index that actually RESOLVES comes back as OUTSIDE-INDEX-RESOLVES and fails the phase. A count assertion alone would not catch it (wise-boar-649 measured exactly that: their counting witness stayed green under a two-way swap while the refusal-checking witness went red), and a count is implied here anyway — under the roster shape the only way the marked population can shrink is a row that resolves, so a second count row would be a second representation of one fact.\n\nWHY IT IS HERE AND NOT IN A WITNESS: every witness carrying this lens's live-corpus claim sits in a file classified OfflineLocalRecipe and executes nowhere, which is the defect this change exists to close. In the phase it runs on every CI run."
+
+data cited_symbol_denominator_note: String = "A GREEN MUST NAME ITS DENOMINATOR. The report below returns an empty list both when every authored reference resolves and when there are no references to check, and those are different states with different remedies — the second is an instrument failure wearing the first one's clothes. So the phase prints the population it checked beside its verdict, and a reader who sees checked=0 knows the census measured nothing rather than reading it as coverage."
+
+fn cited_symbol_production_reference_count() -> Int {
+  length(xs: cited_symbol_production_declaration_refs())
+}
+
+fn cited_symbol_unresolved_reference_report() -> List<String> {
+  let pool = hand_authored_works_resolution_pool_roots()
+  let facts = decl_facts(pool_roots: pool)
+  let modules = module_declaration_facts_live(pool_roots: pool)
+  concat(
+    map(
+      filter(
+        cited_symbol_production_declaration_refs(),
+        r => !declaration_ref_resolves(ref: r, facts: facts, modules: modules)
+      ),
+      r => concat(
+        cited_symbol_reference_refusal_arm(ref: r, facts: facts, modules: modules),
+        concat(" ", concat(r.module_path as String, concat(" ", r.decl_name as String)))
+      )
+    ),
+    map(
+      filter(
+        hand_authored_outside_index_declaration_refs(),
+        r => declaration_ref_resolves(ref: r, facts: facts, modules: modules)
+      ),
+      r => concat(
+        "OUTSIDE-INDEX-RESOLVES ",
+        concat(
+          r.module_path as String,
+          concat(
+            " ",
+            concat(
+              r.decl_name as String,
+              " — marked outside the declaration index, but it resolves; the marking is false"
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn cited_symbol_reference_refusal_arm(
+  ref: DeclarationRef,
+  facts: List<DeclFact>,
+  modules: List<ModuleDeclarationFact>
+) -> String {
+  match resolve_declaration_ref(ref: ref, facts: facts, modules: modules) {
+    DeclarationRefResolved { declaration_identity: _ } => "RESOLVED"
+    DeclarationRefModuleAbsent { reference: _ } => "MODULE-ABSENT"
+    DeclarationRefDeclarationAbsent { reference: _ } => "DECLARATION-ABSENT"
+    DeclarationRefFieldAbsent { reference: _ } => "FIELD-ABSENT"
+    DeclarationRefAmbiguous { reference: _, candidates: _ } => "AMBIGUOUS"
+  }
 }

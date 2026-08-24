@@ -24,38 +24,38 @@ type DimmClassSupport
 // materially weaker and differently-actionable fact.
 type SpecificPartQualification
   = ListedInVendorAvl {
-      avl_authority: extdeps.external_authority.ExternalAuthority
-      avl_issue: std.types.NonEmptyStr
+      avl_authority: ExternalAuthority
+      avl_issue: NonEmptyStr
     }
   | NotListedInVendorAvl {
-      avl_authority: extdeps.external_authority.ExternalAuthority
-      avl_issue: std.types.NonEmptyStr
+      avl_authority: ExternalAuthority
+      avl_issue: NonEmptyStr
     }
   | PartQualificationUnobserved
 
 // Did DDR training complete? This is the ONLY axis the 2026-08-11 BIOS
 // upgrade moved.
 type DdrTrainingOutcome
-  = TrainingOperational { dimm_mask: std.types.NonEmptyStr }
-  | TrainingFailed { detail: std.types.NonEmptyStr }
+  = TrainingOperational { dimm_mask: NonEmptyStr }
+  | TrainingFailed { detail: NonEmptyStr }
   | TrainingOutcomeUnobserved
 
 // Did the HOST actually boot? Downstream of training and independent of it.
 type HostBootOutcome
   = BootReachedOperatingSystem
-  | RepeatingFirmwareReset { token: std.types.NonEmptyStr, cycles: std.nat.Nat }
+  | RepeatingFirmwareReset { token: NonEmptyStr, cycles: Nat }
   | BootStalledWithoutReset
   | BootOutcomeUnobserved
 
 type HostMemoryStanding {
-  host: product.placement_supply.HostIdentity
-  part_number: std.types.NonEmptyStr
-  population: List<std.types.NonEmptyStr>
+  host: HostIdentity
+  part_number: NonEmptyStr
+  population: List<NonEmptyStr>
   class_support: DimmClassSupport
   part_qualification: SpecificPartQualification
   training: DdrTrainingOutcome
   boot: HostBootOutcome
-  observed_at: std.types.EpochMs
+  observed_at: EpochMs
 }
 
 // The load-bearing negative. There is deliberately NO function deriving boot
@@ -84,15 +84,15 @@ data host_memory_qualification_note: String = "Written after the 2026-08-11 srv3
 type ExperimentVerdict
   = HypothesisSupported
   | HypothesisRefuted
-  | HypothesisWeakenedByIntervention { performed: std.types.NonEmptyStr, required: std.types.NonEmptyStr }
-  | ExperimentInconclusive { reason: std.types.NonEmptyStr }
+  | HypothesisWeakenedByIntervention { performed: NonEmptyStr, required: NonEmptyStr }
+  | ExperimentInconclusive { reason: NonEmptyStr }
 
 type CausalExperimentReceipt {
-  hypothesis: std.types.NonEmptyStr
-  intervention: std.types.NonEmptyStr
-  observation: std.types.NonEmptyStr
+  hypothesis: NonEmptyStr
+  intervention: NonEmptyStr
+  observation: NonEmptyStr
   verdict: ExperimentVerdict
-  observed_at: std.types.EpochMs
+  observed_at: EpochMs
 }
 
 data srv3_incident_experiments: List<CausalExperimentReceipt> = [
@@ -152,8 +152,8 @@ data srv3_incident_experiments: List<CausalExperimentReceipt> = [
 // On InferredFromSequencePosition:
 // The step is inferred from position in the boot sequence only.
 type TrainingEvidenceStanding
-  = DecodedFromPlatformSyndrome { register: std.types.NonEmptyStr }
-  | AssociatedByIdenticalSignature { signature: std.types.NonEmptyStr, source: extdeps.external_authority.ExternalAuthority }
+  = DecodedFromPlatformSyndrome { register: NonEmptyStr }
+  | AssociatedByIdenticalSignature { signature: NonEmptyStr, source: ExternalAuthority }
   | InferredFromSequencePosition
   | EvidenceUnobserved
 
@@ -162,11 +162,11 @@ type TrainingEvidenceStanding
 // only in a sparse population is weaker support for rejecting a part in a
 // full population, so the observation carries its own conditions.
 type PlatformTrainingFailure {
-  board: extdeps.boards.types.BaseboardModel
-  step: extdeps.memory.training.MemoryTrainingStep
+  board: BaseboardModel
+  step: MemoryTrainingStep
   standing: TrainingEvidenceStanding
-  observed_population: List<std.types.NonEmptyStr>
-  observed_at: std.types.EpochMs
+  observed_population: List<NonEmptyStr>
+  observed_at: EpochMs
 }
 
 // WHAT AN OBSERVED STEP FAILURE LICENSES, graded by evidence and scoped to
@@ -186,16 +186,16 @@ type PlatformTrainingFailure {
 type PartImplication
   = PartNotImplicated
   | PartSampleQualificationRequired {
-      step: extdeps.memory.training.MemoryTrainingStep
+      step: MemoryTrainingStep
       standing: TrainingEvidenceStanding
     }
   | PartImplicatedByFailingStep {
-      step: extdeps.memory.training.MemoryTrainingStep
+      step: MemoryTrainingStep
       standing: TrainingEvidenceStanding
     }
 
 fn implication_severity(
-  step: extdeps.memory.training.MemoryTrainingStep,
+  step: MemoryTrainingStep,
   standing: TrainingEvidenceStanding,
 ) -> PartImplication {
   match standing {
@@ -210,13 +210,13 @@ fn implication_severity(
 }
 
 fn implication_for_step(
-  candidate: extdeps.memory.types.DramModuleCatalogRow,
+  candidate: DramModuleCatalogRow,
   failure: PlatformTrainingFailure,
-  target_board: extdeps.boards.types.BaseboardModel,
+  target_board: BaseboardModel,
 ) -> PartImplication {
   if failure.board != target_board {
     PartNotImplicated
-  } else if extdeps.memory.training.module_executes_step(module: candidate, step: failure.step) {
+  } else if module_executes_step(module: candidate, step: failure.step) {
     implication_severity(step: failure.step, standing: failure.standing)
   } else {
     PartNotImplicated
@@ -224,9 +224,9 @@ fn implication_for_step(
 }
 
 fn part_implication(
-  candidate: extdeps.memory.types.DramModuleCatalogRow,
+  candidate: DramModuleCatalogRow,
   failures: List<PlatformTrainingFailure>,
-  target_board: extdeps.boards.types.BaseboardModel,
+  target_board: BaseboardModel,
 ) -> PartImplication {
   fold(
     failures,
@@ -262,13 +262,13 @@ fn part_implication(
 // This is derived from JEDEC die density, not from price observation.
 type TopologyPressure
   = CapacityReachableConventionally
-  | CapacityForcesExoticTopology { capacity_bytes: std.measure.ByteSize }
+  | CapacityForcesExoticTopology { capacity_bytes: ByteSize }
 
 fn topology_pressure(
-  candidate: extdeps.memory.types.DramModuleCatalogRow,
-  jedec: extdeps.memory.types.JedecDdrGenerationCatalogRow,
+  candidate: DramModuleCatalogRow,
+  jedec: JedecDdrGenerationCatalogRow,
 ) -> TopologyPressure {
-  if extdeps.memory.training.capacity_reachable_as_dual_rank_registered(module: candidate, jedec: jedec) {
+  if capacity_reachable_as_dual_rank_registered(module: candidate, jedec: jedec) {
     CapacityReachableConventionally
   } else {
     CapacityForcesExoticTopology { capacity_bytes: candidate.capacity_bytes }
@@ -276,14 +276,140 @@ fn topology_pressure(
 }
 
 data altrad8ud_mrep_failure_observation: PlatformTrainingFailure = PlatformTrainingFailure {
-  board: extdeps.boards.types.AsrockRackAltrad8ud1l2t,
-  step: extdeps.memory.training.LrdimmDataBufferMrep,
+  board: AsrockRackAltrad8ud1l2t,
+  step: LrdimmDataBufferMrep,
   standing: AssociatedByIdenticalSignature {
     signature: "SK[0]: 00120001 / MC[0]: 00f100b4",
-    source: extdeps.boards.asrock_rack.asrock_altrad8ud_download_authority,
+    source: asrock_altrad8ud_download_authority,
   },
   observed_population: ["A1"],
   observed_at: 1786590000000,
 }
+
+// --- THE 2026-08-22 REPLACEMENT, GRADED ON THE SAME FOUR AXES -----------------------------------
+//
+// WHY THESE ROWS EXIST AT ALL, given that both hosts are up and serving. The 2026-08-11 incident's
+// whole lesson was that "the memory works" is four questions, and a successful outcome collapses
+// them just as easily as a failure did -- more easily, because nobody interrogates a green. srv3
+// and srv4 reaching the OS at 512 GiB is a BOOT receipt for this part on this board. It is NOT a
+// part qualification, and it is NOT a training receipt either: full-capacity enumeration is strong
+// circumstantial evidence that training succeeded, but no firmware training artifact was captured,
+// so the training axis stays TrainingOutcomeUnobserved on both rows. An earlier revision of this
+// sentence called it a training receipt, which contradicted the rows underneath it and the
+// paragraph below that states the same thing correctly -- recording it as either a qualification
+// or a training result would be the rung inflation DESIGN 4b names.
+//
+// WHAT IS DIFFERENT ABOUT THIS PART FROM THE ONE THAT FAILED, and it is the reason to expect a
+// different outcome rather than merely to observe one: the M386A4G40DM0-CPB was LOAD-REDUCED, so
+// it had to execute the data-buffer read-phase calibration (MREP) that platform_training_implication_note
+// grades as this board's observed failing step. M393A8G40D40-CRB0Q is REGISTERED and 3DS-stacked,
+// not load-reduced, so it does not execute that step at all. The topology-pressure paragraph in
+// that note predicted exactly this shape: 64 GB DDR4 forces extra ranks or stacking, and the two
+// ways to get there -- load reduction versus 3DS -- are different modules, not the same module at
+// different speeds. This population took the stacked route and cleared the step the other failed.
+//
+// PART QUALIFICATION REMAINS NotListedInVendorAvl AND THAT IS NOT A COMPLAINT. The Ampere AVL
+// issue 1.15 does not carry this part number. Absence is the absence of a positive result, which
+// is precisely why the boot receipts below are worth having: they are host-specific evidence
+// standing where a vendor result does not exist. Two independent hosts, eight modules each, one
+// per channel, is a real sample and it is still not an AVL entry.
+// TRAINING IS UNOBSERVED ON BOTH ROWS AND THAT IS THE HONEST ANSWER, not a gap I failed to close.
+// TrainingOperational carries a dimm_mask because the 2026-08-11 evidence for it was a specific
+// firmware artifact -- "DDR: Operational DIMM: 0x00005555" off the console. No such reading was
+// taken for this population: the observation here is Redfish inventory, which reports what the
+// memory subsystem ENUMERATES, plus a clean BMC event log. That is strong circumstantial evidence
+// (a module failing training does not enumerate at full capacity) and it is NOT a mask.
+//
+// The first draft of these rows put that circumstantial prose INTO the dimm_mask field, which
+// would have made an inference indistinguishable from a firmware reading in the one carrier built
+// to keep the four axes apart -- the module's own defect, committed inside the module. Boot is
+// established by direct observation and says so; training waits for a console read.
+data srv3_new_population_standing: HostMemoryStanding = HostMemoryStanding {
+  host: operator_host_srv3,
+  part_number: "M393A8G40D40-CRB0Q",
+  population: ["DDR4_A1", "DDR4_B1", "DDR4_C1", "DDR4_D1", "DDR4_E1", "DDR4_F1", "DDR4_G1", "DDR4_H1"],
+  class_support: ClassSupportedByBoard,
+  part_qualification: NotListedInVendorAvl {
+    avl_authority: ampere_altra_avl_authority,
+    avl_issue: ampere_altra_avl_current_issue,
+  },
+  training: TrainingOutcomeUnobserved,
+  boot: BootReachedOperatingSystem,
+  observed_at: 1787429738000,
+}
+
+data srv4_new_population_standing: HostMemoryStanding = HostMemoryStanding {
+  host: operator_host_srv4,
+  part_number: "M393A8G40D40-CRB0Q",
+  population: ["DDR4_A1", "DDR4_B1", "DDR4_C1", "DDR4_D1", "DDR4_E1", "DDR4_F1", "DDR4_G1", "DDR4_H1"],
+  class_support: ClassSupportedByBoard,
+  part_qualification: NotListedInVendorAvl {
+    avl_authority: ampere_altra_avl_authority,
+    avl_issue: ampere_altra_avl_current_issue,
+  },
+  training: TrainingOutcomeUnobserved,
+  boot: BootReachedOperatingSystem,
+  observed_at: 1787427958000,
+}
+
+data srv4_observed_at_is_a_window_lower_bound_note: String = "srv4's observed_at is the LOWER BOUND OF A WINDOW, NOT A KNOWN INSTANT, and the difference is recorded because the carrier cannot express it. The srv4 Redfish population read was taken between 19:45Z and 20:15Z on 2026-08-22 and the exact minute was not recorded; 1787427958000 is 19:45:58Z, the timestamp of the correctable-ECC entry this session read first, so it is the earliest instant the read can have occurred at. srv3's value IS an instant, because that read was taken against a live boot transition where the clock mattered. EpochMs admits only a point, so a bounded observation must either fabricate a second or pick a bound and say which -- this picks the lower bound. A consumer computing an age from this row gets an OVERESTIMATE of elapsed time, never an underestimate, which is the safe direction for a staleness question. DISSOLVE-ON: an observed-at carrier that can express a bounded window, at which point this row moves into it and this note goes."
+
+// srv2 FAILED THE SAME PART THAT THREE SIBLINGS TRAINED, AND THAT IS THE MOST INFORMATIVE ROW
+// IN THIS MODULE (2026-08-22). srv1, srv3 and srv4 all POSTed on the 64 GiB Samsung population;
+// srv2 could not, was left power-cycling, and was reverted to its 8 x 16 GiB Hynix set, on which
+// it booted in about 2.5 minutes and returned to service with five runners.
+//
+// WHY THE BOOT AXIS READS RepeatingFirmwareReset RATHER THAN A TRAINING FAILURE. The BMC event
+// log shows a loop: power on, then Power.Error.Blackout after 13m14s, 14m26s, and 7m35s, with
+// PowerRestorePolicy=AlwaysOn restarting it each time. That is the boot axis. The TRAINING axis
+// stays Unobserved, and the distinction is exactly what this module's four independent standings
+// exist for: nobody read a training mask, because on this platform nothing can.
+//
+// THE OBSERVABILITY FINDING IS WORTH MORE THAN THE FAILURE. HostLogger captured ZERO host serial
+// entries -- not during the failures, and not during srv2's subsequent SUCCESSFUL boot either.
+// That control is what makes it a finding rather than a symptom: the recorder was never running,
+// so "what did the firmware say while training" is unavailable BY CONSTRUCTION on this fleet, not
+// merely unread. Any future attempt is blind in the same way unless serial capture is fixed
+// first, and a binary search over DIMMs would be running on pass/fail and wall-clock alone.
+//
+// WHAT THE EVIDENCE RULES OUT, recorded so it is not re-investigated: the 2026-06-02 aux-connector
+// VRM failure did NOT recur (all 16 rails matched srv1 within millivolts, including the five that
+// read 0.01 V then), and the SoC was neither dead nor idle -- all eight per-DIMM thermal sensors
+// read 67-75 C against a 50 C SoC, matching a fully-booted srv1, an hour after srv2 last ran an
+// OS. The SoC was alive and driving all eight channels. The thermal spread was EVEN, so no
+// channel was being skipped: this was a convergence failure across a populated bus, not one dead
+// channel.
+//
+// VARIABLE TIME-TO-FAILURE IS THE REASON THIS IS NOT CLOSED. 13m14s, 14m26s and 7m35s are not a
+// deterministic firmware timeout; they point at something marginal -- signal integrity or a flaky
+// rank. The practical consequence is that ONE successful boot would not establish a fix, so the
+// part_qualification axis below stays NotListedInVendorAvl and this host's standing stays a
+// failure rather than being softened by the three siblings that worked.
+data srv2_failed_64gib_population_standing: HostMemoryStanding = HostMemoryStanding {
+  host: operator_host_srv2,
+  part_number: "M393A8G40D40-CRB0Q",
+  population: ["DDR4_A1", "DDR4_B1", "DDR4_C1", "DDR4_D1", "DDR4_E1", "DDR4_F1", "DDR4_G1", "DDR4_H1"],
+  class_support: ClassSupportedByBoard,
+  part_qualification: NotListedInVendorAvl {
+    avl_authority: ampere_altra_avl_authority,
+    avl_issue: ampere_altra_avl_current_issue,
+  },
+  training: TrainingOutcomeUnobserved,
+  boot: RepeatingFirmwareReset { token: "Power.Error.Blackout (no firmware POST token reached; BootProgress remained Unspecified at epoch zero)", cycles: 3 },
+  observed_at: 1787436400000,
+}
+
+data srv2_boot_serial_unobservable_note: String = "srv2 HostLogger held ZERO entries across both the failed 64 GiB cycles AND the successful 8 x 16 GiB boot that followed. The successful boot is the control: it proves the absence is a missing recorder, not a mute SoC. Consequence for any retry: the training axis cannot be observed on this fleet until host serial capture works (the obmc-console server configs for ttyS1/ttyS2/ttyS3 exist -- ttyS2 is the SCP, which runs DDR training -- but nothing is captured), so the highest-value action before re-testing 64 GiB on srv2 is fixing serial capture or attaching a physical cable. Failing that, the per-DIMM thermal sensors are the working instrument: the baseline is all eight at 67-75 C during a FAILED run, so a future attempt showing one channel cool fingers that channel with no firmware log needed."
+
+// THE ONE OPEN ITEM ON THIS POPULATION, kept as data rather than left in a chat log.
+// srv4 logged a single CORRECTABLE ECC error at 2026-08-22T19:45:57Z -- Socket 0 / Channel 0 /
+// DIMM 0, bank 13 row 166 column 96 -- about three minutes after an unclean restart following a
+// power blackout. Corrected, no uncorrectable event, no repeat, and no comparable event on srv3.
+// It does NOT move any of the four axes: boot is established, training is operational, and a
+// corrected single-bit event is not a qualification result in either direction.
+// It is recorded because the distinguishing fact is a REPEAT at the same bank/row/column, which
+// separates a marginal device from a single upset, and nobody can look for a repeat against an
+// event that was never written down.
+data srv4_correctable_ecc_watch_note: String = "srv4 dimm0 (Bank 1 DDR4_A1, serial 026B6F84): one MemoryECCCorrectable at 2026-08-22T19:45:57Z, bank 13 row 166 column 96, decoded through the BMC's own OpenBMC message registry rather than guessed. Watch for recurrence at the same coordinates. A second event there is a device-level finding; scattered single events across different addresses are not."
 
 data platform_training_implication_note: String = "RELOCATED 2026-08-19 from the deleted gunbc.memory_part_selection, whose candidate/frontier half was a selection island; this evidence half is qualification, so it lives beside the four standings it grades. The grading rule is mechanical and derived: a candidate is graded by whether it must execute a training step THIS platform has been observed to fail, and by how strongly that failure is evidenced. For the ALTRAD8UD-1L2T the step is the DDR4 data-buffer read-phase calibration (MREP), which only load-reduced modules execute, so the grading is independent of vendor, part number, capacity, speed grade, and presence on any approved-vendor list. THE SEVERITY IS A FUNCTION OF EVIDENCE, and an earlier revision of this module got that wrong in a way worth recording: it refused every module executing the failing step, on any board, at any standing including EvidenceUnobserved. Because capacities near a generation's die-density ceiling are disproportionately load-reduced, that blanket rule removed most of the 64GB DDR4 market by construction — the exact blocklist this module's prose claimed to avoid, reached by a different route, and the opposite of letting a buyer shop the whole market. Now: a decode of this platform's own syndrome register refuses; an association carrying byte-identical controller status words, or an inference from sequence position, requires a SAMPLE before committing to a full population and stays on the Pareto frontier; an unobserved standing implicates nothing. gunbc holds MREP at AssociatedByIdenticalSignature, so the honest verdict for another ALTRAD8UD LRDIMM today is buy-one-and-test, not reject. Failures are scoped to the board they were observed on, so an ALTRAD8UD receipt cannot speak for a different platform. KNOWN GAP, stated rather than papered over: BaseboardModel currently has exactly one variant, so the board scoping is real in the code but has no executing cross-board control — minting a second board purely to test it would be a fabricated entity, and the control lands when a second real board is modeled. The second axis, topology pressure, is derived rather than observed: when a capacity cannot be reached as a dual-rank registered module within the generation's monolithic die-density ceiling, that capacity forces extra ranks or stacking, which is why 64GB DDR4 at older speed grades is disproportionately load-reduced while 32GB is not. A buyer economizing on speed grade at 64GB is therefore not buying the same module more slowly, it is a different topology — which is a reason to sample it, not a reason to refuse it."
