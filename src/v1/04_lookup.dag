@@ -85,7 +85,7 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -
     FuncSigUnresolved
   } else {
     match lookup_resolved_sig(env: func_env, name: name) {
-      FuncSigResolved { sig: sig } => FuncSigResolved { sig: sig }
+      FuncSigResolved { sig: sig, owner_module_path: owner } => FuncSigResolved { sig: sig, owner_module_path: owner }
       FuncSigAmbiguous { candidates: cands } => FuncSigAmbiguous { candidates: cands }
       FuncSigUnresolved => func_sig_from_global_bare(type_env: type_env, name: name)
     }
@@ -94,7 +94,7 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -
 
 fn func_sig_if_resolved(lookup: FuncSigLookup) -> ResolvedFuncSig? {
   match lookup {
-    FuncSigResolved { sig: sig } => Present { value: sig }
+    FuncSigResolved { sig: sig, owner_module_path: _ } => Present { value: sig }
     FuncSigUnresolved => Absent
     FuncSigAmbiguous { candidates: _ } => Absent
   }
@@ -272,7 +272,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             is_async: false,
             output_provenance: [],
             variant_provenance: empty_map()
-          } }
+          }, owner_module_path: bd.owner_module_path }
         } else {
           let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
           FuncSigResolved { sig: ResolvedFuncSig {
@@ -282,7 +282,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             is_async: false,
             output_provenance: [],
             variant_provenance: empty_map()
-          } }
+          }, owner_module_path: bd.owner_module_path }
         }
       }
     Absent => FuncSigUnresolved

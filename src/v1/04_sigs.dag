@@ -73,10 +73,10 @@ type ParentSigScan {
   first_parent: String?
 }
 
-data func_sig_lookup_outcome_note: String = "namespace-resolution-design.md 13 / 8 step 1, fn path: ResolvedFuncSig? overloaded Absent as 'keep looking' (the census fallback fires on it), so a refusal had nowhere to go — the first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds, FuncSigUnresolved means genuinely-no-sig (census fallback may still run), FuncSigAmbiguous carries the full candidate list and REFUSES — it never falls through to a fallback. Under ImportScoped (host bracket false) the first-hit behavior remains until the downstream production flip; under NamespaceOnlyY exactly-one match across the flat parent closure resolves, two-plus refuses through module_path_owner_binding_decide. Own-module local hit stays first on both arms."
+data func_sig_lookup_outcome_note: String = "namespace-resolution-design.md 13 / 8 step 1, fn path: ResolvedFuncSig? overloaded Absent as 'keep looking' (the census fallback fires on it), so a refusal had nowhere to go — the first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds the signature AND its exact owner module, FuncSigUnresolved means genuinely-no-sig (census fallback may still run), FuncSigAmbiguous carries the full candidate list and REFUSES — it never falls through to a fallback. The owner is part of resolution, not reconstructible from admission lookup: emission target identity consumes it directly after inference. Under ImportScoped (host bracket false) the first-hit behavior remains until the downstream production flip; under NamespaceOnlyY exactly-one match across the flat parent closure resolves, two-plus refuses through module_path_owner_binding_decide. Own-module local hit stays first on both arms."
 
 type FuncSigLookup
-  = FuncSigResolved { sig: ResolvedFuncSig }
+  = FuncSigResolved { sig: ResolvedFuncSig, owner_module_path: String }
   | FuncSigUnresolved
   | FuncSigAmbiguous { candidates: List<String> }
 
@@ -98,9 +98,9 @@ fn lookup_resolved_sig_unique_across_parents(env: ResolvedFuncEnv, name: String)
   )
   match module_path_owner_binding_decide(owners: scan.owners) {
     ModulePathBindingMiss => FuncSigUnresolved
-    ModulePathBindingHit { owner: _ } =>
+    ModulePathBindingHit { owner: owner } =>
       match scan.first_sig {
-        Present { value: sig } => FuncSigResolved { sig: sig }
+        Present { value: sig } => FuncSigResolved { sig: sig, owner_module_path: owner }
         Absent => FuncSigUnresolved
       }
     ModulePathBindingAmbiguous { owners: _ } =>
@@ -113,7 +113,12 @@ fn lookup_resolved_sig_unique_across_parents(env: ResolvedFuncEnv, name: String)
   }
 }
 
-fn lookup_resolved_sig_with_telemetry(env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? {
+type ResolvedSigWithOwner {
+  sig: ResolvedFuncSig
+  owner_module_path: String
+}
+
+fn lookup_resolved_sig_with_telemetry(env: ResolvedFuncEnv, name: String) -> ResolvedSigWithOwner? {
   let scan = fold(env.parents, init: ParentSigScan { sig: none, match_count: 0, first_parent: none }, f: (acc, p) =>
     match map_get(p.local, name) {
       Present { value: sig } =>
@@ -137,12 +142,19 @@ fn lookup_resolved_sig_with_telemetry(env: ResolvedFuncEnv, name: String) -> Res
       Absent => {}
     }
   }
-  scan.sig
+  match scan.sig {
+    Present { value: sig } =>
+      match scan.first_parent {
+        Present { value: owner } => Present { value: ResolvedSigWithOwner { sig: sig, owner_module_path: owner } }
+        Absent => none
+      }
+    Absent => none
+  }
 }
 
 fn lookup_resolved_sig(env: ResolvedFuncEnv, name: String) -> FuncSigLookup {
   match map_get(env.local, name) {
-    Present { value: sig } => FuncSigResolved { sig: sig }
+    Present { value: sig } => FuncSigResolved { sig: sig, owner_module_path: env.name }
     Absent =>
       if name_resolution_policy_is_namespace_only() {
         lookup_resolved_sig_unique_across_parents(env: env, name: name)
@@ -150,22 +162,25 @@ fn lookup_resolved_sig(env: ResolvedFuncEnv, name: String) -> FuncSigLookup {
         let first_hit = if resolution_silent_pick_is_enabled() {
           lookup_resolved_sig_with_telemetry(env: env, name: name)
         } else {
-          fold(env.parents, init: none_resolved_sig(), f: (acc, p) =>
+          fold(env.parents, init: none_resolved_sig_with_owner(), f: (acc, p) =>
             match acc {
-              Present { value: sig } => Present { value: sig }
-              Absent => map_get(p.local, name)
+              Present { value: found } => Present { value: found }
+              Absent => match map_get(p.local, name) {
+                Present { value: sig } => Present { value: ResolvedSigWithOwner { sig: sig, owner_module_path: p.name } }
+                Absent => none
+              }
             }
           )
         }
         match first_hit {
-          Present { value: sig } => FuncSigResolved { sig: sig }
+          Present { value: found } => FuncSigResolved { sig: found.sig, owner_module_path: found.owner_module_path }
           Absent => FuncSigUnresolved
         }
       }
   }
 }
 
-fn none_resolved_sig() -> ResolvedFuncSig? {
+fn none_resolved_sig_with_owner() -> ResolvedSigWithOwner? {
   Absent
 }
 

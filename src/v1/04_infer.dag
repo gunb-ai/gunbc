@@ -3725,12 +3725,12 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
         Absent =>
           match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name) {
-            FuncSigResolved { sig: fsig } =>
+            FuncSigResolved { sig: fsig, owner_module_path: sig_owner } =>
                   match (fsig.params |> count) == 0 {
                     true =>
                       ok_infer(texpr: make_named_expr_node(
                         name: name,
-                        expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: name, sig_lookup: FuncSigResolved { sig: fsig }) } }, descent_evidence: none },
+                        expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics { target: resolved_plain_call_target(scope: scope, func_name: name, sig_lookup: FuncSigResolved { sig: fsig, owner_module_path: sig_owner }) } }, descent_evidence: none },
                         children: [],
                         inferred: Present { value: Resolved { node: fsig.inferred } },
                         span: span,
@@ -5196,11 +5196,8 @@ data resolved_call_target_identity_note: String = "A call is resolved once, wher
 
 fn resolved_plain_call_target(scope: InferScope, func_name: String, sig_lookup: FuncSigLookup) -> CallTargetIdentity {
   match sig_lookup {
-    FuncSigResolved { sig: _ } =>
-      resolved_call_target_from_declaration_lookup(
-        declaration_lookup: func_decl_binding_for_call(func_env: scope.func_env, type_env: scope.type_env, name: func_name),
-        func_name: func_name
-      )
+    FuncSigResolved { sig: _, owner_module_path: owner_module_path } =>
+      resolved_declaration_call_target(owner_module_path: owner_module_path, decl_name: qualified_last_segment(name: func_name), func_name: func_name)
     FuncSigUnresolved =>
       if infer_builtin_call_type(name: func_name) != none {
         RuntimePrimitiveCall { primitive_name: func_name }
