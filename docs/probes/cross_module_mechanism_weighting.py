@@ -62,6 +62,103 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import e0308_classify_sites as e0308
 import rustc_mechanism_classify as mech
 
+# ---- cross-code mechanisms established by this cohort ----------------------
+# TWO ADDITIONS TO THE CROSS-CODE VOCABULARY, AND WHY EACH IS A ROOT RATHER THAN A CODE.
+# Both are visible only from a cohort: each spans codes whose per-code partitions would rank it
+# twice at half size, and each is concentrated in emitted std files that sit in every closure.
+#
+# PRIMITIVE_REPR_FORK. DESIGN.md's declared open thread and the mechanism eager-deer-389
+# root-caused: `v1.compiler.04_infer` `rust_corpus_repr` picks HostNative vs FaithfulFreeMonoid
+# from a path-substring test over the closure's source keys, so a pure-v2 closure renders the
+# numeric tower as the modeled carrier while its neighbours are native. rustc then reports the
+# same emitted decision as a type mismatch (E0308) where a value crosses the seam and as an
+# unsupported operator (E0369) where an operator is applied to the modeled carrier. The
+# discriminator requires a modeled numeric carrier on one side and a native integer on the
+# other -- never the mere presence of the word Nat, which also appears in unrelated mismatches.
+#
+# MAP_CARRIER_FORK. One map concept realized two ways: a modeled `PartialFunction`/`PointwisePower`
+# in type position against `HashMap`/`BTreeMap` in the seed's own surface. It reaches rustc as a
+# mismatch (E0308) where a map value crosses, and as a missing struct field (E0560) where the
+# emitter writes a record literal whose field names belong to the OTHER realization. The E0560
+# half is the load-bearing part of the join: read per code it looks like an unrelated
+# "struct has no field" family, and no E0308 repair would close it.
+#
+# WHAT IS DELIBERATELY NOT ADDED. E0004 non-exhaustive patterns, E0425 unresolved names and
+# E0432 unresolved imports are each large here and each plausibly one root, and none of them has
+# a discriminator this cohort establishes. They stay UNCLASSIFIED. Filling them in from their
+# code is exactly the move this file exists to refuse.
+MODELED_NUMERIC = {"Nat", "Int", "CommutativeSemiring", "GroupCompletion", "Magnitude"}
+MAP_MODELED = {"PartialFunction", "PointwisePower"}
+MAP_NATIVE = {"HashMap", "BTreeMap", "OrdMap"}
+
+E0369_MODELED = re.compile(r"`(?:&)?Rc<(?:[a-z0-9_]+::)*(Nat|Int|CommutativeSemiring<[^`]*|GroupCompletion<[^`]*)>`")
+E0560_MAP = re.compile(r"^struct `(?:&)?(?:Rc<)?(PartialFunction|PointwisePower)<")
+
+
+def _heads(text):
+    """Nominal heads of a type spelling, Rc wrappers erased, module paths dropped."""
+    bare = e0308.strip_rc(e0308.normalize(text))[0]
+    return e0308.head(bare)
+
+
+def primitive_repr_fork(code, message, expected, found):
+    if code == "E0308":
+        if not (expected and found):
+            return False
+        he, hf = _heads(expected), _heads(found)
+        modeled = {h for h in (he, hf) if h in MODELED_NUMERIC}
+        native = {h for h in (he, hf) if h in e0308.NUMERIC_NATIVE}
+        return bool(modeled) and bool(native)
+    if code == "E0369":
+        # An operator refused ON the modeled carrier. The native side is not required to appear:
+        # `binary operation `<` cannot be applied to type `Rc<Nat>`` names only the receiver, and
+        # excluding it would drop the operator half of the very fork being counted.
+        return bool(E0369_MODELED.search(message))
+    return False
+
+
+def map_carrier_fork(code, message, expected, found):
+    if code == "E0560":
+        return bool(E0560_MAP.match(message))
+    if code == "E0308":
+        if not (expected and found):
+            return False
+        he, hf = _heads(expected), _heads(found)
+        return ({he, hf} & MAP_MODELED) and ({he, hf} & MAP_NATIVE)
+    return False
+
+
+# ---- instrument attribution, which is NOT a root -----------------------------
+# A board taken with a lane shim installs that lane's hand-written lib.rs OVER the assembled one,
+# and that lib.rs declares only the modules its own lane needed. Every module of the closure it
+# does not declare then refuses as an unresolved crate-root path. curated_cargo_probe_one.sh names
+# this the FALSE-RED hazard; measured across this cohort it is not a hazard in principle but the
+# single largest population difference between shim-bearing and shim-free boards -- all 60 E0432
+# and all 16 E0608 manifestations here sit on the four shim boards, and 41 of 57 E0433 do.
+#
+# It is attributed rather than left UNCLASSIFIED because the two are different claims: UNCLASSIFIED
+# says no root is established, this says the population is a property of how the board was taken.
+# Ranking it as a repair root would staff a defect that does not exist outside the probe; dropping
+# it silently would make four boards look smaller than they are. It is therefore its own labelled
+# row, excluded from root ranking by name and never by a filter someone has to remember.
+SHIM_UNRESOLVED = re.compile(
+    r"^(?:unresolved import `crate::[a-z0-9_]+"
+    r"|cannot find (?:[a-z0-9_]+|`[a-z0-9_]+`) in `crate`"
+    r"|cannot find `[a-z0-9_]+` in `crate`)")
+
+
+def shim_closure_gap(code, message, shim_board):
+    if not shim_board or code not in ("E0432", "E0433", "E0608"):
+        return False
+    return bool(SHIM_UNRESOLVED.match(message))
+
+
+CROSS_CODE = (
+    ("PRIMITIVE_REPR_FORK", primitive_repr_fork),
+    ("MAP_CARRIER_FORK", map_carrier_fork),
+)
+
+
 TOOLCHAIN = re.compile(r"^/rustc/[0-9a-f]+/")
 
 
@@ -88,10 +185,21 @@ def module_rows(module, log_path):
     return rows
 
 
-def root_of(row):
+def root_of(row, shim_boards=frozenset()):
     """The reported root. UNCLASSIFIED stays UNCLASSIFIED: an error code is not a root, and the
-    E0308 projection is a code-local view that this tool refuses to promote."""
-    return row["mechanism"]
+    E0308 projection is a code-local view that this tool refuses to promote.
+
+    rustc_mechanism_classify's ABSENT_CLONE_BOUND keeps precedence: it is the established
+    mechanism and its discriminator is the strictest here (it requires rustc's own explanation
+    text, not a type shape), so a row it claims is never re-labelled by a shape test."""
+    if row["mechanism"] != "UNCLASSIFIED":
+        return row["mechanism"]
+    if shim_closure_gap(row["code"], row["message"], row["module"] in shim_boards):
+        return "SHIM_CLOSURE_GAP_instrument"
+    for name, decide in CROSS_CODE:
+        if decide(row["code"], row["message"], row["expected"], row["found"]):
+            return name
+    return "UNCLASSIFIED"
 
 
 def weight(rows, key):
@@ -109,6 +217,14 @@ def main():
     ap.add_argument("--rows", help="the cohort's probe rows TSV (curated_cargo_probe_one 13-column "
                                    "rows); required together with --expect-sha")
     ap.add_argument("--expect-sha", help="the ref every board must declare in its own row")
+    ap.add_argument("--shim-board", action="append", default=[], metavar="MODULE",
+                    help="a board taken with a lane shim_lib_rel installed. Unresolved crate-root "
+                         "paths on such a board are attributed to the shim's undeclared closure, "
+                         "not counted as an emitter root.")
+    ap.add_argument("--declared-absent", action="append", default=[], metavar="MODULE=REASON",
+                    help="a roster module that produced a row but no log, with the reason it did "
+                         "not board. Exclusion must be declared and reasoned; the population "
+                         "check refuses an undeclared gap.")
     args = ap.parse_args()
 
     if bool(args.rows) != bool(args.expect_sha):
@@ -133,6 +249,19 @@ def main():
         if wrong:
             sys.exit("cross_module_weighting: REFUSED — %d board(s) declare a ref other than %s: %s"
                      % (len(wrong), args.expect_sha, wrong))
+        absent = {}
+        for spec in args.declared_absent:
+            module, sep, reason = spec.partition("=")
+            if not sep or not reason.strip():
+                sys.exit("cross_module_weighting: REFUSED — --declared-absent needs MODULE=REASON; "
+                         "an exclusion with no reason is a silent gap wearing a flag: %r" % spec)
+            if module not in declared:
+                sys.exit("cross_module_weighting: REFUSED — %s is declared absent but produced no "
+                         "probe row either, so nothing establishes it was attempted" % module)
+            absent[module] = reason.strip()
+        for module, reason in sorted(absent.items()):
+            print("declared absent: %s — %s" % (module, reason))
+            declared.pop(module)
         logged = {name[: -len(".cargo.log")] for name in logs}
         if logged != set(declared):
             sys.exit("cross_module_weighting: REFUSED — rows and logs describe different cohorts; "
@@ -148,7 +277,11 @@ def main():
         per_module[module] = module_result
         rows.extend(module_result)
 
-    columns = ["module", "code", "block", "manifestation", "file", "line", "col", "expected",
+    shim_boards = frozenset(args.shim_board)
+    for row in rows:
+        row["root"] = root_of(row, shim_boards)
+
+    columns = ["module", "root", "code", "block", "manifestation", "file", "line", "col", "expected",
                "found", "mechanism", "e0308_candidate_projection", "message"]
     with open(args.out_prefix + "_manifestations.tsv", "w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=columns, extrasaction="ignore",
@@ -162,8 +295,8 @@ def main():
     # Per-root weighting. Manifestations are reported per module and the cohort column is the
     # DISTINCT-SITE count, never their sum.
     root_rows = []
-    for root in sorted({root_of(r) for r in rows}):
-        sel = [r for r in rows if root_of(r) == root]
+    for root in sorted({r["root"] for r in rows}):
+        sel = [r for r in rows if r["root"] == root]
         root_strict = {s for s in {r["strict_site"] for r in sel}}
         root_loose = {s for s in {r["loose_site"] for r in sel}}
         breadth = [len(loose[s]) for s in root_loose]
@@ -193,7 +326,8 @@ def main():
             "module": module,
             "manifestations": len(sel),
             "distinct_codes": len(by_code),
-            "classified": sum(1 for r in sel if r["mechanism"] != "UNCLASSIFIED"),
+            "shim_board": module in shim_boards,
+            "classified": sum(1 for r in sel if r["root"] != "UNCLASSIFIED"),
             "histogram": " ".join("%s:%d" % kv for kv in by_code.most_common()),
         })
     with open(args.out_prefix + "_boards.tsv", "w", newline="", encoding="utf-8") as fh:

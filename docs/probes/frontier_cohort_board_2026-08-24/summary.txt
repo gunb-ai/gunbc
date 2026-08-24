@@ -1,0 +1,13 @@
+declared absent: program_assembly — EMIT_REFUSE: gunbc compile refused before emitting
+subject asserted: 15 boards, all at 6a59c1a549bee1ba01e59e83d30d1a0d88c5b9b3
+cohort: 15 module boards
+manifestations (summed across boards, NOT a defect count): 1709
+distinct sites: strict 598, loose 298
+shared sites (breadth > 1): strict 360, loose 205
+shared-floor share of loose distinct sites: 68.8%
+breadth histogram (loose): {1: 93, 2: 86, 3: 9, 4: 33, 5: 19, 6: 8, 7: 14, 8: 25, 9: 7, 11: 1, 13: 2, 15: 1}
+  UNCLASSIFIED         modules=15  sites_loose=217   shared=151   max_breadth=15
+  SHIM_CLOSURE_GAP_instrument modules=4   sites_loose=37    shared=12    max_breadth=4
+  ABSENT_CLONE_BOUND   modules=13  sites_loose=22    shared=20    max_breadth=13
+  MAP_CARRIER_FORK     modules=9   sites_loose=18    shared=18    max_breadth=9
+  PRIMITIVE_REPR_FORK  modules=8   sites_loose=4     shared=4     max_breadth=8
