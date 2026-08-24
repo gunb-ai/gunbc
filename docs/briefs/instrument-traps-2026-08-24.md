@@ -2277,3 +2277,63 @@ afterwards — in the sentence, because that is the unit that gets quoted, forwa
 session's read path is dead, measured against a working control" would have been true, useful, and
 would have prompted exactly the check that settled it. It is one word shorter than the version that
 was sent.
+
+## The positive specimen: what the discipline looks like when nobody is watching
+
+Every entry above is a failure, and a document made only of failures teaches suspicion rather than
+practice. It also flatters its author: catalogue enough traps and you can look rigorous while never
+demonstrating rigour. So this last entry is somebody else's work, done right, and — the part that
+matters — authored the day *before* the ruling that would have demanded it.
+
+`docs/probes/underscore_named_call_order_treatment_2026-08-23.md` reports a paired before/after on an
+emission change. What it does:
+
+- **Preregisters the prediction.** The registered result is written down *before* the candidate board
+  is observed, with the two expected emissions named literally.
+- **Runs both arms in one dispatch.** Not two runs compared afterwards.
+- **Names its confound and holds it constant.** An annotation-only correction from a different PR
+  conflicted with the older tree, so *both* arms took the same resolved file, and the receipt says so:
+  "common setup rather than a treatment difference." The confound is disclosed, not eliminated —
+  which is honest, because it could not be eliminated.
+- **Carries controls that could have moved and didn't.** Three preregistered control identities, plus
+  an unrelated error code, unchanged across the pair. Without those, "seven blocks vanished" is
+  consistent with the whole board shifting.
+- **Refuses the comparison it is not entitled to.** The paired total is 324 where the retained board
+  says 316, and rather than quietly using the nicer number or suppressing the discrepancy, it
+  explains that the common file resolution changes the composite subject and states: *"no count is
+  compared across those subjects. Only the within-pair delta is claimed here."*
+
+That last bullet is the whole document in one sentence, written by someone who had not read it. **The
+discipline is not producing better numbers; it is declining the comparisons your numbers do not
+license.** Every failure catalogued above is the same act refused: a duration divided across two
+clocks, a figure divided by a subject it never covered, a partition run over a premise it could not
+test, a quantifier attached to a population of two.
+
+### The one thing it does not settle, stated so the praise is not itself an overclaim
+
+The after arm includes its own regenerated stage0 mirrors, so the two arms ran under **different
+compiler binaries**. For a change *to emission* that is not a confound — the compiler difference *is*
+the treatment — and the receipt is right not to control it away. But it means the result is a
+within-pair delta under a bootstrap-produced binary, and the day-after ruling on measurement identity
+(source ref + compiler binary identity + command and configuration + subject kind + terminal phase)
+would ask that the binary be *named*, not that it be identical. Naming it costs a line and closes the
+only door this receipt leaves open.
+
+Which is the right note to end on. The receipt is not perfect, and pointing at it as a model while
+suppressing its one gap would be the same flattery this section opened by refusing.
+
+## Postscript the third: the counter
+
+Recorded without ceremony because it happened *after* the rule was written, in the same document, by
+the same author.
+
+A dashboard notice reported a side-chat token balance of 14. It had read 14 all morning, so a pending
+send was judged not to have landed, and a retry loop was killed on that basis. The balance later read
+13. The send had landed all along; the notice was generated before the charge posted.
+
+`balance` answers **what was the balance when this notice was built**. The question asked of it was
+**did my message arrive**. One number, two questions, no error at the boundary — and by then the
+identical shape had already been written up twice on the pages above.
+
+**Knowing the class does not confer immunity.** The first postscript said so; this is the receipt for
+the sentence.
