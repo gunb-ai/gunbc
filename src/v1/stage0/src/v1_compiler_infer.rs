@@ -15224,7 +15224,7 @@ pub fn infer_property_values(
                 __result.push({
                     let val = field_init_node_value(p.clone());
                     let val_result = infer_expr(val.clone(), scope.clone(), None);
-                    Rc::new(ServiceConfigPropertyResult {
+                    Rc::new(PropertyInferenceResult {
                         prop: Rc::new(Node {
                             name: p.name.clone(),
                             span: p.span.clone(),
@@ -15255,14 +15255,14 @@ pub fn infer_property_values(
             props: Rc::new({
                 let mut __result = Vec::new();
                 for r in results.iter().cloned() {
-                    __result.push(r.0.clone());
+                    __result.push(r.prop.clone());
                 }
                 __result
             }),
             diagnostics: Rc::new({
                 let mut __result = Vec::new();
                 for r in results.iter().cloned() {
-                    __result.extend((*r.1.clone()).iter().cloned());
+                    __result.extend((*r.diagnostics.clone()).iter().cloned());
                 }
                 __result
             }),
@@ -15271,7 +15271,7 @@ pub fn infer_property_values(
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ServiceConfigPropertyResult {
+pub struct PropertyInferenceResult {
     pub prop: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
@@ -15339,7 +15339,7 @@ match (*service_config_field_judgment(field.clone())).clone() {
     ServiceConfigFieldJudgment::FieldJudged => {
                 let val = field_init_node_value(p.clone());
 let val_result = infer_expr(val.clone(), scope.clone(), None);
-Rc::new(ServiceConfigPropertyResult {
+Rc::new(PropertyInferenceResult {
     prop: Rc::new(Node {
     name: p.name.clone(),
     span: p.span.clone(),
@@ -15363,7 +15363,7 @@ Rc::new(ServiceConfigPropertyResult {
     diagnostics: val_result.diagnostics.clone(),
 })
 },
-    ServiceConfigFieldJudgment::FieldDeferred { trigger: t, .. } => Rc::new(ServiceConfigPropertyResult {
+    ServiceConfigFieldJudgment::FieldDeferred { trigger: t, .. } => Rc::new(PropertyInferenceResult {
     prop: p.clone(),
     diagnostics: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred {
     field: field.clone(),
@@ -15372,7 +15372,7 @@ Rc::new(ServiceConfigPropertyResult {
     span: p.span.clone(),
 }), scope.module_name.clone())]),
 }),
-    ServiceConfigFieldJudgment::FieldCarriesNoReference => Rc::new(ServiceConfigPropertyResult {
+    ServiceConfigFieldJudgment::FieldCarriesNoReference => Rc::new(PropertyInferenceResult {
     prop: p.clone(),
     diagnostics: Rc::new(vec![]),
 }),

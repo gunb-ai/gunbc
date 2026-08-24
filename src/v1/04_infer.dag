@@ -7813,7 +7813,7 @@ fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertie
   let results = props |> map(p =>
     let val = field_init_node_value(n: p)
     let val_result = infer_expr(texpr: val, scope: scope, expected: none)
-    {
+    PropertyInferenceResult {
       prop: Node {
         name: p.name, span: p.span, ident_span: p.ident_span,
         children: [val_result.typed], connective: p.connective,
@@ -7853,11 +7853,19 @@ fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertie
 // carrying its own next-rung trigger, non-blocking (DESIGN section 4b FrontierAccepted:
 // typed-located-counted with the phase still Accepted). It is not a pass, and its frequency
 // is observable, which is exactly what the empty diagnostic list destroyed.
-// A NAMED CARRIER, not an anonymous record, and the reason is grammatical as well as modelled:
-// `=>` followed by `{` opens a BLOCK, so an anonymous record literal as a match-arm body is a
-// parse error at its first field colon. Naming the carrier makes the arm start with an
-// identifier, and gives the per-property result a type instead of a positional shape.
-type ServiceConfigPropertyResult {
+// ONE NAMED CARRIER FOR BOTH PROPERTY FOLDS, and it is named for the concept rather than for
+// the caller that forced it: `infer_property_values` (transport properties) and
+// `infer_service_config_properties` (service config) both fold one property into a typed
+// node plus its diagnostics, so this is one concept and gets one authority.
+//
+// It is NAMED rather than anonymous for two independent reasons. Grammatically, `=>` followed
+// by `{` opens a BLOCK, so an anonymous record literal as a match-arm body is a parse error at
+// its first field colon. And structurally, an anonymous record with these exact fields already
+// existed in `infer_property_values`: introducing a named type of the same shape beside it made
+// the emitter bind the anonymous one to the named type while still emitting POSITIONAL `.0`/`.1`
+// accessors for it, which does not compile. Two spellings of one shape is the §3 fork, and this
+// is what it cost — so both folds now carry the same name.
+type PropertyInferenceResult {
   prop: Node
   diagnostics: List<ErrorNode>
 }
@@ -7903,7 +7911,7 @@ fn infer_service_config_properties(props: List<Node>, scope: InferScope) -> Infe
       FieldJudged =>
         let val = field_init_node_value(n: p)
         let val_result = infer_expr(texpr: val, scope: scope, expected: none)
-        ServiceConfigPropertyResult {
+        PropertyInferenceResult {
           prop: Node {
             name: p.name, span: p.span, ident_span: p.ident_span,
             children: [val_result.typed], connective: p.connective,
@@ -7916,7 +7924,7 @@ fn infer_service_config_properties(props: List<Node>, scope: InferScope) -> Infe
           diagnostics: val_result.diagnostics
         }
       FieldDeferred { trigger: t } =>
-        ServiceConfigPropertyResult {
+        PropertyInferenceResult {
           prop: p,
           diagnostics: [make_error_node(
             diagnostic: ServiceConfigReferenceJudgmentDeferred {
@@ -7928,7 +7936,7 @@ fn infer_service_config_properties(props: List<Node>, scope: InferScope) -> Infe
             module_name: scope.module_name
           )]
         }
-      FieldCarriesNoReference => ServiceConfigPropertyResult { prop: p, diagnostics: [] }
+      FieldCarriesNoReference => PropertyInferenceResult { prop: p, diagnostics: [] }
     }
   )
   InferPropertiesResult {
