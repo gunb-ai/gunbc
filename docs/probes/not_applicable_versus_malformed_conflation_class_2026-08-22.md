@@ -29,7 +29,7 @@ They have opposite repairs. Malformed is fixed by the input's author; not-applic
 
 | gunbc#9075 | parse / §4c annotation adjudication | `source annotation names no subject` | an annotation genuinely lacking a following module item vs **parse never reaching module scope**, so the check cannot see one |
 
-Four stages, four independent discoveries, one shape. That is a property of this corpus's diagnostic vocabulary rather than three coincidences.
+Four stages, four independent discoveries, one shape. That is a property of this corpus's diagnostic vocabulary rather than four coincidences.
 
 ## 3. Why it is expensive, in the currency this repository already counts
 
