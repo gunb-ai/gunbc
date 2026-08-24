@@ -210,3 +210,48 @@ question is narrower than the one the reader asked:
 
 The transferable move is not vigilance. It is to **make the run assert its own subject**, so
 that a narrower answer cannot be read as the wider one.
+
+---
+
+## Trap 11 — the completion marker matched the ECHOED COMMAND, not the output
+
+Measured 2026-08-24 09:15, in the remedy for trap 9, roughly forty minutes after adopting it.
+
+I planted `MARKER_ALL_DONE` as the last line of a remote payload and waited on
+`grep -q 'MARKER_ALL_DONE' out.txt`. The wait returned in seconds. The payload had not run —
+the dispatch was still applying patches, and no line of my script had executed.
+
+`ctrl-build` echoes the command it is about to run, verbatim, into the same stream:
+
+```
+ctrl-build: command: bash -lc $'...echo "MARKER_ALL_DONE"\n'
+```
+
+So the marker was present in the file **because I had asked for it**, not because anything
+produced it. `grep -q` answered *does this string appear* when I was asking *did the payload
+finish* — the shared shape of every trap in this document, arrived at from inside the fix for
+one of them.
+
+**What makes this the sharpest specimen here:** trap 9's remedy is right, and this is not a
+retraction of it. Planting a marker is still better than reading a status. But the remedy
+introduces a *new* way for the reader to supply an unstated binding — that an occurrence of
+the marker is an occurrence of the marker's PRODUCTION — and the header echo falsifies exactly
+that binding, silently, on every single dispatch. The remedy for the class re-instantiated the
+class.
+
+**The correction, and it is one character:** `grep -qx 'MARKER_ALL_DONE'` — anchor the match to
+a whole line. The echoed header contains the marker inside a longer line and never as a line of
+its own. Alternatively, compose the marker at runtime so it does not appear literally in the
+command text (`echo "MARKER_${PHASE}_DONE"`), which additionally defeats any future wrapper that
+quotes the script back at you.
+
+**The general rule, one level up from trap 9:** *a marker is evidence only if the channel it
+arrives on cannot also carry the request for it.* Where request and response share a stream —
+and with a command-echoing dispatcher they always do — the marker needs a shape the request
+cannot have. Anchoring to a whole line is the cheapest such shape.
+
+Recorded as a numbered trap rather than an edit to trap 9 because the two are different
+findings: trap 9 is *a status can be honest and narrow*; trap 11 is *your own instrument's
+output can be contaminated by your own instrument's input*. Fixing 9 does not fix 11, and I
+found 11 only because the void reading was so obviously wrong — had the payload merely been
+slow, I would have read the false green and reported a passing test that never ran.
