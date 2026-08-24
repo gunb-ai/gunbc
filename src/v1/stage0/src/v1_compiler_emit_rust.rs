@@ -7483,12 +7483,66 @@ pub fn rust_identifier_tokens(s: String) -> Rc<Vec<String>> {
             ":".to_string(),
             " ".to_string(),
         );
+        let unpunctuated = v1_rt::replace(
+            v1_rt::replace(
+                v1_rt::replace(
+                    v1_rt::replace(
+                        v1_rt::replace(
+                            v1_rt::replace(
+                                v1_rt::replace(
+                                    v1_rt::replace(
+                                        v1_rt::replace(
+                                            spaced.clone(),
+                                            ";".to_string(),
+                                            " ".to_string(),
+                                        ),
+                                        "{".to_string(),
+                                        " ".to_string(),
+                                    ),
+                                    "}".to_string(),
+                                    " ".to_string(),
+                                ),
+                                ".".to_string(),
+                                " ".to_string(),
+                            ),
+                            "=".to_string(),
+                            " ".to_string(),
+                        ),
+                        "\n".to_string(),
+                        " ".to_string(),
+                    ),
+                    "\t".to_string(),
+                    " ".to_string(),
+                ),
+                "\x0d".to_string(),
+                " ".to_string(),
+            ),
+            "*".to_string(),
+            " ".to_string(),
+        );
+        let untokened = v1_rt::replace(
+            v1_rt::replace(
+                v1_rt::replace(
+                    v1_rt::replace(
+                        v1_rt::replace(unpunctuated.clone(), "!".to_string(), " ".to_string()),
+                        "?".to_string(),
+                        " ".to_string(),
+                    ),
+                    "|".to_string(),
+                    " ".to_string(),
+                ),
+                "+".to_string(),
+                " ".to_string(),
+            ),
+            "#".to_string(),
+            " ".to_string(),
+        );
         Rc::new({
             let mut __result = Vec::new();
             for t in Rc::new({
                 let mut __result = Vec::new();
                 for t in Rc::new(
-                    spaced
+                    untokened
                         .clone()
                         .split(&" ".to_string())
                         .map(|s| s.to_string())
@@ -7682,6 +7736,7 @@ pub fn reference_derived_use_lines(
             }
             __result
         }));
+        let emitted_source_tokens = rust_identifier_tokens(emitted_source.clone());
         let candidates = Rc::new({
             let mut __result = Vec::new();
             for name in Rc::new({
@@ -7716,10 +7771,16 @@ pub fn reference_derived_use_lines(
                             }
                         }
                         __found
-                    }) || reference_derived_candidate_spelled_in_module(
-                        emitted_source.clone(),
-                        name.clone(),
-                    )) {
+                    }) || {
+                        let mut __found = false;
+                        for t in emitted_source_tokens.iter().cloned() {
+                            if (t.clone() == name.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    }) {
                         __result.push(name);
                     }
                 }
