@@ -1,0 +1,63 @@
+module v1.tests.claim.resolved_call_emission_identity_internal_witness_test
+
+import v1.std.core { SourceDeclarationCall, error_type }
+import v1.compiler.infer {
+  resolved_call_target_from_declaration_lookup,
+  selective_func_env_view,
+  merge_func_env_views_by_owner
+}
+import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
+import v1.compiler.infer_lookup {
+  ExactDeclarationIdentity, DeclarationNotIndexedAtQualifiedName,
+  AdmissionBearingDeclarationUnavailable
+}
+
+data resolved_call_emission_identity_internal_witness_note: String = "White-box authoring-time evidence for three compiler-internal call-identity decisions that cannot be expressed through the required floor's dag plus src/v2 source-root envelope. These rows were split from test.claim.resolved_call_emission_identity_witness_test after required CI correctly refused its direct v1.compiler imports: dag/test is an executing home only for the eight black-box compile_dag_rust_emit_check controls retained there. This src/v1 file is parse-checked and was run directly during authoring, but it is NOT CI-enrolled; direct execution proves the assertions hold, not that CI runs them. Re-homing these helpers into dag/std would invert the seed boundary by making compiler internals substrate API. NEXT-RUNG TRIGGER: an executing src/v1 compiler-witness envelope, or a dag-reachable behavioural surface that can construct these exact internal states without exporting compiler implementation types. dissolve-on: all three rows gain an enrolled behavioural home."
+
+fn w_unavailable_declaration_retains_exact_call_identity() -> Bool {
+  resolved_call_target_from_declaration_lookup(
+    declaration_lookup: AdmissionBearingDeclarationUnavailable {
+      identity: ExactDeclarationIdentity { owner_module_path: "test.fixture.owner", decl_name: "declared_call" },
+      cause: DeclarationNotIndexedAtQualifiedName { qualified_name: "test.fixture.owner.declared_call" }
+    },
+    func_name: "declared_call"
+  ) == SourceDeclarationCall { owner_module_path: "test.fixture.owner", decl_name: "declared_call" }
+}
+
+fn fixture_sig() -> ResolvedFuncSig {
+  ResolvedFuncSig {
+    name: "fixture",
+    params: [],
+    inferred: error_type,
+    is_async: false,
+    output_provenance: [],
+    variant_provenance: empty_map()
+  }
+}
+
+fn w_selective_function_import_refuses_unlisted_parent_local() -> Bool {
+  let sig = fixture_sig()
+  let parent = ResolvedFuncEnv {
+    name: "test.fixture.function_import_surface_provider",
+    local: map_insert(map_insert(empty_map(), "imported_fn", sig), "hidden_fn", sig),
+    parents: []
+  }
+  let selected = selective_func_env_view(env: parent, names: ["imported_fn"])
+  map_contains_key(selected.local, "imported_fn") && !map_contains_key(selected.local, "hidden_fn")
+}
+
+fn w_overlapping_selective_views_union_per_real_owner() -> Bool {
+  let sig = fixture_sig()
+  let empty_view = ResolvedFuncEnv {
+    name: "test.fixture.shared_owner",
+    local: empty_map(),
+    parents: []
+  }
+  let admitted_view = ResolvedFuncEnv {
+    name: "test.fixture.shared_owner",
+    local: map_insert(empty_map(), "imported_fn", sig),
+    parents: []
+  }
+  let merged = merge_func_env_views_by_owner(views: [empty_view, admitted_view])
+  merged |> count == 1 && map_contains_key((merged |> first).value.local, "imported_fn")
+}

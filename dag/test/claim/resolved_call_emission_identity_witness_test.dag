@@ -1,17 +1,6 @@
 module test.claim.resolved_call_emission_identity_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v1.std.core { SourceDeclarationCall, error_type }
-import v1.compiler.infer {
-  resolved_call_target_from_declaration_lookup,
-  selective_func_env_view,
-  merge_func_env_views_by_owner
-}
-import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
-import v1.compiler.infer_lookup {
-  ExactDeclarationIdentity, DeclarationNotIndexedAtQualifiedName,
-  AdmissionBearingDeclarationUnavailable
-}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -71,16 +60,6 @@ fn w_product_data_call_initializer_reaches_typed_call_emission() -> Bool {
   )
 }
 
-fn w_unavailable_declaration_retains_exact_call_identity() -> Bool {
-  resolved_call_target_from_declaration_lookup(
-    declaration_lookup: AdmissionBearingDeclarationUnavailable {
-      identity: ExactDeclarationIdentity { owner_module_path: "test.fixture.owner", decl_name: "declared_call" },
-      cause: DeclarationNotIndexedAtQualifiedName { qualified_name: "test.fixture.owner.declared_call" }
-    },
-    func_name: "declared_call"
-  ) == SourceDeclarationCall { owner_module_path: "test.fixture.owner", decl_name: "declared_call" }
-}
-
 fn w_resolved_signature_owner_selects_runtime_primitive() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.resolved_signature_owner_probe\nimport std.types { Int, String, Map }\nfn probe(m: Map<String, Int>) -> Map<String, Int> { map_insert(m, \"key\", 1) }\n",
@@ -97,45 +76,4 @@ fn w_selective_function_import_admits_named_function() -> Bool {
     ["function_import_surface_provider::imported_fn(1)"],
     []
   )
-}
-
-fn w_selective_function_import_refuses_unlisted_parent_local() -> Bool {
-  let sig = ResolvedFuncSig {
-    name: "fixture",
-    params: [],
-    inferred: error_type,
-    is_async: false,
-    output_provenance: [],
-    variant_provenance: empty_map()
-  }
-  let parent = ResolvedFuncEnv {
-    name: "test.fixture.function_import_surface_provider",
-    local: map_insert(map_insert(empty_map(), "imported_fn", sig), "hidden_fn", sig),
-    parents: []
-  }
-  let selected = selective_func_env_view(env: parent, names: ["imported_fn"])
-  map_contains_key(selected.local, "imported_fn") && !map_contains_key(selected.local, "hidden_fn")
-}
-
-fn w_overlapping_selective_views_union_per_real_owner() -> Bool {
-  let sig = ResolvedFuncSig {
-    name: "fixture",
-    params: [],
-    inferred: error_type,
-    is_async: false,
-    output_provenance: [],
-    variant_provenance: empty_map()
-  }
-  let empty_view = ResolvedFuncEnv {
-    name: "test.fixture.shared_owner",
-    local: empty_map(),
-    parents: []
-  }
-  let admitted_view = ResolvedFuncEnv {
-    name: "test.fixture.shared_owner",
-    local: map_insert(empty_map(), "imported_fn", sig),
-    parents: []
-  }
-  let merged = merge_func_env_views_by_owner(views: [empty_view, admitted_view])
-  merged |> count == 1 && map_contains_key((merged |> first).value.local, "imported_fn")
 }
