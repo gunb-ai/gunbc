@@ -41,15 +41,15 @@ fn spark_serving_boot_identity_from_probe(probe: extdeps.ssh.session.SshSessionE
       if r.success == false {
         BootIdentityUnobserved {
           cause: join([
-            "boot-identity probe failed exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr),
+            "boot-identity probe failed exit=", to_string(r.exit_code), " stderr=", std.algebra.trim(s: r.stderr),
           ], "") as std.types.NonEmptyStr,
         }
-      } else if trim(s: r.stdout) == "" {
+      } else if std.algebra.trim(s: r.stdout) == "" {
         BootIdentityUnobserved {
           cause: "boot-identity probe succeeded but produced no identifier, which is a failed read and never a boot that has no identity" as std.types.NonEmptyStr,
         }
       } else {
-        BootIdentityObserved { boot_id: trim(s: r.stdout) as std.types.NonEmptyStr }
+        BootIdentityObserved { boot_id: std.algebra.trim(s: r.stdout) as std.types.NonEmptyStr }
       }
   }
 }

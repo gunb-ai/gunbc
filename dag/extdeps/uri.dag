@@ -75,7 +75,7 @@ fn href_is_relative_reference(s: String) -> Bool {
 }
 
 fn parse_href_scheme(url: String) -> ParsedHrefScheme {
-  let s = trim(url)
+  let s = std.algebra.trim(url)
   if starts_with(s, prefix: "//") {
     UnknownHref
   } else if href_is_relative_reference(s: s) {
