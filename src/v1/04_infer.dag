@@ -5176,6 +5176,14 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   }
 }
 
+// An empty list literal with NO EXPECTED TYPE is judged as List<Unit> — v1.compiler.infer's
+// ExprListLit answers `Absent => unit_type` for the element type and emits no diagnostic (the
+// bottom-as-answer / bottom-as-ignorance conflation documented on #9099). A bare `[]` arm
+// therefore poisons the join of an if/match whose other arms are List<Node>, and every field
+// access on an element then fails as `no field ... on type 'Unit'`. Naming the element type
+// here gives the literal its expected type from a declared return.
+fn empty_presence_field_list() -> List<Node> { [] }
+
 fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   let instantiated_struct_fields = record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope)
   let expected_struct_fields = if instantiated_struct_fields == none {
@@ -5244,13 +5252,13 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span
   let si_presence = scope.type_env.source_indices
   let presence_variant_owner = variant_owner_node(scope: scope, name: tn_str)
   let presence_fields = if tn_str == "" {
-    []
+    empty_presence_field_list()
   } else {
     match presence_variant_owner {
       Present { value: variant_owner } =>
         match variant_owner.children |> filter(v => authored_name_at(source_indices: si_presence, node: v) == qualified_last_segment(name: tn_str)) |> first {
           Present { value: variant_node } => variant_node.children
-          Absent => []
+          Absent => empty_presence_field_list()
         }
       Absent =>
         match record_lit_variant_from_expected(type_name: type_name, expected: expected, scope: scope) {
@@ -5264,7 +5272,7 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<Node>, span
                 if decl.connective == Conj && (decl.params |> count) == 0 && (decl.children |> count) > 0 {
                   decl.children
                 } else {
-                  []
+                  empty_presence_field_list()
                 }
               Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
             }
