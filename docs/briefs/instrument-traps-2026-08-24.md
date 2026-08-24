@@ -1702,3 +1702,64 @@ corrections.** That is not irony worth savouring; it is the measurement this doc
 **knowing a class does not stop you instantiating it**, because the trap is never labelled at the
 moment you commit it. What changes outcomes is not knowledge but the habit of opening the artifact:
 `ps` instead of `pgrep`, `$out` instead of the exit status, the map instead of the row.
+
+---
+
+## A count that answers "ever" while the reader asks "now" — and a join applied in only one direction
+
+The readiness payload for a pull request reports, among other fields:
+
+    head_sha           f75fb625217
+    approval_count     1  ['claude']
+
+    55428  claude  approve          sha=c6584caf3   STALE
+    55358  claude  approve          sha=223397bd8   STALE
+    55351  claude  approve          sha=06b7e7ebd   STALE
+    55349  codex   request_changes  sha=b8ecca0b2   STALE
+    55314  claude  approve          sha=f12d1dbb2   STALE
+
+**Four approvals, none of them on the head, and the count says one.** The field appears to answer
+*"has a distinct provider ever approved this PR"* while every reader consults it to answer *"is this
+head approved."* Those questions coincide exactly until someone pushes, and diverge silently
+thereafter — no error, no staleness marker on the number itself, no signal that the head moved.
+
+### The asymmetry is the finding, not the lag
+
+The same payload reports `stale_providers: ['codex']` and **correctly discounts the
+REQUEST_CHANGES** as stale, because that review's sha is not the head.
+
+**So the join exists.** The machinery for comparing a review's sha against the head is present,
+implemented, and demonstrably working — **applied to refusals and not to approvals.** That is worse
+than an absent feature, because absence is uniform and this is directional:
+
+    stale REQUEST_CHANGES  ->  head-joined, discounted   -> removes a blocker
+    stale APPROVE          ->  not joined, still counted -> preserves a green
+
+**Both defaults favour merging.** No single decision here is unreasonable on its own; the pair is
+what produces a readiness verdict biased in one direction, and neither half looks wrong in
+isolation. A reviewer auditing the refusal path would find a correct head join and conclude the
+payload is head-aware.
+
+### The instance where it was RIGHT, which is the part worth keeping
+
+This document's author read that field at ~15:00, saw `approval_count: 1` with `ready: true`, and
+escalated the PR as unblocked. **At that moment the counted approval was genuinely on the head** —
+the claim was true when made. The head moved afterwards.
+
+So the report was accurate, then became false, **and nothing about the field could distinguish the
+two states.** It is the same shape as reporting a capability as working because it worked twice:
+**the comparand is time**, and a bare count cannot carry a head. The number is identical in the
+sound case and the unsound one.
+
+### The rule
+
+**Never quote an approval count without joining `reviews[].sha` against the head and reporting the
+head-bound number.** If the two differ, report both. A count is not an answer to a question about a
+specific revision unless it carries that revision — and a field that silently answers the more
+permissive of two readings is exactly the instrument this document keeps finding: honest about a
+narrower question than anyone asks of it.
+
+**The operator's own phrasing anticipated this** — a ruling issued the same day required the PR to
+obtain *a head-bound approval*, with an explicit warning not to merge an uncomposed head "just
+because old checks are green." That qualifier reads as pedantic until you see the payload; the two
+specimens behind this entry are why it was necessary.
