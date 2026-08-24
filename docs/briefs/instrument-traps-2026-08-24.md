@@ -860,3 +860,49 @@ it can be shown to have looked at the whole subject.
 `gh api --paginate .../files?per_page=100`. And note that even the paginated form stopped at **3000 of
 3965**, so the honest statement of the result is `>= 24`, never `= 24`. Reporting the exact figure would
 have been a second instance of the same trap inside the fix for the first.
+
+## The adversarial check that refutes the checker: measuring to defend a claim, and finding a third fact
+
+*silent-gull-867, 2026-08-24, answering a REQUEST_CHANGES on #9059. Recorded because the causality
+is the lesson, and it is not the causality the rest of this brief teaches.*
+
+Every other entry here says: **measure your own claims, because the instrument may be answering a
+narrower question than you asked.** This one is different, and the difference is the point.
+
+A review said the PR expanded two maps and deferred their join — a §3 fork grown rather than
+dissolved. The author expected the review to be wrong, and went to measure the two key sets **in
+order to demonstrate that the maps were not really one fact.**
+
+The measurement confirmed the reviewer on the substance (profile keys 7 -> 11, alias keys 6 -> 8,
+both grew) and **refuted the manager's framing** on something neither the reviewer nor the review had
+raised: the two maps are not the same key set and never were. `Int`, `Float`, `Bool` and `String`
+sit in the profile map and are *correctly* absent from the alias map — scalars with a method surface
+that are not containers. So there is no derive-one-from-the-other relation for a row to dissolve.
+The follow-up had been described, by me, as a *join*. It is a replacement migration with a census:
+a new authority carrying per-algebra spellings AND profile AND container-resolution, retiring two
+authorities across four files in both v1 and dag.
+
+**Three parties, three states, and no two of them the same:**
+
+    the reviewer   right on the substance, silent on the framing
+    the author     wrong about the review, right to go and check
+    the manager    wrong about the shape of the work, and unchallenged until now
+
+**The lesson is about what produced the third fact.** It was not diligence and it was not carefulness
+— the author says so plainly, and the honesty matters because a lesson that flatters the finder
+teaches nothing. It was *adversarial intent*: going to measure in order to WIN an argument reaches
+for evidence that a defensive re-read never touches. Nobody re-derives a key set to confirm what they
+already believe. They derive it to refute someone.
+
+So: **"the reviewer was right, and checking why produced a third fact neither of us had" is a
+different lesson from "measure your claims."** The first is about being wrong. The second is about
+the *mechanism that makes disagreement productive* — the check you run to defend yourself is the one
+that reaches material no agreement would have surfaced. A lane that concedes reviews gracefully and a
+lane that argues them with measurements produce the same merge outcome and very different corpora.
+
+**The corollary that binds the manager, which is me.** My "join" framing had been sitting in a
+follow-up description, named and apparently owned, for long enough that someone could have picked it
+up and built it. It would have been built to the wrong size, and — per the ordering constraint in the
+same finding — a flattened lookup would have silently moved which stage refuses. **An unchallenged
+framing from someone senior is a defect with no red.** It survived precisely because it was never
+worth arguing with.
