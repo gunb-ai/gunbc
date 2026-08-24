@@ -2114,3 +2114,79 @@ a green main run's wall-clock has run 84–231 minutes, median ~146, of which th
 frequently runner queue*. Two numbers, each with its denominator attached, so that neither can be
 divided by the other. **A figure without its subject is not a measurement, it is a number that will
 eventually be misused by someone reading carefully.**
+
+## The discriminator that shared a premise with the thing it was discriminating
+
+The coda above was written by an author who had, twenty minutes earlier, sent a colleague a
+"cheap discriminator" to settle a question. The discriminator was ill-posed, the colleague noticed,
+and the shape of the error is one this document had not yet recorded.
+
+### The setup
+
+A child session's work-item title read `MAIN RED: <witness> returns Bool(false), and its refusal arm
+collapses to empty string`. Fourteen of fourteen main runs measured `success`. Two claims, apparently
+in tension, so the reconciliation offered was: the floor holds known reds, therefore the witness is
+either **enrolled-and-false** (quiet, known, unremarkable) or **unenrolled-and-false** (a false
+witness reaching a terminal pass — a serious finding). Check the expected-red roster join; enrolled
+means world one, absent means world two.
+
+That is a clean partition, it is cheap to run, and it is exhaustive over the space it names.
+
+### Why it could not work
+
+Both branches carry `false`. The partition varies *enrollment* while holding the witness's value
+fixed — and the witness's value was the stale part. The witness **passes**. It pinned a literal
+`'sudo' 'systemctl' 'enable' '--now'` while the extdeps module had moved to `/usr/bin/sudo` plus a
+non-interactive flag; a merged PR replaced the literal with a form derived from the three owning
+authorities, and arm 6 has been true ever since. `MAIN RED` was accurate when written and expired when
+that landed.
+
+So the instrument's output space did not contain the answer. Worse — and this is the part that makes
+it a specimen rather than a miss — **its "absent" branch was wired to the alarming conclusion.** A
+passing witness that was simply never enrolled is the ordinary state of most witnesses. Running the
+join would have returned *absent*, which the framing had pre-labelled *a false witness reaching a
+terminal pass*, and the report would have manufactured an alarm out of a repaired witness. The
+discriminator was not merely uninformative; it was **biased toward the more exciting world** by a
+premise nobody had checked.
+
+### The general shape
+
+**A discriminator is only as good as the proposition its branches share.** Every partition holds
+something fixed in order to vary something else, and that fixed thing is a premise the instrument
+cannot see, cannot test, and will silently carry into whichever branch it returns. The two worlds
+were carefully distinguished on *enrollment* — the axis that was already decided — while the axis
+that actually mattered was never in the instrument at all.
+
+The tell is available before running anything, and costs one sentence: **write out what both branches
+assert in common, and ask how that was established.** Here the common conjunct was "the witness
+returns false", whose entire provenance was *a title written at dispatch time* — a fact with a
+timestamp, in a fleet where the underlying file had been rewritten by someone else's merge in the
+interim.
+
+### The second-order point, which is the reason this is filed here
+
+An independent path to the same answer was *already in the author's own message* and went unused. The
+floor reports an enrolled-but-passing witness as `stale_quarantine`, and the same DESIGN.md line the
+author had quoted for `known_red_held=206` also carries `stale_quarantine=0`. That figure rules out
+enrolled-and-passing without running anything. The author cited the line, took one number off it, and
+did not notice that the number beside it closed half the question.
+
+Which is this document's thesis one turn further in: **the checking artifact is not always one step
+away — sometimes it is in the sentence you already wrote**, and the reason it goes unread is that it
+answers a question you have not yet realised you are asking. Two of this brief's entries were caught
+by their own recipients within minutes. That is a functioning fleet, and it is also the measurement
+of how little the author's own care was contributing at the margin.
+
+### What survived, sharpened by the colleague
+
+The refusal arm still discards its bound cause: `RunnerCommandRefused { host_label: _, reason: _ }`
+returning `""`. It hides nothing today, because the command builds. What it guarantees is that *if*
+it ever refuses, the witness fails with `reason` in scope and thrown away one line above the failure.
+The fix is worth landing precisely because the witness is green — it is not repairing a failure, it is
+making the next one legible.
+
+And that generalises the line this brief already carried about held reds. A **passing** witness whose
+refusal arm has no located cause is in the same position as a held red with no located cause: nothing
+prompts anyone to look until it breaks, and when it breaks the message is `false`. The empty-string
+arm is the not-applicable-versus-malformed conflation collapsed one step further — not a wrong reason
+symbol, but *no* reason symbol, chosen at the exact site where the reason was bound and available.
