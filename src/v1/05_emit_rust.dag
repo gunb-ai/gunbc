@@ -8968,15 +8968,29 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
       }
     Absent => "compile_error!(\"missing fold init argument\")"
   }
-  let fold_fn = match args |> skip(1) |> first {
-    Present { value: a } =>
-      emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: fold_elem_type_str, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
-    Absent => "compile_error!(\"missing fold function argument\")"
-  }
   let sharing = language_spec(target: Rust).sharing
   let elem_unused = match args |> skip(1) |> first {
     Present { value: a } => fold_lambda_element_unused(lambda_expr: arg_value(n: a), source_indices: scope.type_env.source_indices)
     Absent => false
+  }
+  // ONE CONDITION, TWO CONSEQUENCES, AND ONLY ONE OF THEM WAS APPLIED. Dropping `.cloned()` for an
+  // unused element is a real saving -- the clone is paid per element for a value the body never names.
+  // But it also changes the ITEM TYPE the iterator yields, from `T` to `&T`, and the lambda's element
+  // parameter kept its by-value annotation: rustc E0631, `expected fn(Rc<_>, &Rc<_>)`, `found
+  // fn(Rc<_>, Rc<_>)`, with the emitter's own help line reading "consider adjusting the signature so
+  // it borrows its argument". The optimization and the signature were derived from the same fact in
+  // two places, and the second place did not know.
+  //
+  // The element is `_` by construction here -- fold_lambda_element_unused is exactly the test that the
+  // parameter is named `_` -- so the annotation carries no information for a reader and only has to be
+  // ACCEPTED by rustc. Emitting `_` lets inference supply whichever of `T` / `&T` the iterator yields,
+  // which keeps the two consequences in agreement without the emitter having to restate the item type.
+  // This is the same device already used one binding up for elem_render_has_spurious_generic.
+  let fold_elem_type_str_final = if elem_unused { "_" } else { fold_elem_type_str }
+  let fold_fn = match args |> skip(1) |> first {
+    Present { value: a } =>
+      emit_typed_fold_lambda(lambda_expr: arg_value(n: a), acc_type_str: lambda_acc_type_str, elem_type_str: fold_elem_type_str_final, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info)
+    Absent => "compile_error!(\"missing fold function argument\")"
   }
   let iter_template = if elem_unused { replace(sharing.iter_owned, ".cloned()", "") } else { sharing.iter_owned }
   concat(apply_type_template1(template: iter_template, arg0: recv_str), ".fold(", init_str, ", ", fold_fn, ")")
