@@ -1400,7 +1400,13 @@ impl ResolvedFormatter {
             }
         }
         Err(format!(
-            "rustfmt is not on PATH: searched {} entr(ies) [{}]. The required regen phase              normalizes every emitted source through rustfmt to a fixed point, so it cannot run              without one -- install the component (`rustup component add rustfmt`) or repair              PATH. Refused at admission rather than at the first normalize, which is ~50 minutes              into the run.",
+            concat!(
+                "rustfmt is not on PATH: searched {} entr(ies) [{}]. ",
+                "The required regen phase normalizes every emitted source through rustfmt to a ",
+                "fixed point, so it cannot run without one -- install the component ",
+                "(`rustup component add rustfmt`) or repair PATH. Refused at admission rather ",
+                "than at the first normalize, which is ~50 minutes into the run."
+            ),
             entries.len(),
             entries.join(", ")
         ))
@@ -1419,7 +1425,12 @@ impl ResolvedFormatter {
     /// and the one that discriminates "never installed" from "replaced under the run".
     fn spawn_refusal(&self, cause: std::io::Error) -> String {
         format!(
-            "spawn rustfmt: {cause} -- program {} was resolved at admission from PATH [{}] and              existed then, so it has been removed or replaced while this run was executing; this              is not a missing installation",
+            concat!(
+                "spawn rustfmt: {} -- program {} was resolved at admission from PATH [{}] ",
+                "and existed then, so it has been removed or replaced while this run was ",
+                "executing; this is not a missing installation"
+            ),
+            cause,
             self.program.display(),
             self.searched
         )
@@ -1608,6 +1619,20 @@ mod tests {
         path
     }
 
+    /// BOTH REFUSALS ARE THE PRODUCT OF THIS ROW, so their TEXT is under test, not just their
+    /// substrings. A multi-line non-raw literal silently absorbs the indentation of its
+    /// continuation lines, and `cargo fmt` reflows such literals on its own -- so a message can
+    /// go garbled without anyone editing it, and every `contains` assertion still passes because
+    /// the runs of spaces sit BETWEEN the fragments being matched. This guard is what makes that
+    /// regression loud; it went red on the form that shipped in this PR's first revision.
+    fn assert_message_is_not_reflowed(message: &str) {
+        assert!(
+            !message.contains("  "),
+            "a diagnostic must not carry runs of literal whitespace from source indentation \
+             -- use `concat!` rather than splitting a literal across lines: {message:?}"
+        );
+    }
+
     /// THE REFUSAL NAMES WHAT WAS SEARCHED, AND THE PAIR IS THE ASSERTION.
     ///
     /// RED against the pre-change code: there was no admission at all, so the absent-formatter
@@ -1637,6 +1662,7 @@ mod tests {
             "and must say WHERE it refused, since the whole point is that this is not the \
              spawn-time failure it replaces: {refused}"
         );
+        assert_message_is_not_reflowed(&refused);
 
         let resolved = ResolvedFormatter::admit().expect(
             "the real PATH has a rustfmt; this arm is the control against a resolver \
@@ -1669,6 +1695,7 @@ mod tests {
             message.contains(&formatter.program.display().to_string()),
             "and must name the exact program, not the bare name: {message}"
         );
+        assert_message_is_not_reflowed(&message);
     }
 
     #[test]
