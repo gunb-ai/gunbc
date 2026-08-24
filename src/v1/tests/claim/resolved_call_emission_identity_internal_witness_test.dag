@@ -1,10 +1,12 @@
 module v1.tests.claim.resolved_call_emission_identity_internal_witness_test
 
 // TEMPORARY PRODUCER WORKAROUND: SubValueRelation is not spelled in this module;
-// it enters the emitted Rust only through ResolvedFuncSig's inferred type. Keep
-// this import solely to force the mirror's use-line until #9063 derives realized
-// names from inferred types; remove it when that producer repair lands.
-import v1.std.core { SourceDeclarationCall, SubValueRelation, error_type }
+// it enters the emitted Rust only through ResolvedFuncSig's inferred type. Name
+// its owning module directly (std.induction), rather than the v1.std.core
+// re-export. Keep this import solely to force the mirror's use-line until #9063
+// derives realized names from inferred types; remove it when that repair lands.
+import v1.std.core { SourceDeclarationCall, error_type }
+import std.induction { SubValueRelation }
 import v1.compiler.infer {
   resolved_call_target_from_declaration_lookup,
   selective_func_env_view,
