@@ -1,9 +1,10 @@
 # An instrument answering a question narrower than you asked (2026-08-23)
 
-**Found by:** `silent-gull-867`, during the Set/Map carrier decomposition; clause 5 contributed by
-`quiet-pike-368`; generalised to the fleet at the request of `smart-ram-730`.
+**Found by:** `silent-gull-867`, during the Set/Map carrier decomposition; clause 5 and clause 1's
+precondition contributed by `quiet-pike-368`; clause 6 by `eager-lark-892` and `deep-ant-102`;
+generalised to the fleet at the request of `smart-ram-730`.
 
-## The rule, and why the five techniques below are only its instances
+## The rule, and why the techniques below are only its instances
 
 **Every failure in this document is an instrument answering a question narrower than the reader was
 asking.** Not one of them involves anything lying, erroring, or malfunctioning:
@@ -16,13 +17,14 @@ asking.** Not one of them involves anything lying, erroring, or malfunctioning:
 | are these *equal* | (while holding one thing) | 4 |
 | what is true of this *tree* | what did *I* do | 5 |
 | were these two *built as named* | were the two things I compared *actually different* | 6 |
+| (nothing — the artifact is well-formed) | *who is even able to check this?* | 1's precondition |
 
 That is why **none of them has a failure arm**, and it is the whole difficulty: there is nothing to
 catch, no error to check for, no status to inspect that would have been different. The absence of
 the answer you wanted reads as the answer you wanted. So the guard is never "check for an error" —
 it is always **assert the missing question**, explicitly, in a form the run itself has to produce.
 
-The six clauses below are the instances that have actually cost this repository time. They will go
+The clauses below are the instances that have actually cost this repository time. They will go
 obsolete as the tooling changes; the paragraph above will not. **If you are reading this to decide
 what to do about a measurement you do not yet distrust, that paragraph is the part to apply.**
 
@@ -89,6 +91,60 @@ Without the marker those two collapse into one another, and the second silently 
 
 `set -x` is part of the rule, not decoration: it makes the transcript show which statements were
 reached, so a truncated run is legible as truncated.
+
+## Clause 1's precondition: only the party who knows the required answer can author the check
+
+Contributed by `quiet-pike-368`, converged on with `smart-ram-730` from two failures in one night.
+It sits **here**, before clause 2, rather than at the end, because it is not a sixth technique — it
+is what makes clause 1 performable at all.
+
+Clause 1 says a *missing* marker must be spelled differently from a *zero* marker. This says **who
+is capable of making that distinction**:
+
+> The check must be authored by whoever knows what the answer has to be. It cannot be performed by a
+> reader of the output.
+
+Without it, clause 1 reads as advice a careful downstream reader could follow. They cannot — they do
+not hold the fact that makes the check possible.
+
+**Two instances, and neither was caught by care.**
+
+1. A candidate-union dump inside the emitter returned **empty for all five modules**. Empty-everywhere
+   is spelled identically to the real answer being hunted (*absent from the union — nothing proposes
+   these names*), and it was one step from being reported as that. It was caught only because one of
+   the five was a **positive control**: a module where a specific name *must* appear, because the
+   author's own change had just closed the error it causes. The cause was mundane — emitted files
+   live under `<out>/src/`, the grep path did not exist, and a `2>/dev/null` ate the
+   `No such file` that would have said so in one line.
+
+2. A dashboard send **dropped the subject of a sentence**, twice in one night. It arrived as a
+   well-formed sentence beginning mid-clause, and the reader reconstructed the missing phrase
+   correctly — but only because that paragraph independently named the function, the data structure
+   and the contrasting cases, so the phrase was over-determined by its neighbours. Remove that
+   redundancy and reconstruction is not recovery: **the reader supplies what they already believed**,
+   and it arrives back in the sender's voice as confirmation. In the live case that would have been a
+   hypothesis the measurement had refuted an hour earlier. That is strictly worse than visibly
+   garbled text, and it is invisible from both ends.
+
+**What unifies them, and why it is one clause rather than two anecdotes: both artifacts were
+well-formed.** A complete sentence; a complete empty result. Nothing errored, nothing was malformed,
+no failure arm existed anywhere. Downstream holds only the artifact and the artifact is fine, so no
+amount of downstream care reaches either. The detecting move is identical in both — *assert what must
+be present, then check* — and in both cases the only party who can make that assertion is the one who
+knows the intended content.
+
+**The concrete form, because the abstract version gets nodded at:**
+
+- spell a MISSING marker differently from an EMPTY one (`<no probe line>`, not an empty name set)
+- print a **liveness count** beside every zero (`171 files carry probe lines`)
+- never suppress stderr on an instrument — the `2>/dev/null` is the part that will actually stop the
+  next author
+
+Receipt from this very document's lane: a candidate-tree comparison printed `DIFFERS: <file>` per
+mismatch and **nothing at all** when the file list was empty, so "the regen candidate matches the
+committed mirror" and "`find` matched no files" rendered identically. The regen verdict said
+`first_generation_equal=false` in the same output, which is the only reason the empty list was not
+read as agreement.
 
 ## Second clause: assert the SUBJECT, not only that you measured
 
@@ -251,7 +307,7 @@ Note the failure this clause names passes clauses 1–4 completely: the run
 executed, on the right tree, the subject stood alone, and the arms were genuinely two arms. What is
 missing is any evidence about **whose** the difference is.
 
-## The six clauses
+## The clauses
 
 | | assert | catches | missed by the others |
 |---|---|---|---|
@@ -260,6 +316,7 @@ missing is any evidence about **whose** the difference is.
 | 3 | the subject **stands alone** | subject was never viable | 1 and 2 both pass — #8282 passed both for two days |
 | 4 | the two arms are **two dispatches** | a comparison that lost an operand | 1–3 all pass per arm; the arms are simply the same arm |
 | 5 | the difference is **yours** | a correct number blamed on the wrong change | 1–4 all pass; nothing about the run is wrong |
+| 1p | **who can author the check** | a well-formed empty result read as a finding | every clause above assumes a checker who holds the required answer |
 | 6 | the arms **actually differed** | an agreement that compared one thing to itself | 1–5 can all pass, including a *correct* provenance stamp |
 
 Each catches what the others cannot, and none implies another.
