@@ -43,12 +43,14 @@ pub fn primitive_identity_slug(name: String) -> Rc<PrimitiveIdentity> {
 }
 
 pub fn primitive_identity_runtime_name(identity: Rc<PrimitiveIdentity>) -> String {
-    let slug = identity.slug.clone();
-    v1_rt::substring(
-        &slug,
-        v1_rt::string_length(&primitive_identity_slug_prefix()),
-        v1_rt::string_length(&slug),
-    )
+    {
+        let slug = identity.slug.clone();
+        v1_rt::substring(
+            &slug,
+            v1_rt::string_length(&primitive_identity_slug_prefix()),
+            v1_rt::string_length(&slug),
+        )
+    }
 }
 
 pub fn primitive_projection_identity_key_note() -> String {
