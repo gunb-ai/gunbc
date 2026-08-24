@@ -1388,6 +1388,18 @@ fn normalize_generated_source(
 /// into direct evidence that the environment mutated under the run -- the question the workflow's
 /// toolchain probe is currently collecting baselines for, and which no run has yet answered.
 ///
+/// AUTHORITY, AND THE RUNG THIS SITS AT. The refusal this type produces is named by the carrier
+/// as `v2.workflow.required_regen` `RequiredRegenRefusal`'s `FormatterUnavailable`, added in the
+/// same change. It is modeled there rather than only here because this host is a MIRROR of that
+/// carrier -- DESIGN.md records `run_required_regen`'s hand-written ordering at *mitigatable*,
+/// with derivation from the carrier as its next-rung trigger -- and a refusal the host can
+/// produce that the carrier cannot name is precisely the divergence that trigger exists to
+/// close. WHAT IS NOT CLAIMED: this host reports refusals as `String`, as every other refusal on
+/// this path does, so the correspondence is held by review and by this citation, NOT by the type
+/// system; introducing a typed carrier for this one refusal alone would be a second
+/// representation of a vocabulary the carrier already owns. The class therefore stays at
+/// *mitigatable* and inherits the host's existing next-rung trigger rather than adding a new one.
+///
 /// NO FALLBACK ARM EXISTS AND NONE MAY BE ADDED. There is no retry, no tolerated absence, no
 /// "skip normalization and compare raw" path. The emitted artifact must be a fixed point of the
 /// formatter or the comparison is meaningless (see `normalize_generated_source`), so a run
@@ -1408,12 +1420,15 @@ impl ResolvedFormatter {
         let entries: Vec<&str> = path_var.split(':').filter(|e| !e.is_empty()).collect();
         for dir in &entries {
             let candidate = Path::new(dir).join("rustfmt");
-            if candidate.is_file() {
-                return Ok(ResolvedFormatter {
-                    program: candidate,
-                    searched: path_var.to_string(),
-                });
+            if !Self::is_executable_file(&candidate) {
+                continue;
             }
+            let resolved = ResolvedFormatter {
+                program: candidate,
+                searched: path_var.to_string(),
+            };
+            resolved.probe()?;
+            return Ok(resolved);
         }
         Err(format!(
             concat!(
@@ -1426,6 +1441,65 @@ impl ResolvedFormatter {
             entries.len(),
             entries.join(", ")
         ))
+    }
+
+    /// PATH RESOLUTION REQUIRES THE EXECUTE BIT, not merely a file. The OS skips a
+    /// non-executable entry and keeps searching, so a resolver keyed on `is_file` would ADMIT a
+    /// file the kernel would have stepped over -- shadowing a real formatter further down PATH
+    /// and failing where a bare `Command::new("rustfmt")` would have succeeded. Matching the
+    /// kernel's own predicate is what keeps this resolver a faithful model of the lookup it
+    /// replaces rather than a second, more permissive one.
+    #[cfg(unix)]
+    fn is_executable_file(candidate: &Path) -> bool {
+        use std::os::unix::fs::PermissionsExt;
+        match fs::metadata(candidate) {
+            Ok(meta) => meta.is_file() && meta.permissions().mode() & 0o111 != 0,
+            Err(_) => false,
+        }
+    }
+
+    /// The non-unix arm is a PLATFORM REALIZATION, not a failure arm: there is no mode bit to
+    /// read, so existence is the strongest available predicate. The probe below still runs, so
+    /// an unusable program is refused at admission on every platform.
+    #[cfg(not(unix))]
+    fn is_executable_file(candidate: &Path) -> bool {
+        candidate.is_file()
+    }
+
+    /// EXECUTING THE PROGRAM ONCE IS THE ADMISSION, because the metadata above is a proxy and
+    /// this is the fact itself. A mode bit does not establish that the file runs: a broken shim,
+    /// a wrong-architecture binary, or a dangling interpreter line all carry the bit and all die
+    /// at the first real normalize -- which is the ~50-minute failure this row exists to move.
+    /// `--version` is chosen because it is total, cheap and reads nothing from the tree.
+    fn probe(&self) -> Result<(), String> {
+        let observed = Command::new(&self.program).arg("--version").output();
+        match observed {
+            Ok(out) if out.status.success() => Ok(()),
+            Ok(out) => Err(format!(
+                concat!(
+                    "rustfmt at {} is not usable: `--version` exited {}. It was found on PATH ",
+                    "[{}] and is executable, so this is a broken or mis-targeted installation ",
+                    "rather than a missing one -- repair it or remove it from PATH so a later ",
+                    "entry can serve. Refused at admission rather than at the first normalize."
+                ),
+                self.program.display(),
+                out.status
+                    .code()
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "by signal".to_string()),
+                self.searched
+            )),
+            Err(cause) => Err(format!(
+                concat!(
+                    "rustfmt at {} could not be executed: {}. It was found on PATH [{}] with ",
+                    "the execute bit set, so this is a broken installation rather than a ",
+                    "missing one. Refused at admission rather than at the first normalize."
+                ),
+                self.program.display(),
+                cause,
+                self.searched
+            )),
+        }
     }
 
     fn admit() -> Result<Self, String> {
@@ -1442,9 +1516,10 @@ impl ResolvedFormatter {
     fn spawn_refusal(&self, cause: std::io::Error) -> String {
         format!(
             concat!(
-                "spawn rustfmt: {} -- program {} was resolved at admission from PATH [{}] ",
-                "and existed then, so it has been removed or replaced while this run was ",
-                "executing; this is not a missing installation"
+                "spawn rustfmt: {} -- program {} was resolved at admission from PATH [{}], ",
+                "and ran there: `--version` was executed successfully before this phase began. ",
+                "So it has been removed, replaced or made unusable while this run was ",
+                "executing; this is not a missing or broken installation"
             ),
             cause,
             self.program.display(),
@@ -1690,6 +1765,68 @@ mod tests {
         );
     }
 
+    /// A NON-EXECUTABLE FILE NAMED `rustfmt` MUST NOT SHADOW A REAL ONE FURTHER DOWN PATH.
+    ///
+    /// This is the RED for review 55506's first finding. Against the `is_file`-keyed resolver
+    /// this test FAILS: the unusable file is admitted, the real formatter below it is never
+    /// reached, and the run then dies at the first normalize -- the exact ~50-minute failure
+    /// this row exists to move, reintroduced by the row itself. The kernel skips such an entry
+    /// when resolving PATH, so the old resolver was strictly more permissive than the lookup it
+    /// replaced.
+    #[test]
+    fn a_non_executable_file_does_not_shadow_a_real_formatter_later_on_path() {
+        let shadow = temp_dir("formatter-shadow");
+        fs::write(shadow.join("rustfmt"), "not a program\n").expect("plant the shadow");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(shadow.join("rustfmt"), fs::Permissions::from_mode(0o644))
+                .expect("clear the execute bit");
+        }
+
+        let real = ResolvedFormatter::admit().expect("this host has a usable rustfmt");
+        let real_dir = real
+            .program
+            .parent()
+            .expect("a resolved program has a parent directory");
+
+        let resolved = ResolvedFormatter::from_path_var(&format!(
+            "{}:{}",
+            shadow.display(),
+            real_dir.display()
+        ))
+        .expect("the real formatter below the shadow must still be found");
+        assert_eq!(
+            resolved.program, real.program,
+            "the unusable file must be stepped over, not admitted"
+        );
+    }
+
+    /// AN EXECUTABLE THAT DOES NOT RUN IS REFUSED AT ADMISSION TOO. The mode bit is a proxy;
+    /// executing `--version` is the fact. A broken shim carries the bit and dies at the first
+    /// normalize, which is the failure being moved -- so admission probes rather than inspects.
+    #[test]
+    #[cfg(unix)]
+    fn an_executable_that_fails_its_probe_is_refused_at_admission() {
+        use std::os::unix::fs::PermissionsExt;
+        let broken = temp_dir("formatter-broken");
+        fs::write(broken.join("rustfmt"), "#!/bin/sh\nexit 3\n").expect("plant a broken shim");
+        fs::set_permissions(broken.join("rustfmt"), fs::Permissions::from_mode(0o755))
+            .expect("set the execute bit");
+
+        let refused = ResolvedFormatter::from_path_var(&broken.display().to_string())
+            .expect_err("a program that cannot run must not be admitted");
+        assert!(
+            refused.contains("not usable") && refused.contains("exited 3"),
+            "the refusal must name the observed exit, not guess at a cause: {refused}"
+        );
+        assert!(
+            refused.contains("rather than a missing one"),
+            "and must separate broken from absent, since the remedies differ: {refused}"
+        );
+        assert_message_is_not_reflowed(&refused);
+    }
+
     /// THE SPAWN REFUSAL DISTINGUISHES "NEVER INSTALLED" FROM "REPLACED UNDER THE RUN", which is
     /// the fact the run that motivated this row could not report. It is asserted on the message
     /// rather than by staging a mid-run deletion: nothing here can portably make a live process
@@ -1700,12 +1837,14 @@ mod tests {
         let formatter = ResolvedFormatter::admit().expect("rustfmt on PATH for this test");
         let message = formatter.spawn_refusal(std::io::Error::from_raw_os_error(2));
         assert!(
-            message.contains("existed then"),
-            "the message must carry the admission-time fact: {message}"
+            message.contains("ran there") && message.contains("executed successfully"),
+            "the message must carry the admission-time fact, which is now that the program RAN \
+             and not merely that it existed: {message}"
         );
         assert!(
-            message.contains("is not a missing installation"),
-            "and must rule out the reading it is there to rule out: {message}"
+            message.contains("is not a missing or broken installation"),
+            "and must rule out BOTH readings it is there to rule out -- absent, and present but \
+             unusable -- since the probe now excludes the second as well: {message}"
         );
         assert!(
             message.contains(&formatter.program.display().to_string()),
