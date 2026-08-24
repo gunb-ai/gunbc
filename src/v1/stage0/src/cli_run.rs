@@ -7593,10 +7593,11 @@ fn bare_reference_pull_paths_for_source(
     let Some(root) = source_tree_root_of(&index.source_roots, &file_rel) else {
         return Ok(Vec::new());
     };
-    let census_started = std::time::Instant::now();
-    let census = tree_bare_census_for_root(index, &root)?;
+    let (census, census_nanos) =
+        nanos_net_of_pool_parse(|| tree_bare_census_for_root(index, &root));
+    let census = census?;
     resolve_stage_slot_add(|st| {
-        st.edge_index_tree_census += census_started.elapsed().as_nanos();
+        st.edge_index_tree_census += census_nanos;
         st.edge_index_tree_census_calls += 1;
     });
     let referencing_module = extract_module_path(&sf.content).unwrap_or_default();
@@ -7812,10 +7813,11 @@ fn build_both_closure_edge_index(
             continue;
         }
         bare_scan_eligible.insert(file_rel.clone());
-        let bare_started = std::time::Instant::now();
-        let bare_paths = bare_reference_pull_paths_for_source(sf, index)?;
+        let (bare_paths, bare_nanos) =
+            nanos_net_of_pool_parse(|| bare_reference_pull_paths_for_source(sf, index));
+        let bare_paths = bare_paths?;
         resolve_stage_slot_add(|st| {
-            st.edge_index_bare_half += bare_started.elapsed().as_nanos();
+            st.edge_index_bare_half += bare_nanos;
             st.edge_index_bare_eligible += 1;
         });
         bare_out.insert(file_rel, bare_paths);
@@ -7855,9 +7857,9 @@ fn extend_with_bare_reference_closure(
     // Sub-attribution inside the bare-reference closure (entry-graph-union slice 1). The
     // fixpoint measured ~100% of `load`; these three rows say WHICH of its parts, which is
     // what decides whether the fix is a memo, an incremental closure, or a union graph.
-    let edge_started = std::time::Instant::now();
-    let edges = both_closure_edge_index(index)?;
-    resolve_stage_slot_add(|s| s.load_bare_edge_index += edge_started.elapsed().as_nanos());
+    let (edges, edge_nanos) = nanos_net_of_pool_parse(|| both_closure_edge_index(index));
+    let edges = edges?;
+    resolve_stage_slot_add(|s| s.load_bare_edge_index += edge_nanos);
     let lookup_started = std::time::Instant::now();
     let lookup = path_to_source_lookup(&index.source_files);
     resolve_stage_slot_add(|s| {
@@ -12355,7 +12357,8 @@ pub struct ResolveStageNanos {
     pub edge_index_closure_expand: u128,
     /// Calls to that expansion — the multiplicity the per-call cost is paid at.
     pub edge_index_closure_expand_calls: u128,
-    /// `tree_bare_census_for_root` inside the bare half — the per-tree bare census.
+    /// `tree_bare_census_for_root` inside the bare half — the per-tree bare census,
+    /// NET of the shared whole-corpus `pool_parse` it may be the first to force.
     pub edge_index_tree_census: u128,
     /// Calls to that census.
     pub edge_index_tree_census_calls: u128,
@@ -12363,8 +12366,23 @@ pub struct ResolveStageNanos {
     /// interpretable: total/calls is an average over mostly-free hits and describes no
     /// real call.
     pub edge_index_tree_census_misses: u128,
-    /// Nanos spent in cold census builds only.
+    /// Nanos spent in cold census builds only, NET of `pool_parse` (see that row): the
+    /// census's own BFS over the root's compile closure plus
+    /// `build_symbol_index_census_nodes`, and nothing else.
     pub edge_index_tree_census_miss_nanos: u128,
+    /// `pool_parse` — the WHOLE-CORPUS tokenize+parse behind every pool-derived term
+    /// (the per-root bare census, the qualified fill, the pool bare census). It is
+    /// memoized on the index and forced LAZILY by whichever consumer reaches it first,
+    /// so it has no single owner: charging it to that consumer reports one term's cost
+    /// under another term's name. Measured 2026-08-24 on `dag` + `src/v2`: 14.25s of
+    /// the 21.3s that `edge_index_tree_census_miss_nanos` used to report, because the
+    /// miss timer started before the pool force. Every enclosing row below is therefore
+    /// recorded NET of it (`nanos_net_of_pool_parse`) and this row carries it once.
+    pub pool_parse: u128,
+    /// Cold builds of the pool parse — 1 per index that forces it, 0 if nothing does.
+    pub pool_parse_builds: u128,
+    /// Modules parsed by those cold builds.
+    pub pool_parse_modules: u128,
     /// `bare_identifier_candidates` — the per-file identifier scan.
     pub edge_index_bare_candidates: u128,
     pub edge_index_bare_name_universe: u128,
@@ -12424,6 +12442,9 @@ impl ResolveStageNanos {
         self.edge_index_tree_census_calls += other.edge_index_tree_census_calls;
         self.edge_index_tree_census_misses += other.edge_index_tree_census_misses;
         self.edge_index_tree_census_miss_nanos += other.edge_index_tree_census_miss_nanos;
+        self.pool_parse += other.pool_parse;
+        self.pool_parse_builds += other.pool_parse_builds;
+        self.pool_parse_modules += other.pool_parse_modules;
         self.edge_index_bare_candidates += other.edge_index_bare_candidates;
         self.edge_index_bare_name_universe += other.edge_index_bare_name_universe;
         self.edge_index_bare_resolve_loop += other.edge_index_bare_resolve_loop;
@@ -12539,6 +12560,9 @@ thread_local! {
             edge_index_tree_census_calls: 0,
             edge_index_tree_census_misses: 0,
             edge_index_tree_census_miss_nanos: 0,
+            pool_parse: 0,
+            pool_parse_builds: 0,
+            pool_parse_modules: 0,
             edge_index_bare_candidates: 0,
             edge_index_bare_name_universe: 0,
             edge_index_bare_resolve_loop: 0,
@@ -12581,6 +12605,29 @@ fn resolve_stage_slot_add(update: impl FnOnce(&mut ResolveStageNanos)) {
 
 fn resolve_stage_slot_snapshot() -> ResolveStageNanos {
     RESOLVE_STAGE_SLOT.with(|s| s.get())
+}
+
+/// Run `f` and return its value beside its wall NET of any cold `pool_parse` build
+/// forced inside it.
+///
+/// The whole-corpus pool parse is a SHARED, lazily-forced term: the per-root bare
+/// census, the qualified fill and the pool bare census all need it, none of them owns
+/// it, and whichever arrives first pays for all of them. A timer started around that
+/// first arrival therefore reports the corpus parse under the arriving consumer's name
+/// — the mis-attribution measured 2026-08-24, where two `tree_bare_census_for_root`
+/// misses reported 23.02s of which 14.25s was this parse. Subtracting here (and
+/// reporting the parse once, on `pool_parse`) is what keeps the enclosing rows about
+/// the work they are named for. `saturating_sub` because the two clocks are read at
+/// slightly different instants, never because a negative remainder is meaningful.
+fn nanos_net_of_pool_parse<T>(f: impl FnOnce() -> T) -> (T, u128) {
+    let before = resolve_stage_slot_snapshot().pool_parse;
+    let started = std::time::Instant::now();
+    let out = f();
+    let elapsed = started.elapsed().as_nanos();
+    let pool = resolve_stage_slot_snapshot()
+        .pool_parse
+        .saturating_sub(before);
+    (out, elapsed.saturating_sub(pool))
 }
 
 // SCAFFOLD (§7 HAND-RUST — `cli_run_exclusive_cost_partition_probe`):
@@ -12771,6 +12818,8 @@ pub struct ExclusiveCostPartition {
     pub edge_index_closure_expand_calls: u128,
     pub edge_index_tree_census_misses: u128,
     pub edge_index_tree_census_calls: u128,
+    pub pool_parse_builds: u128,
+    pub pool_parse_modules: u128,
     pub load_fixpoint_rounds: u128,
     /// Per-entry span attribution (entry, spans, span nanos, that entry's stage rows),
     /// descending by span nanos. Lets a witness entry's split be read apart from the
@@ -13006,6 +13055,15 @@ pub fn exclusive_cost_partition_from(
             nanos: st.edge_index_tree_census,
             contained_in: "edge_index_bare_half",
         },
+        // The whole-corpus parse is NOT contained in the consumer that happened to force
+        // it — that is the mis-attribution this row exists to end — so it hangs off
+        // `load`, the outermost row every forcing site sits under, and every row between
+        // is recorded net of it.
+        InclusiveCostRow {
+            name: "pool_parse",
+            nanos: st.pool_parse,
+            contained_in: "load",
+        },
         InclusiveCostRow {
             name: "edge_index_tree_census_miss_nanos",
             nanos: st.edge_index_tree_census_miss_nanos,
@@ -13088,6 +13146,8 @@ pub fn exclusive_cost_partition_from(
         edge_index_closure_expand_calls: st.edge_index_closure_expand_calls,
         edge_index_tree_census_calls: st.edge_index_tree_census_calls,
         edge_index_tree_census_misses: st.edge_index_tree_census_misses,
+        pool_parse_builds: st.pool_parse_builds,
+        pool_parse_modules: st.pool_parse_modules,
         load_fixpoint_rounds: st.load_fixpoint_rounds,
         span_rows_by_entry,
     }
@@ -13174,6 +13234,14 @@ pub fn render_exclusive_cost_partition_json(
     out.push_str(&json_num(p.edge_index_tree_census_calls));
     out.push_str(",\"tree_census_misses\":");
     out.push_str(&json_num(p.edge_index_tree_census_misses));
+    out.push_str("}");
+
+    // The shared whole-corpus parse, reported beside its own volume so the row can be
+    // priced per module rather than per forcing consumer.
+    out.push_str(",\"pool_parse\":{\"builds\":");
+    out.push_str(&json_num(p.pool_parse_builds));
+    out.push_str(",\"modules\":");
+    out.push_str(&json_num(p.pool_parse_modules));
     out.push_str("}");
 
     out.push_str(",\"load_reference_scan_volume\":{\"bytes\":");
@@ -14519,6 +14587,7 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
     // build reproducible — determinism gate).
     let mut pool_paths: Vec<String> = index.source_files.keys().cloned().collect();
     pool_paths.sort();
+    let pool_started = std::time::Instant::now();
     let mut combined_si: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
     let mut nodes_by_file: Vec<(String, Rc<Node>)> = Vec::with_capacity(pool_paths.len());
     for module_path in pool_paths {
@@ -14537,6 +14606,15 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
         combined_si: Rc::new(combined_si),
     });
     *index.pool_parse.borrow_mut() = Some(parsed.clone());
+    // The one place this term is measured, so it is counted once wherever it is forced
+    // from. Every enclosing timer records itself net of this row — see
+    // `nanos_net_of_pool_parse`.
+    let modules = parsed.nodes_by_file.len() as u128;
+    resolve_stage_slot_add(|st| {
+        st.pool_parse += pool_started.elapsed().as_nanos();
+        st.pool_parse_builds += 1;
+        st.pool_parse_modules += modules;
+    });
     Ok(parsed)
 }
 
@@ -14602,6 +14680,7 @@ fn tree_bare_census_for_root(
     // instead of the right one (make the cold build cheaper, or build it once per process
     // rather than once per index).
     let miss_started = std::time::Instant::now();
+    let pool_before = resolve_stage_slot_snapshot().pool_parse;
     resolve_stage_slot_add(|st| st.edge_index_tree_census_misses += 1);
     // Identity of the cold misses, not just their count. The count alone cannot
     // distinguish "the same subject recomputed per index" from "a different subject
@@ -14651,8 +14730,16 @@ fn tree_bare_census_for_root(
         .tree_bare_census
         .borrow_mut()
         .insert(root.to_string(), census.clone());
+    // Net of the whole-corpus pool parse this build may have been the first to force:
+    // that parse is shared with the qualified fill and the pool bare census and is
+    // reported once on `pool_parse`. Before this subtraction the row read 23.02s for
+    // two misses, 14.25s of which was the parse (measured 2026-08-24).
+    let pool_here = resolve_stage_slot_snapshot()
+        .pool_parse
+        .saturating_sub(pool_before);
     resolve_stage_slot_add(|st| {
-        st.edge_index_tree_census_miss_nanos += miss_started.elapsed().as_nanos();
+        st.edge_index_tree_census_miss_nanos +=
+            miss_started.elapsed().as_nanos().saturating_sub(pool_here);
     });
     Ok(census)
 }
@@ -14890,18 +14977,20 @@ fn reconcile_with_typed_cache(
                                         Some(root) => match tree_symbol_index_memo.get(&root) {
                                             Some(hit) => hit.clone(),
                                             None => {
-                                                let root_symbol_index_started =
-                                                    std::time::Instant::now();
-                                                let composed =
-                                                    v1_compiler_infer::symbol_index_with_bare_fill(
-                                                        symbol_index.clone(),
-                                                        tree_bare_census_for_root(index, &root)?,
-                                                    );
+                                                let (composed, composed_nanos) =
+                                                    nanos_net_of_pool_parse(|| {
+                                                        tree_bare_census_for_root(index, &root).map(
+                                                            |tree| {
+                                                                v1_compiler_infer::symbol_index_with_bare_fill(
+                                                                    symbol_index.clone(),
+                                                                    tree,
+                                                                )
+                                                            },
+                                                        )
+                                                    });
+                                                let composed = composed?;
                                                 resolve_stage_slot_add(|s| {
-                                                    s.assembly_root_symbol_index +=
-                                                        root_symbol_index_started
-                                                            .elapsed()
-                                                            .as_nanos()
+                                                    s.assembly_root_symbol_index += composed_nanos
                                                 });
                                                 // The composed index's global_bare = closure ∪ tree,
                                                 // so its variant base is computed from the composed
@@ -39475,6 +39564,66 @@ mod exclusive_cost_partition_law {
             p.sum_exclusive_nanos() + p.remainder_nanos
         );
         assert_eq!(p.share_of_parent("load"), Some(0.6));
+    }
+
+    /// The shared pool parse is subtracted from the row that happened to force it.
+    ///
+    /// RED WITHOUT THE SUBTRACTION: drop the `saturating_sub` in
+    /// `nanos_net_of_pool_parse` and this returns the full elapsed — which is exactly
+    /// the state measured on 2026-08-24, where `edge_index_tree_census_miss_nanos`
+    /// reported 23.02s for two cold censuses because 14.25s of whole-corpus
+    /// `pool_parse` had started inside its timer.
+    #[test]
+    fn a_pool_parse_forced_inside_a_row_is_not_charged_to_that_row() {
+        let slot_before = resolve_stage_slot_snapshot().pool_parse;
+        // A body that spends real, nonzero wall AND "forces" a 10s pool build. The 10s
+        // dwarfs any wall this body can plausibly spend, so the net saturates to zero —
+        // and WITHOUT the subtraction the net is the body's own wall, which the busy
+        // loop guarantees is greater than zero. That gap is what makes this test
+        // discriminating; asserting merely `net < 10s` would pass either way, which is
+        // how the first version of this test failed to catch its own mutation.
+        let ((), net) = nanos_net_of_pool_parse(|| {
+            let spin = std::time::Instant::now();
+            while spin.elapsed().as_millis() < 5 {
+                std::hint::spin_loop();
+            }
+            resolve_stage_slot_add(|st| st.pool_parse += 10_000_000_000);
+        });
+        assert_eq!(net, 0, "row kept the pool parse it forced: {net}ns");
+        assert_eq!(
+            resolve_stage_slot_snapshot().pool_parse - slot_before,
+            10_000_000_000,
+            "the parse must still be counted — once, on its own row"
+        );
+    }
+
+    /// The pool parse hangs off `load`, NOT off whichever consumer forced it. Three
+    /// consumers need it (the per-root bare census, the qualified fill, the pool bare
+    /// census) and none owns it, so a `contained_in` naming one of them would report a
+    /// shared term as that consumer's cost — the defect this row exists to end.
+    #[test]
+    fn pool_parse_is_an_inclusive_row_under_load_not_under_its_forcing_consumer() {
+        let st = ResolveStageNanos {
+            pool_parse: 14_250_000_000,
+            pool_parse_builds: 1,
+            pool_parse_modules: 3_875,
+            ..ResolveStageNanos::default()
+        };
+        let p = exclusive_cost_partition_from(&st, "test_basis", 1_000, 1, 0, Vec::new());
+        let row = p
+            .inclusive
+            .iter()
+            .find(|r| r.name == "pool_parse")
+            .expect("pool_parse row");
+        assert_eq!(row.nanos, 14_250_000_000);
+        assert_eq!(row.contained_in, "load");
+        // An inclusive row never enters the exclusive sum, so it cannot break the law.
+        assert_eq!(p.sum_exclusive_nanos(), 0);
+        let json = render_exclusive_cost_partition_json(&p, &[]);
+        assert!(
+            json.contains("\"pool_parse\":{\"builds\":1,\"modules\":3875}"),
+            "{json}"
+        );
     }
 
     #[test]
