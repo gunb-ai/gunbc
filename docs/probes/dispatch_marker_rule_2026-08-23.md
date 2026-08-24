@@ -74,6 +74,21 @@ echo "HAS_FIX=$(git merge-base --is-ancestor <fix-sha> HEAD && echo yes || echo 
 Read those first. A dispatch that cannot state which tree it measured has not measured a tree — it
 has measured *a* tree, and which one is exactly the fact in dispute when the result is surprising.
 
+**The subject marker must be answerable where it runs.** An ancestry check is the obvious spelling
+and it is the wrong one on these runners: they fetch with `--depth=1`, so there is no history for
+`git merge-base --is-ancestor` to walk, and it reports **not an ancestor** for a commit that is
+present. Measured here — a branch that demonstrably contained the fix (emission worked, 176 files)
+reported `HAS_9027=0`. A subject marker that answers "no" because it *cannot* answer is the same
+defect one level in, so prefer a **content** assertion over a history one:
+
+```bash
+echo "SUBJECT_HAS_TYPE=$(grep -c '^type FinitePowerSet' dag/std/algebra.dag)"
+echo "SUBJECT_ALIAS=$(grep -oE '^type Set<element> = [A-Za-z]+' dag/std/types.dag)"
+```
+
+Those read the working tree the compiler will read, need no history, and say what the tree *is*
+rather than where it came from.
+
 The two clauses are complementary and neither implies the other:
 
 | failure | execution markers | subject markers |
@@ -84,6 +99,46 @@ The two clauses are complementary and neither implies the other:
 A surprising result should send you to the subject markers before the conclusion. "The fix does not
 work" and "the fix is not in this tree" produce identical output, and only one of them is about the
 fix.
+
+## Third clause: assert the subject STANDS ALONE
+
+Clauses 1 and 2 guard that the command ran and what it ran against. Neither asks whether the thing
+measured is **viable on its own** — and a comparative measurement can be perfectly valid, correctly
+executed, on exactly the intended tree, and still never pose that question.
+
+**Receipt (gunbc#8282, the namespace cut, abandoned 2026-08-24).** Every measurement taken on that
+branch was comparative — conflict counts, import deltas, rehearsal tables — and **not one asked
+whether the branch built on its own**. It had not built since 2026-08-22: breaking commit
+`c98516772e7` dropped 36 emitted modules whose `.dag` authorities still exist, and 117 commits
+landed on top of it over two days. Nobody was careless. Everybody was measuring, and every
+measurement was relative to something else carrying the same defect.
+
+The check is one dispatch: **build the head alone in a fresh worktree — no merge, no working-tree
+patch, `git clean -x -d --force`.**
+
+It has a positive arm, which is why this is a routine check rather than a cautionary tale. Run on a
+different branch the same night, a fresh fetch + clean + head-alone build confirmed the current
+mirrors built the post-relocation corpus and reached the executor — clearing that branch in a single
+dispatch. The value is that **one dispatch distinguishes two otherwise identical-looking
+situations**: *"my change is incompatible with main"* and *"my change cannot exist without itself"*
+produce the same confusing regen failure.
+
+**The signature to recognise, because it is what let #8282 run for two days: hand-restoration does
+not converge, and looks like progress.** Measured there — head as-is 123 errors; plus 4 mirror files
+122; plus all 36 dropped modules 271. Three rounds, monotonically worse, because each restored
+module references further things the same commit dropped. **If your repair loop is going the wrong
+way while you add more of the thing that seems missing, that is a broken seed, not a list of missing
+files.**
+
+## The three clauses
+
+| | assert | catches | missed by the others |
+|---|---|---|---|
+| 1 | **that** you measured | payload never ran | 2 and 3 see markers and a real tree |
+| 2 | **what** you measured | ran against the wrong tree | 1 sees every marker present |
+| 3 | the subject **stands alone** | subject was never viable | 1 and 2 both pass — #8282 passed both for two days |
+
+Each catches what the previous cannot, and none implies another.
 
 ## Neighbours already recorded, and how this differs
 
