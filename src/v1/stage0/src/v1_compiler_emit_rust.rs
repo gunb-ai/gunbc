@@ -12066,9 +12066,23 @@ pub fn emit_faithful_text_carrier_import_lines(
         let needs_partial_function = {
             let mut __found = false;
             for item in items.iter().cloned() {
-                if (module_item_references_type_name(
+                if module_item_references_type_name(
                     item.clone(),
                     "PartialFunction".to_string(),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        let needs_finitely_supported_function = {
+            let mut __found = false;
+            for item in items.iter().cloned() {
+                if (module_item_references_type_name(
+                    item.clone(),
+                    "FinitelySupportedFunction".to_string(),
                     source_indices.clone(),
                 ) || module_item_references_type_name(
                     item.clone(),
@@ -12163,6 +12177,19 @@ pub fn emit_faithful_text_carrier_import_lines(
                 "use crate::std_algebra::PartialFunction;".to_string(),
             )])
         };
+        let finitely_supported_function = if (!needs_finitely_supported_function.clone()
+            || rust_import_name_already_resolved(
+                imported_names.clone(),
+                local_type_names.clone(),
+                "FinitelySupportedFunction".to_string(),
+            )) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![v1_rt::concat(
+                rust_visibility_prefix(),
+                "use crate::std_algebra::FinitelySupportedFunction;".to_string(),
+            )])
+        };
         let memory = if (!needs_measure_phantoms.clone()
             || rust_import_name_already_resolved(
                 imported_names.clone(),
@@ -12194,12 +12221,15 @@ pub fn emit_faithful_text_carrier_import_lines(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(free_monoid.clone(), char_line.clone()),
-                            non_empty_str.clone(),
+                            v1_rt::concat(
+                                v1_rt::concat(free_monoid.clone(), char_line.clone()),
+                                non_empty_str.clone(),
+                            ),
+                            int_line.clone(),
                         ),
-                        int_line.clone(),
+                        partial_function.clone(),
                     ),
-                    partial_function.clone(),
+                    finitely_supported_function.clone(),
                 ),
                 memory.clone(),
             ),

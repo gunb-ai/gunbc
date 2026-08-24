@@ -9,9 +9,9 @@ use self::SizeBound::*;
 pub use crate::std_algebra::kernel_algebra_profile;
 pub use crate::std_algebra::AlgebraProfile;
 use crate::std_algebra::AlgebraProfile::{
-    ApproximateFieldProfile, BooleanAlgebraCollectionProfile, BooleanAlgebraProfile,
-    FreeMonoidCollectionProfile, FreeMonoidScalarProfile, OrderedRingProfile,
-    PartialFunctionProfile, PointwisePowerCollectionProfile,
+    ApproximateFieldProfile, BooleanAlgebraProfile, FinitePowerSetProfile,
+    FinitelySupportedFunctionProfile, FreeMonoidCollectionProfile, FreeMonoidScalarProfile,
+    OrderedRingProfile, PartialFunctionProfile, PointwisePowerCollectionProfile,
 };
 pub use crate::std_termination::positive_descent_count;
 use crate::std_termination::DescentEvidence::DescentUnknown;
@@ -224,9 +224,12 @@ pub fn algebra_profile_to_dimension(profile: AlgebraProfile) -> Option<Iteration
     match profile.clone() {
         AlgebraProfile::FreeMonoidCollectionProfile => Some(IterationDimension::CollectionFold),
         AlgebraProfile::FreeMonoidScalarProfile => Some(IterationDimension::CollectionFold),
-        AlgebraProfile::BooleanAlgebraCollectionProfile => Some(IterationDimension::CollectionFold),
+        AlgebraProfile::FinitePowerSetProfile => Some(IterationDimension::CollectionFold),
+        AlgebraProfile::FinitelySupportedFunctionProfile => {
+            Some(IterationDimension::CollectionFold)
+        }
         AlgebraProfile::PointwisePowerCollectionProfile => None,
-        AlgebraProfile::PartialFunctionProfile => Some(IterationDimension::CollectionFold),
+        AlgebraProfile::PartialFunctionProfile => None,
         AlgebraProfile::OrderedRingProfile => Some(IterationDimension::ArithmeticRepeat),
         AlgebraProfile::ApproximateFieldProfile => Some(IterationDimension::ArithmeticRepeat),
         AlgebraProfile::BooleanAlgebraProfile => None,
