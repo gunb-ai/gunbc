@@ -3302,6 +3302,59 @@ enforces end to end.
    transport expressions newly RESOLVED by this cut. One monolithic diff would make every red
    ambiguous between them, which is a poor shape for a change whose entire subject is ambiguity.
 
+33. **Two definitions of ONE NAME in ONE MODULE are accepted with zero diagnostics, and the
+   SECOND silently wins.** BELOW FLOOR, not a rung that slipped: a name binding to two
+   definitions with no refusal is silent wrongness, which DESIGN §4b places outside the ladder
+   rather than on its bottom rung.
+
+   **Mechanism, confirmed by execution on a controlled fixture, in both directions.** A single
+   `.dag` module carrying `fn which_one() -> Bool { false }` followed by
+   `fn which_one() -> Bool { true }` compiles clean and answers `true`; with the two bodies
+   swapped, the same module compiles clean and answers `false`. Zero diagnostics at either
+   ordering — no error, no warning, no advisory. The direction test is what makes this a
+   binding fact rather than a coincidence: the answer tracks source ORDER, so the last
+   definition is the one that binds.
+
+   **A confirmed production victim, not a hypothetical.** gunbc#9081 commit `29088e133` landed
+   `dag/gunbc/fabric_cell_converge.dag` carrying two definitions each of `fabric_cell_ids` and
+   `fabric_cell_population_unobserved`. The compile was clean, the witness rows were green, and
+   the copy that executed was the second — a §3 single-authority violation running in
+   production, found by a reviewer reading the file and by nothing else. The reviewer's own
+   inference was that it "will fail to parse or typecheck"; that inference was wrong, which is
+   itself part of the finding: the defect defeats the expectation a reader brings to it.
+
+   **A live instance on main.** `dag/test/claim/scm_commit_closure_json_v2_witness_test.dag`
+   defines `scm_image_refused` at two positions with byte-identical bodies and eight call
+   sites — benign today only because the two bodies agree, which is luck rather than structure.
+
+   **Census caveat, stated so the population is not overread.** The live-instance search was a
+   line-anchored regex over module text at main. It is a LOWER BOUND on the population, not a
+   closed census: it cannot see definitions that differ in spacing or that a formatter joined,
+   and it says nothing about `type`/`data` declarations.
+
+   **The boundary measured, and what was not.** Measured: source → `.dag` acceptance, through
+   our own binary, single module, `fn` declarations. NOT measured: the Rust emission path,
+   `type`/`data` declarations, cross-module collisions, and whether a `test fn` collides with a
+   plain `fn` of the same name. Each is its own row when someone measures it; none is claimed
+   here, per DESIGN §4b's rule that a class's rung is the minimum across its in-scope paths and
+   that citing an unmeasured path is inflation.
+
+   **The fix is a WALL, not a ratchet.** Membership is decidable at ingestion, where the
+   module's own declarations are already being folded: two declarations sharing one name in one
+   module is a property of one module's source, needing no corpus walk, no name resolution and
+   no type information. DESIGN §5's decidability test is met, so a lens counting occurrences
+   would be validation standing exactly where construction was available.
+
+   **Executing evidence, enrolled today.**
+   `dag/test/claim/duplicate_definition_binding_probe.dag` asserts the CORRECT behaviour — the
+   compiler refuses the two-definition module — and is therefore RED today and enrolled in
+   `v2.workflow.floor_expected_red` `floor_expected_red_chunk_19`. Written the other way round
+   ("assert the second definition binds") it would be green today and would become a defender
+   of the defect. Its positive control, the same module with one definition, is NOT enrolled
+   and PASSES; that pair is what establishes the census reached its subject and answered rather
+   than failing to run. When the wall lands the red flips green, comes off the roster, and
+   converts to a permanent regression control per DESIGN §4b meta-obligation (4).
+
 ## 12. Proposed sequencing (reconciled with the independent review; for operator sign-off)
 
 **(2026-07-31 restructure.)** The canonical dependency order now lives in the roadmap

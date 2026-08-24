@@ -435,8 +435,18 @@ fn floor_expected_red_chunk_18() -> List<String> {
   Empty {}
 }
 
+// test.claim.duplicate_definition_binding_probe.duplicate_definition_in_one_module_is_refused
+// asserts the CORRECT behaviour -- that a module defining one name twice is refused -- against a
+// path that today accepts it with zero diagnostics and silently binds the SECOND definition
+// (measured in both orderings on a controlled fixture; see that module's header). It is enrolled
+// here rather than written as "assert the second definition binds", which would go green today
+// and become a defender of the defect. Its positive control
+// (single_definition_module_is_clean) is NOT enrolled and passes, which is what establishes that
+// the census reached its subject and answered rather than failing to run. When the ingestion
+// wall lands this row goes green of its own accord and comes OFF this roster, converting to a
+// permanent regression control per DESIGN section 4b meta-obligation (4) -- it does not retire.
 fn floor_expected_red_chunk_19() -> List<String> {
-  Cons { head: "test.claim.direct_call_argument_type_witness_test.direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch", tail: Empty {} }
+  Cons { head: "test.claim.direct_call_argument_type_witness_test.direct_call_arg_type_v2_module_red_refuses_blocking_type_mismatch", tail: Cons { head: "test.claim.duplicate_definition_binding_probe.duplicate_definition_in_one_module_is_refused", tail: Empty {} } }
 }
 
 // FIVE IDENTITIES ENROLLED 2026-08-22, and they arrive by a route this roster has not carried
