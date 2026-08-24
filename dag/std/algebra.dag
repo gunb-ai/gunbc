@@ -304,6 +304,25 @@ type AlgebraFieldTemplate {
   callback_element_position: Int?
 }
 
+// THE CARRIER NAMES ARE KEYS HERE, NOT ONLY THE ALIAS SPELLINGS, and that is a repair rather
+// than an extension. This map is what `kernel_profile_lookup` consults to decide whether a
+// receiver has a declared method surface at all; `04_infer.dag`'s method-existence wall refuses
+// with `MethodExistenceUndecided` when it does not. Keyed on `"Set"` and `"Map"` alone, a
+// declaration that wrote the CARRIER name instead of the alias had no surface — so
+// `tree.facts.lookup(node)` on a `PartialFunction<Node, InferredFacts>` receiver refused, while
+// the byte-identical call on a `Map` receiver resolved. One concept, two answers, decided by
+// which of two spellings for it the author happened to write: the §3 fork exactly.
+//
+// It was invisible while every site wrote the alias. The carrier decomposition made the carrier
+// names the ones declarations write, and the hole surfaced immediately at the floor's strict
+// preparation — a stricter instrument than the compile board, which reported 0 blocking on the
+// same tree.
+//
+// `PointwisePower` is deliberately NOT added here. Its 80 declaration positions predate this
+// lane, its templates are a different set from `FinitePowerSet`'s, and adding it changes the
+// wall from UNDECIDED to DECIDED for every one of them at once — which would turn any method
+// absent from `pointwise_power_collection_templates` into a hard `MethodNotFound`. That is a
+// measurement this change has not taken, so the row is named as residue rather than added blind.
 fn kernel_algebra_profile_value() -> Map<String, AlgebraProfile> {
   map_insert(
     map_insert(
@@ -311,13 +330,19 @@ fn kernel_algebra_profile_value() -> Map<String, AlgebraProfile> {
         map_insert(
           map_insert(
             map_insert(
-              map_insert(empty_map(), "Int", OrderedRingProfile),
-              "Float", ApproximateFieldProfile),
-            "Bool", BooleanAlgebraProfile),
-          "String", FreeMonoidScalarProfile),
-        "List", FreeMonoidCollectionProfile),
-      "Set", FinitePowerSetProfile),
-    "Map", FinitelySupportedFunctionProfile)
+              map_insert(
+                map_insert(
+                  map_insert(
+                    map_insert(empty_map(), "Int", OrderedRingProfile),
+                    "Float", ApproximateFieldProfile),
+                  "Bool", BooleanAlgebraProfile),
+                "String", FreeMonoidScalarProfile),
+              "List", FreeMonoidCollectionProfile),
+            "Set", FinitePowerSetProfile),
+          "Map", FinitelySupportedFunctionProfile),
+        "FinitePowerSet", FinitePowerSetProfile),
+      "FinitelySupportedFunction", FinitelySupportedFunctionProfile),
+    "PartialFunction", PartialFunctionProfile)
 }
 
 data kernel_algebra_profile: Map<String, AlgebraProfile> = kernel_algebra_profile_value()
