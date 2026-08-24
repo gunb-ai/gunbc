@@ -333,3 +333,47 @@ Cost this time: one wasted read and a wrong "still in progress" reading, caught 
 because I checked for the markers instead of trusting the wait's return. Had I reported off it,
 I would have said a mutation probe had not started when it had — the inverse of trap 11's
 failure, from the identical cause.
+
+---
+
+## Reviewer trap — naming the mechanism instead of the property, and the correction to that correction
+
+Two instructions I gave tonight were wrong *as specified*, in the same way, hours apart:
+
+- To gunbc#9075: *put these rows in a module whose honest disposition is hermetic.* No such module
+  can exist — any `compile_dag_diagnostic_census` probe resolves against the live checkout. The
+  author, given an impossible instruction, produced a false declaration to satisfy it.
+- To gunbc#9063: *attest against membership in `rust_identifier_tokens(s: emitted_source)` — same
+  machinery, no new concept.* That function splits `<>,()[]&:` and space, with no `;`, because it
+  was written for a **rendered type string**. Against a whole module, `pub type X = Int;` tokenizes
+  to `Int;`, so membership answers NO for a name the emitter demonstrably wrote. The swap would
+  have dropped required use-lines and reproduced the exact defect the code exists to prevent.
+
+In both the **property** was right — evidence must execute on the gating path; attestation must
+match whole identifiers — and the **mechanism I named** was wrong. And in both I reached for the
+mechanism because it looked *convenient*: an existing module, an existing function. Reusing a
+function outside the domain it was written for is not DRY; it is the hollow-alias failure, and the
+reviewer is unusually prone to it because the reviewer sees the shape of the machinery and not its
+preconditions.
+
+**The obvious lesson — state the property, let the author choose the mechanism — is half right, and
+the author of #9063 supplied the other half:**
+
+> I would not have found the delimiter problem if you had not named the exact function to reuse —
+> checking whether it fit its new domain was a cheap question that only got asked because there was
+> a concrete proposal to check. The proposal being wrong in a checkable way is worth more than a
+> vaguer one that was not.
+
+That is correct and it prevents an over-correction. A property stated alone (*match whole
+identifiers*) is unfalsifiable at review time and hands the author an open problem; a named
+mechanism is **checkable in one grep**, and being wrong in a checkable way is a service. The
+failure was not the concreteness — it was the **grammatical mood**.
+
+**The synthesis: name the property, offer the mechanism as a candidate to check, never as the
+instruction.** *Attestation must match whole identifiers rather than substrings; `rust_identifier_tokens`
+looks like the right tool — check its delimiter set against a whole module before using it.* Same
+concreteness, same one-grep falsifiability, and the author is left holding the domain question
+instead of an order. The #9075 case fails the same test in the other direction: had I written
+*the evidence must execute on the gating path, or be declared authored-not-executing — is there a
+module whose honest disposition gets it there?*, the answer would have come back **no**, which is
+the correct answer and was unreachable from the instruction I actually gave.
