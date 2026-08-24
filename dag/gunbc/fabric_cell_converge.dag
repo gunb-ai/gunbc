@@ -600,7 +600,7 @@ type FabricCellSubstrateVerdict
   | FabricCellSubstrateObservationRefused { cell: product.fabric.sanitation.CellId, blocked: List<FabricCellAddressDisposition> }
 
 fn fabric_cell_substrate_verdict(readback: FabricCellReadback) -> FabricCellSubstrateVerdict {
-  let gunbc.plans.md_helpers.cell = fabric_cell_id_for_slot(slot: readback.slot)
+  let cell = fabric_cell_id_for_slot(slot: readback.slot)
   let standings = fabric_cell_address_standings(readback: readback, slot: readback.slot)
   let blocked = fold(standings, init: [], f: (acc, st) =>
     match st {
@@ -609,7 +609,7 @@ fn fabric_cell_substrate_verdict(readback: FabricCellReadback) -> FabricCellSubs
       StandingSatisfied { address: _, member: _ } => acc
     })
   if std.types.list_length(items: blocked) > 0 {
-    FabricCellSubstrateObservationRefused { cell: gunbc.plans.md_helpers.cell, blocked: blocked }
+    FabricCellSubstrateObservationRefused { cell: cell, blocked: blocked }
   } else {
     let unmet = fold(standings, init: [], f: (acc, st) =>
       match st {
@@ -618,9 +618,9 @@ fn fabric_cell_substrate_verdict(readback: FabricCellReadback) -> FabricCellSubs
         StandingSatisfied { address: _, member: _ } => acc
       })
     if std.types.list_length(items: unmet) > 0 {
-      FabricCellSubstrateUnprovisioned { cell: gunbc.plans.md_helpers.cell, missing_or_drifted: unmet }
+      FabricCellSubstrateUnprovisioned { cell: cell, missing_or_drifted: unmet }
     } else {
-      FabricCellSubstrateProvisioned { cell: gunbc.plans.md_helpers.cell }
+      FabricCellSubstrateProvisioned { cell: cell }
     }
   }
 }
