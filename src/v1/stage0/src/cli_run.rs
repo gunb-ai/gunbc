@@ -7917,6 +7917,46 @@ pub struct SharedBuildObservation {
 /// This does NOT make the build cheaper and does not claim to. It moves the charge to the
 /// unit that incurs it, where it is bounded by its own limits (`FloorPreparationRefused`)
 /// instead of by a per-claim ceiling that was never about shared setup.
+/// MEASURE ANY SHARED PREPARATION BUILD THE SAME WAY, so a phase declared protected by
+/// `v2.workflow.required_floor` `FloorPreparationPhase` is protected by execution and not by the
+/// type merely listing it (review 55338, and the finding was correct: the model named three phases
+/// while exactly one was measured and adjudicated — two modeled safety walls were informational).
+///
+/// The closure runs between the same clock and RSS reads the edge-index warm uses, so all three
+/// phases produce one comparable observation and go through one refusal.
+fn observe_shared_build<T>(
+    already_built: bool,
+    triggered_by: &'static str,
+    build: impl FnOnce() -> T,
+) -> (T, SharedBuildObservation) {
+    let provenance = if already_built {
+        SharedBuildProvenance::AlreadyWarmOnEntry { triggered_by }
+    } else {
+        SharedBuildProvenance::BuiltByPreparation
+    };
+    let rss_before = current_rss_bytes().unwrap_or(0);
+    let cpu_before = v1_interpreter::thread_cpu_nanos();
+    let wall_before = std::time::Instant::now();
+    let out = build();
+    let wall_ms = wall_before.elapsed().as_millis() as u64;
+    let cpu_ms =
+        ((v1_interpreter::thread_cpu_nanos().saturating_sub(cpu_before)) / 1_000_000) as u64;
+    let rss_growth_bytes = current_rss_bytes()
+        .unwrap_or(rss_before)
+        .saturating_sub(rss_before);
+    (
+        out,
+        SharedBuildObservation {
+            cpu_ms,
+            wall_ms,
+            rss_growth_bytes,
+            source_files: 0,
+            bare_eligible: 0,
+            provenance,
+        },
+    )
+}
+
 pub fn warm_bare_reference_edge_index(
     index: &MultiEntryIndex,
 ) -> Result<SharedBuildObservation, String> {
@@ -42203,12 +42243,21 @@ pub fn run_required_floor(
     // and `languages_decl_records_from_inventory` is the existing precedent for the
     // inventory-sourced form of a census that used to scan. When that lands this warm call is
     // unnecessary rather than merely redundant, because there is no second authority to warm.
-    let index_warm_started = std::time::Instant::now();
-    let warmed_modules = build_module_path_index_from_witness_roots().len();
+    // MEASURED AND ADJUDICATED like the edge-index warm below, because `FloorPreparationPhase`
+    // declares this phase protected and a declared wall that nothing enforces is worse than an
+    // absent one — it is cited as coverage (review 55338).
+    let (warmed_modules, module_path_index_warm) =
+        observe_shared_build(false, "floor-preparation", || {
+            build_module_path_index_from_witness_roots().len()
+        });
     eprintln!(
-        "[floor-phase] phase=module-path-index-warm state=completed wall_ms={} modules={}",
-        index_warm_started.elapsed().as_millis(),
-        warmed_modules
+        "[floor-phase] phase=module-path-index-warm state=completed cpu_ms={} wall_ms={} \
+         rss_growth_bytes={} modules={} provenance={}",
+        module_path_index_warm.cpu_ms,
+        module_path_index_warm.wall_ms,
+        module_path_index_warm.rss_growth_bytes,
+        warmed_modules,
+        module_path_index_warm.provenance.render(),
     );
     // WARM THE SHARED MultiEntryIndex HERE, for the same reason as the module-path index
     // above: otherwise ONE ARBITRARY CLAIM PAYS FOR IT (witness cost class 2).
@@ -42240,14 +42289,20 @@ pub fn run_required_floor(
     // dissolve-on: same as the module-path-index warm above — when the shared index derives
     // from the prepared inventory instead of a second disk walk, this warm call becomes
     // unnecessary rather than merely redundant, because there is no second authority to warm.
-    let shared_index_warm_started = std::time::Instant::now();
-    let warmed_shared_index_modules = process_shared_index(&witness_layer_roots())
-        .source_files
-        .len();
+    let (warmed_shared_index_modules, shared_index_warm) =
+        observe_shared_build(false, "floor-preparation", || {
+            process_shared_index(&witness_layer_roots())
+                .source_files
+                .len()
+        });
     eprintln!(
-        "[floor-phase] phase=shared-index-warm state=completed wall_ms={} modules={}",
-        shared_index_warm_started.elapsed().as_millis(),
-        warmed_shared_index_modules
+        "[floor-phase] phase=shared-index-warm state=completed cpu_ms={} wall_ms={} \
+         rss_growth_bytes={} modules={} provenance={}",
+        shared_index_warm.cpu_ms,
+        shared_index_warm.wall_ms,
+        shared_index_warm.rss_growth_bytes,
+        warmed_shared_index_modules,
+        shared_index_warm.provenance.render(),
     );
     // ── SHARED-BUILD ATTRIBUTION: the bare-reference edge index ───────────────────────────
     //
@@ -42287,16 +42342,29 @@ pub fn run_required_floor(
     // normalizes the two spellings, so when the roots coincide the second call is a memo hit and
     // reports `provenance=already-warm-on-entry` — which is PROVENANCE (where the build was
     // triggered), never ownership (what is charged for it).
-    let mut edge_index_warms: Vec<(&'static str, SharedBuildObservation)> = Vec::new();
-    edge_index_warms.push((
-        "source-roots",
+    // ONE COLLECTION, ONE REFUSAL, ALL THREE DECLARED PHASES. `FloorPreparationPhase` is closed at
+    // three members and every one of them is now measured and adjudicated here. The two earlier
+    // warms were previously reported and never judged, which made two of the three modeled walls
+    // decorative — permanently green by construction and citable as coverage (review 55338).
+    let mut shared_build_warms: Vec<(&'static str, SharedBuildObservation)> = vec![
+        ("ModulePathIndexBuild", module_path_index_warm),
+        ("SharedModuleIndexBuild", shared_index_warm),
+    ];
+    shared_build_warms.push((
+        "BareReferenceEdgeIndexBuild/source-roots",
         warm_bare_reference_edge_index(&process_shared_index(source_roots))?,
     ));
-    edge_index_warms.push((
-        "witness-layer-roots",
+    shared_build_warms.push((
+        "BareReferenceEdgeIndexBuild/witness-layer-roots",
         warm_bare_reference_edge_index(&process_shared_index(&witness_layer_roots()))?,
     ));
-    for (which, warm) in &edge_index_warms {
+    // The two earlier phases already printed their own lines at the point they ran; only the
+    // edge-index entries are reported here, so a phase is reported exactly once and under its own
+    // name. Every entry — all three phases — is adjudicated together further down.
+    for (which, warm) in shared_build_warms
+        .iter()
+        .filter(|(which, _)| which.starts_with("BareReferenceEdgeIndexBuild"))
+    {
         eprintln!(
             "[floor-phase] phase=bare-reference-edge-index-warm state=completed roots={which} \
              cpu_ms={} wall_ms={} rss_growth_bytes={} source_files={} bare_eligible={} \
@@ -42451,14 +42519,14 @@ pub fn run_required_floor(
     // cost this module once. And because this returns before the claim loop, a refused
     // preparation produces NO per-witness sheet at all: a roster of zero-cost rows beside a
     // refused preparation would read as measured and passing while nothing had run them.
-    for (which, warm) in &edge_index_warms {
+    for (which, warm) in &shared_build_warms {
         if warm.cpu_ms > preparation_cpu_limit_ms
             || warm.wall_ms > preparation_wall_limit_ms
             || warm.rss_growth_bytes > preparation_rss_growth_limit_bytes
         {
             return Err(format!(
                 "REQUIRED-FLOOR REFUSAL cause=FloorPreparationRefused \
-                 phase=BareReferenceEdgeIndexBuild roots={which} observed_cpu_ms={} \
+                 phase={which} observed_cpu_ms={} \
                  observed_wall_ms={} observed_rss_growth_bytes={} cpu_limit_ms={} \
                  wall_limit_ms={} rss_growth_limit_bytes={} — the shared bare-reference edge \
                  index build exceeded its own preparation limits (v2.workflow.required_floor); \
