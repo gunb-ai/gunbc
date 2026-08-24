@@ -704,8 +704,31 @@ fn floor_route_gap_expectation_chunk_03() -> List<FloorRouteGapExpectation> {
   }
 }
 
+// Main's shell.Exec mock deletion changed these five rows from semantic false to an
+// interpreter-observed Run refusal in the first post-merge execution, run 32768782787. They
+// therefore join the typed route-gap population at the operation and remedy ground actually
+// observed; they are not expected-red because no semantic verdict was produced.
+fn floor_route_gap_expectation_chunk_04() -> List<FloorRouteGapExpectation> {
+  Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.effect_plan_bash_materialize_real_execution_witness.effect_plan_bash_two_declared_operations_execute", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.effect_plan_bash_materialize_real_execution_witness.effect_plan_bash_fail_fast_prevents_later_operation_execution", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.effect_plan_bash_materialize_real_execution_witness.effect_plan_bash_metachar_and_newline_cannot_open_a_statement", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.transport_script_stdin_byte_fidelity_witness.transport_script_stdin_delivers_exact_bytes", operation: "Run", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.transport_script_stdin_byte_fidelity_witness.transport_script_stdin_fidelity_is_independent_of_terminal_newline", operation: "Run", ground: NoMockResponse {} },
+    tail: Empty {}
+  }
+  }
+  }
+  }
+  }
+}
+
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Empty {} } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Empty {} } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {
