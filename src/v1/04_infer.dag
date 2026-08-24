@@ -30,13 +30,14 @@ import v1.std.core {
   make_expr_node, make_named_expr_node, make_expr_error_node,
   expr_var_name_at, field_access_base, field_access_field_at, FieldAccessSpine, field_access_spine, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, lambda_param_names_at, record_lit_type_name_at,
   qualified_last_segment, type_name_compatible,
-  make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node,
+  make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value,
+  service_config_field_for_property_name, ServiceConfigField, SvcEndpoint, SvcAuth, SvcAuthInput, SvcAuthSource, SvcRateLimit, make_text_part_node, make_interp_part_node,
   map_children, arg_value, arg_name_at,
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic, diagnostic_to_span,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -7895,7 +7896,7 @@ fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertie
   let results = props |> map(p =>
     let val = field_init_node_value(n: p)
     let val_result = infer_expr(texpr: val, scope: scope, expected: none)
-    {
+    PropertyInferenceResult {
       prop: Node {
         name: p.name, span: p.span, ident_span: p.ident_span,
         children: [val_result.typed], connective: p.connective,
@@ -7914,25 +7915,122 @@ fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertie
   }
 }
 
-fn infer_auth_source_properties(props: List<Node>, scope: InferScope) -> InferPropertiesResult {
-  let results = props |> map(p =>
-    if field_init_node_name_at(n: p, source_indices: scope.type_env.source_indices) == "svc_auth_source" {
-      let val = field_init_node_value(n: p)
-      let val_result = infer_expr(texpr: val, scope: scope, expected: none)
-      {
-        prop: Node {
-          name: p.name, span: p.span, ident_span: p.ident_span,
-          children: [val_result.typed], connective: p.connective,
-          params: p.params, inferred: p.inferred, return_cardinality: p.return_cardinality,
-          uses: p.uses, body: p.body, transport: p.transport, properties: p.properties,
-          type_annotation: p.type_annotation, is_self_recursive: p.is_self_recursive,
-          has_non_tail_self_call: p.has_non_tail_self_call, match_pattern: p.match_pattern,
-          expr_data: p.expr_data
-        },
-        diagnostics: val_result.diagnostics
+// WHY THIS IS A PER-FIELD JUDGMENT AND NOT A PER-BLOCK ONE: a service `config { .. }`
+// block is not one kind of thing. Within a single block, `endpoint: default_api_base` is a
+// module-level reference to a real `data` row, `auth: Bearer` is a reference to a declared
+// `std.types` AuthScheme variant, `auth_input: access_token` names a service-scoped input
+// whose binder kind nothing tracks yet, and `requests: 5000` is an ordinary literal. So
+// "walk the whole block" and "walk none of it" are wrong for the same reason -- both answer
+// at block grain a question that is decided per field.
+//
+// WHAT THIS REPLACED, and why the shape mattered more than the coverage: the predecessor
+// inferred a property IF ITS NAME WAS `svc_auth_source` and otherwise returned it unchanged
+// with `diagnostics: []`. That else-arm is DESIGN section 5's absorbing fallback in its
+// quietest form -- not-applicable rendered as nothing-wrong -- and its cost was measurable:
+// 23 occurrences of `auth: Bearer` / `auth: Header`, a coproduct variant declared in
+// `std.types` and EXPLICITLY IMPORTED by the files using it, were never once checked,
+// because nothing ever asked.
+//
+// THE UNJUDGED SET IS NOW DECLARED, TYPED AND COUNTED rather than silent. A field this
+// judgment does not yet reach emits ServiceConfigReferenceJudgmentDeferred -- located,
+// carrying its own next-rung trigger, non-blocking (DESIGN section 4b FrontierAccepted:
+// typed-located-counted with the phase still Accepted). It is not a pass, and its frequency
+// is observable, which is exactly what the empty diagnostic list destroyed.
+// ONE NAMED CARRIER FOR BOTH PROPERTY FOLDS, and it is named for the concept rather than for
+// the caller that forced it: `infer_property_values` (transport properties) and
+// `infer_service_config_properties` (service config) both fold one property into a typed
+// node plus its diagnostics, so this is one concept and gets one authority.
+//
+// It is NAMED rather than anonymous for two independent reasons. Grammatically, `=>` followed
+// by `{` opens a BLOCK, so an anonymous record literal as a match-arm body is a parse error at
+// its first field colon. And structurally, an anonymous record with these exact fields already
+// existed in `infer_property_values`: introducing a named type of the same shape beside it made
+// the emitter bind the anonymous one to the named type while still emitting POSITIONAL `.0`/`.1`
+// accessors for it, which does not compile. Two spellings of one shape is the §3 fork, and this
+// is what it cost — so both folds now carry the same name.
+type PropertyInferenceResult {
+  prop: Node
+  diagnostics: List<ErrorNode>
+}
+
+type ServiceConfigFieldJudgment
+  = FieldJudged
+  | FieldDeferred { trigger: String }
+  | FieldCarriesNoReference
+
+// THREE ARMS, AND THE THIRD IS THE ONE EXECUTION FORCED ME TO ADD. `item.properties` is not
+// a service-config-only channel: the parser also mints `namespace_root` (a module-scope
+// String literal) and `sole_constructor` (a Bool literal on a type) onto the same list.
+// Measured on four extdeps entries, an earlier revision of this function reported those as
+// DEFERRED SERVICE CONFIG FIELDS -- five `namespace_root` and one `sole_constructor` on
+// `gcp/iam.dag` alone. That was wrong twice over: wrong category, and wrong claim, because
+// their values are parser-minted LITERALS with no authored reference in them, so no
+// reference judgment is owed at all. Not-applicable rendered as unjudged is the same
+// conflation this function exists to remove, one layer out.
+//
+// THE INNER MATCH IS TOTAL OVER `ServiceConfigField`, WHICH IS THE POINT — an earlier revision
+// of this function was an `if/else if` chain over string literals, and its comment claimed a new
+// service-config field would fail to compile here. IT WOULD NOT: an unrecognised name fell to the
+// else-arm and was classified as carrying no reference, so a field added to the parser without an
+// arm here routed silently to `diagnostics: []` — the fail-open this function exists to close,
+// recreated one level up, and asserted as a guarantee in prose. Review 55463 caught it.
+//
+// The field set is now a coproduct in `v1.std.core` whose spellings the minting site derives, so
+// adding a variant forces an arm BOTH in `service_config_field_property_name` and in the match
+// below. The declared residue, stated rather than implied: `service_config_known_fields` is a
+// hand-authored roster, so a variant absent from it is unreachable here and lands in
+// `FieldCarriesNoReference`; its next-rung trigger is a variant-enumeration primitive.
+fn service_config_field_judgment(field: String) -> ServiceConfigFieldJudgment {
+  match service_config_field_for_property_name(name: field) {
+    Absent => FieldCarriesNoReference
+    Present { value: known } =>
+      match known {
+        SvcEndpoint => FieldJudged
+        SvcAuth => FieldJudged
+        SvcAuthSource => FieldJudged
+        SvcAuthInput => FieldDeferred { trigger: "the referent is a service-scoped input, and the binder authority carries no service or operation parameter kind to resolve it against; judged once that binder kind exists" }
+        SvcRateLimit => FieldDeferred { trigger: "the rate-limit atoms (`per`, `scope`) are bare identifiers with no declaration; judged once they are grounded as cited rows in the extdeps module that publishes the limit" }
       }
-    } else {
-      { prop: p, diagnostics: [] }
+  }
+}
+
+fn service_config_property_referenced_name(p: Node, scope: InferScope) -> String {
+  authored_name_at(source_indices: scope.type_env.source_indices, node: field_init_node_value(n: p))
+}
+
+fn infer_service_config_properties(props: List<Node>, scope: InferScope) -> InferPropertiesResult {
+  let results = props |> map(p =>
+    let field = field_init_node_name_at(n: p, source_indices: scope.type_env.source_indices)
+    match service_config_field_judgment(field: field) {
+      FieldJudged =>
+        let val = field_init_node_value(n: p)
+        let val_result = infer_expr(texpr: val, scope: scope, expected: none)
+        PropertyInferenceResult {
+          prop: Node {
+            name: p.name, span: p.span, ident_span: p.ident_span,
+            children: [val_result.typed], connective: p.connective,
+            params: p.params, inferred: p.inferred, return_cardinality: p.return_cardinality,
+            uses: p.uses, body: p.body, transport: p.transport, properties: p.properties,
+            type_annotation: p.type_annotation, is_self_recursive: p.is_self_recursive,
+            has_non_tail_self_call: p.has_non_tail_self_call, match_pattern: p.match_pattern,
+            expr_data: p.expr_data
+          },
+          diagnostics: val_result.diagnostics
+        }
+      FieldDeferred { trigger: t } =>
+        PropertyInferenceResult {
+          prop: p,
+          diagnostics: [make_error_node(
+            diagnostic: ServiceConfigReferenceJudgmentDeferred {
+              field: field,
+              referenced_name: service_config_property_referenced_name(p: p, scope: scope),
+              trigger: t,
+              span: p.span
+            },
+            module_name: scope.module_name
+          )]
+        }
+      FieldCarriesNoReference => PropertyInferenceResult { prop: p, diagnostics: [] }
     }
   )
   InferPropertiesResult {
@@ -7969,7 +8067,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   let transport_result = infer_transport_node(transport: item.transport, scope: transport_scope)
   let typed_transport = transport_result.transport
   let transport_diags = transport_result.diagnostics
-  let props_result = infer_auth_source_properties(props: item.properties, scope: scope)
+  let props_result = infer_service_config_properties(props: item.properties, scope: scope)
   let typed_properties = props_result.props
   let props_diags = props_result.diagnostics
   if item.connective != NoConnective && item.transport == none {
