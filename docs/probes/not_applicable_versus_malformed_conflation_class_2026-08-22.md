@@ -128,3 +128,63 @@ The correction, and it generalises to any run failing with hundreds of diagnosti
 `... | sed 's|<prefix>||' | sort | uniq -c | sort -rn` turned 311 lines into three rows in one
 command, and the two singletons at the bottom were the entire content. Reading top-down, or
 grepping for what you expect, finds the 309 every time.
+
+## 7. A fifth specimen — and the first one caught by the recognition rule rather than by reading the producer
+
+*`src/v1/04_types.dag` `make_container_type`, found by smart-wolf-868 on 2026-08-24 while closing an
+unrelated emission gate.*
+
+Every specimen so far was found the hard way: someone read the producer and discovered the arm was
+answering for two states. This one was found the way §4 says it should be — **from the shape of the
+call**, without reading the diagnostic's implementation at all.
+
+    match container_param_name(kind_name: kind_name, index: 0) {
+      Present { value: param_name } => ...build the container type...
+      Absent => KernelTypeBuild {
+        ty: missing_kernel_container_profile_type(kind_name: kind_name),
+        diagnostics: [kernel_container_profile_miss_diagnostic(kind_name: kind_name)]
+      }
+    }
+
+`container_param_name` is a **lookup**. It returned `Absent`. The recognition rule fires on exactly
+that, and it is right: the single `Absent` arm answers for two states with opposite owners —
+
+    "this IS a container kind and its profile row is missing"  -> a defect; someone must add the row
+    "this is not a container kind at all"                      -> not applicable; nothing is wrong
+
+— and reports both as `kernel_container_profile_miss_diagnostic`, a *malformed* verdict. The symptom
+was a synthetic name (`workspace_band_paints`) drawing a complaint that its profile row was missing,
+for something that was never a container.
+
+### What makes this specimen worth its own section: the repair was applied three times
+
+The finder's fix was an `is_kernel_type` guard **at the call site**, returning a nominal type for
+non-container names while preserving the missing-profile diagnostic for real container kinds. Correct,
+and it works. But it was **the third such guard** — the `ReceiverElement`, `Key` and `Value` arms had
+each already acquired one.
+
+**That repetition is itself the diagnostic.** A distinction that must be re-established at every call
+site is a distinction the callee should have drawn once. Three guards do not make the fourth caller
+safe; they make the fourth caller's absence of a guard invisible, because nothing refuses — the
+un-guarded call simply gets the wrong diagnostic again, exactly as this one did.
+
+**So the structural repair is to split the reason at the lookup, not at its callers:** give
+`container_param_name`'s absence two answers — `NotAContainerKind` and `ProfileRowMissing` — so that
+`make_container_type` must match on which, and a caller that forgets **cannot compile**. That is §5's
+construction move applied to this class: the conflated state stops being writable rather than being
+re-detected per site, and the three accumulated guards are deleted rather than joined by a fourth.
+
+**This is the general form of the repair for the whole class**, and this specimen is the one that
+shows why the per-site fix is not merely weaker but actively concealing: each guard removes one
+symptom and leaves the producer entitled to keep answering for both states.
+
+### One caution recorded with it
+
+The guard reads a **third** predicate into a decision that
+`docs/probes/carrier_resolution_authority_fork_2026-08-24.md` censuses as already forked across two
+unjoined authorities — `std.algebra` `kernel_algebra_profile_value` and `std.types`
+`container_template_alias_rows`. Before the split above is built, it should be scoped against that
+census rather than beside it: the canonical authority proposed there would carry container-resolution
+as one field, which subsumes this repair. And that document's §4 constraint binds any such merge —
+preserve every refusal **and the stage each refusal comes from**, since flattening moves which stage
+refuses only for inputs that are already broken, so nothing goes red to announce it.
