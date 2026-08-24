@@ -545,3 +545,62 @@ unverified negative does not stay in one head; it recruits.
 **The salvage, which is the honest outcome:** all six stale rows are `test.claim.samsung_dram_module.*`
 — one module, six roster lines to delete, a real and trivial unblock. The correct finding was smaller
 than the invented one. That is the usual shape.
+
+### Trap 14b — a spec tells you what a mechanism does, not what invokes it
+
+The third sub-form, produced an hour after 14a, and it completes the taxonomy: **14** is not measuring;
+**14a** is measuring with an instrument that cannot express the answer; **14b** is reading an authority
+correctly and drawing a conclusion it does not license.
+
+I measured that 20 of 50 mergeable PRs touch the stage0 mirror, and that **12 of them modify one file**,
+`src/v1/stage0/src/cli_run.rs`. That part was real. I then reasoned from DESIGN.md's Building-&-checks
+section, which records that the generated-artifact merge driver *refuses* rather than answering `true`,
+leaving the path unmerged with a regeneration recipe. Git invokes a low-level driver exactly when both
+sides changed a path since the merge base — true of every pair of the twelve. Conclusion: the twelve
+serialize, one merge plus one regeneration cycle each, and the queue's cost is quadratic in the drought.
+
+I sent that upward as a merge-strategy recommendation, labelled derived-rather-than-measured, and then
+measured it. **Both halves are wrong.**
+
+```
+$ git check-attr merge -- src/v1/stage0/src/cli_run.rs
+src/v1/stage0/src/cli_run.rs: merge: unspecified
+```
+
+`.gitattributes` marks four specific generated artifacts — not the stage0 mirror at large. The refusing
+driver never engages for this file. And the merge itself, two of the twelve onto `origin/main` in
+sequence:
+
+```
+--- merge A ---   Auto-merging src/v1/stage0/src/cli_run.rs    rc=0
+--- merge B ---   13 files changed, 957 insertions(+), 40 deletions(-)   rc=0
+```
+
+Clean both times. No ordering constraint exists.
+
+> **A specification describes a mechanism's behaviour. It does not enumerate the inputs the mechanism
+> is applied to. Scope of application is a property of the tree, and only the tree can answer it.**
+
+Everything I read was accurate: the driver does refuse, and git does invoke low-level drivers under
+exactly that condition. The invented step was the silent premise that this file is one of the driver's
+inputs — which no sentence I read claimed, and which one command falsifies. This is DESIGN.md's own
+**authority substitution** in the reader's direction: fact F (how the driver behaves) lives in one
+carrier, operation O (how *these paths* merge) is governed by another, and I let the first answer for
+the second because both halves checked out and only the arrow between them was missing.
+
+**It is the most dangerous of the three**, because 14 and 14a produce claims that feel thin while you
+are making them, and this one felt like *reasoning from the authority*. The correct move is not more
+skepticism toward DESIGN.md; it is noticing that "what does X do" and "does X apply here" are different
+questions with different oracles, and the second one is nearly always cheaper.
+
+**What made it recoverable** was labelling the claim derived-not-measured when sending it. That label is
+what sent me back to check twenty minutes later instead of leaving a false mechanism in someone's merge
+plan. **Marking a claim's evidential status is not hedging — it is the thing that schedules its own
+verification.**
+
+**And the residue is better than the claim.** Text-merging two independently regenerated halves of a
+generated file produces a mirror no single emit produced. Whether it still equals a fresh emit is what
+`--required-regen` checks on main *after* the merge — so the failure mode, if it exists, is main going
+red on regen after a multi-mirror merge, invisible at merge time. Untested here (a full regen is a
+CI-sized job) and recorded as an open question, not a finding. It is presumably why the driver covers
+the files it does.
