@@ -140,7 +140,7 @@ fn nul() -> String {
 }
 
 fn nul_join(fields: List<String>) -> String {
-  fold(fields, init: "", f: (acc, f) => join([acc, f, test.claim.live_deploy.deployed_tree_observation_witness_test.nul()], ""))
+  fold(fields, init: "", f: (acc, f) => join([acc, f, test.claim.live_deploy.deployed_tree_observation_witness.nul()], ""))
 }
 
 test fn witness_an_empty_status_and_no_ignored_paths_read_as_matching_the_commit() -> Bool {
@@ -263,10 +263,10 @@ fn oid_b() -> extdeps.git.object_store.GitObjectId? {
 // The two hexes must actually decode and must actually differ, or every standing witness below is
 // asserting about Absent and passes for the wrong reason.
 test fn witness_the_two_probe_revisions_decode_and_differ() -> Bool {
-  match test.claim.live_deploy.deployed_tree_observation_witness_test.oid_a() {
+  match test.claim.live_deploy.deployed_tree_observation_witness.oid_a() {
     Absent => false
     Present { value: a } =>
-      match test.claim.live_deploy.deployed_tree_observation_witness_test.oid_b() {
+      match test.claim.live_deploy.deployed_tree_observation_witness.oid_b() {
         Absent => false
         Present { value: b } => !git_object_id_eq(left: a, right: b)
       }
@@ -278,7 +278,7 @@ fn standing_for(desired: extdeps.git.object_store.GitObjectId, obs: gunbc.live_d
 }
 
 test fn witness_matching_revision_and_clean_tree_is_the_only_converged_arm() -> Bool {
-  match test.claim.live_deploy.deployed_tree_observation_witness_test.oid_a() {
+  match test.claim.live_deploy.deployed_tree_observation_witness.oid_a() {
     Absent => false
     Present { value: a } =>
       deployed_tree_standing_is_converged(
@@ -293,7 +293,7 @@ test fn witness_matching_revision_and_clean_tree_is_the_only_converged_arm() -> 
 // THE ARM THE REVISION-ONLY STANDING CANNOT EXPRESS. Same commit, edited tracked files: not
 // converged, and not drifted either.
 test fn witness_right_revision_with_modifications_is_not_converged_and_not_drifted() -> Bool {
-  match test.claim.live_deploy.deployed_tree_observation_witness_test.oid_a() {
+  match test.claim.live_deploy.deployed_tree_observation_witness.oid_a() {
     Absent => false
     Present { value: a } =>
       match standing_for(
@@ -313,10 +313,10 @@ test fn witness_right_revision_with_modifications_is_not_converged_and_not_drift
 }
 
 test fn witness_a_different_revision_reports_drift_carrying_both_sides() -> Bool {
-  match test.claim.live_deploy.deployed_tree_observation_witness_test.oid_a() {
+  match test.claim.live_deploy.deployed_tree_observation_witness.oid_a() {
     Absent => false
     Present { value: a } =>
-      match test.claim.live_deploy.deployed_tree_observation_witness_test.oid_b() {
+      match test.claim.live_deploy.deployed_tree_observation_witness.oid_b() {
         Absent => false
         Present { value: b } =>
           match standing_for(
@@ -336,10 +336,10 @@ test fn witness_a_different_revision_reports_drift_carrying_both_sides() -> Bool
 // DRIFT DOMINATES: a tree on the wrong commit AND modified reports drift, because the modification
 // state is a fact about a revision nobody asked for.
 test fn witness_drift_dominates_modification() -> Bool {
-  match test.claim.live_deploy.deployed_tree_observation_witness_test.oid_a() {
+  match test.claim.live_deploy.deployed_tree_observation_witness.oid_a() {
     Absent => false
     Present { value: a } =>
-      match test.claim.live_deploy.deployed_tree_observation_witness_test.oid_b() {
+      match test.claim.live_deploy.deployed_tree_observation_witness.oid_b() {
         Absent => false
         Present { value: b } =>
           match standing_for(
@@ -361,7 +361,7 @@ test fn witness_drift_dominates_modification() -> Bool {
 // UNOBSERVED IS NEVER SATISFIED. Could-not-look rendered as nothing-is-wrong is the empty-observation
 // narrow, and it is the arm most likely to be quietly admitted by a caller re-deriving good-enough.
 test fn witness_unobservable_is_not_converged_and_keeps_its_cause() -> Bool {
-  match test.claim.live_deploy.deployed_tree_observation_witness_test.oid_a() {
+  match test.claim.live_deploy.deployed_tree_observation_witness.oid_a() {
     Absent => false
     Present { value: a } =>
       match standing_for(desired: a, obs: gunbc.live_deploy.deployed_tree_observation.DeployedTreeUnobservable { cause: gunbc.live_deploy.deployed_tree_observation.TreeLegNotAttempted { leg: "revision", reason: "ssh refused" } }) {

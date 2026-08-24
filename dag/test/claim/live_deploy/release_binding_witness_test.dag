@@ -18,7 +18,7 @@ fn oid(hex: String) -> extdeps.git.object_store.GitObjectId? {
 }
 
 fn tree_at(hex: String) -> gunbc.live_deploy.deployed_tree_observation.DeployedTreeObservation? {
-  match test.claim.live_deploy.release_binding_witness_test.oid(hex: hex) {
+  match test.claim.live_deploy.release_binding_witness.oid(hex: hex) {
     Absent => none
     Present { value: o } =>
       Present { value: gunbc.live_deploy.deployed_tree_observation.DeployedTreeObserved { revision: o, content: gunbc.live_deploy.deployed_tree_observation.DeployedScopeMatchesCommit } }
@@ -36,10 +36,10 @@ fn process_saying(hex: String, surface: std.content_hash.Fnv1a64Structural) -> g
 
 // The two hexes must decode and differ, or every witness below passes on the wrong reason.
 test fn witness_the_probe_revisions_decode_and_differ() -> Bool {
-  match test.claim.live_deploy.release_binding_witness_test.oid(hex: hex_a) {
+  match test.claim.live_deploy.release_binding_witness.oid(hex: hex_a) {
     Absent => false
     Present { value: a } =>
-      match test.claim.live_deploy.release_binding_witness_test.oid(hex: hex_b) {
+      match test.claim.live_deploy.release_binding_witness.oid(hex: hex_b) {
         Absent => false
         Present { value: b } =>
           (git_object_id_wire_hex(oid: a) as String) != (git_object_id_wire_hex(oid: b) as String)
@@ -77,7 +77,7 @@ test fn witness_a_process_stating_another_revision_is_mixed_and_names_both() -> 
 // interpreting; whether that revision's bytes were since edited is the tree standing's question, and
 // answering it here would fold two orthogonal facts into one verdict.
 test fn witness_modifications_do_not_change_the_binding() -> Bool {
-  match test.claim.live_deploy.release_binding_witness_test.oid(hex: hex_a) {
+  match test.claim.live_deploy.release_binding_witness.oid(hex: hex_a) {
     Absent => false
     Present { value: a } =>
       match deployed_release_binding(

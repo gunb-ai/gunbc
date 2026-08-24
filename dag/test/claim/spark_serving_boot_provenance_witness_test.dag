@@ -6,15 +6,15 @@ fn bad(err: std.types.String) -> extdeps.ssh.session.extdeps.ssh.session.SshSess
 }
 
 fn uptime(secs: std.types.String) -> extdeps.ssh.session.extdeps.ssh.session.SshSessionExecResult {
-  test.claim.spark_serving_boot_provenance_witness_test.ok(out: join([secs, ".41 90000.00\n"], ""))
+  test.claim.spark_serving_boot_provenance_witness.ok(out: join([secs, ".41 90000.00\n"], ""))
 }
 
 // A unit that entered active 4.2 seconds into a boot that has lasted three days was brought up by
 // the manager during startup. This is the arm that establishes durability, and it is the ONLY one.
 test fn a_unit_active_early_in_the_boot_was_started_by_the_manager() -> std.types.Bool {
   match gunbc.spark.serving_boot_provenance.spark_serving_classify_boot_provenance(
-    active_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: "4200000\n"),
-    default_target_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: "999999999"),
+    active_enter: test.claim.spark_serving_boot_provenance_witness.ok(out: "4200000\n"),
+    default_target_enter: test.claim.spark_serving_boot_provenance_witness.ok(out: "999999999"),
     uptime: uptime(secs: "259200"),
   ) {
     gunbc.spark.serving_boot_provenance.UnitStartedByManagerAtBoot { active_enter_monotonic: e, uptime: u } =>
@@ -31,8 +31,8 @@ test fn a_unit_active_early_in_the_boot_was_started_by_the_manager() -> std.type
 // durable, which is exactly the confusion `enable --now` created.
 test fn a_unit_started_hours_into_the_boot_does_not_establish_durability() -> std.types.Bool {
   match gunbc.spark.serving_boot_provenance.spark_serving_classify_boot_provenance(
-    active_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: "7200000000"),
-    default_target_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: "999999999"),
+    active_enter: test.claim.spark_serving_boot_provenance_witness.ok(out: "7200000000"),
+    default_target_enter: test.claim.spark_serving_boot_provenance_witness.ok(out: "999999999"),
     uptime: uptime(secs: "259200"),
   ) {
     gunbc.spark.serving_boot_provenance.UnitStartedAfterBoot { active_enter_monotonic: e, uptime: _ } => std.measure.microsecond_count(e) == 7200000000
@@ -61,7 +61,7 @@ test fn only_the_boot_started_arm_establishes_durability() -> std.types.Bool {
 // inactive unit, not a failure to observe, and conflating the two would report a probe that worked
 // as a probe that did not.
 test fn a_zero_timestamp_is_an_inactive_unit_not_an_unobserved_one() -> std.types.Bool {
-  match gunbc.spark.serving_boot_provenance.spark_serving_classify_boot_provenance(active_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: "0\n"), default_target_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: "999999999"), uptime: uptime(secs: "100")) {
+  match gunbc.spark.serving_boot_provenance.spark_serving_classify_boot_provenance(active_enter: test.claim.spark_serving_boot_provenance_witness.ok(out: "0\n"), default_target_enter: test.claim.spark_serving_boot_provenance_witness.ok(out: "999999999"), uptime: uptime(secs: "100")) {
     gunbc.spark.serving_boot_provenance.UnitNotActiveAtAll => true
     gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: _ } => false
     gunbc.spark.serving_boot_provenance.UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } => false
@@ -88,8 +88,8 @@ test fn a_failed_probe_is_unobserved_and_not_a_durability_verdict() -> std.types
 // fact. Both legs owe their own answer.
 test fn an_unreadable_uptime_refuses_rather_than_deciding() -> std.types.Bool {
   match gunbc.spark.serving_boot_provenance.spark_serving_classify_boot_provenance(
-    active_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: "4200000"),
-    default_target_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: "999999999"),
+    active_enter: test.claim.spark_serving_boot_provenance_witness.ok(out: "4200000"),
+    default_target_enter: test.claim.spark_serving_boot_provenance_witness.ok(out: "999999999"),
     uptime: bad(err: "cat: /proc/uptime: Permission denied"),
   ) {
     gunbc.spark.serving_boot_provenance.BootProvenanceUnobserved { cause: c } => string_contains(c as std.types.String, "Permission denied")
@@ -110,14 +110,14 @@ test fn an_unreadable_uptime_refuses_rather_than_deciding() -> std.types.Bool {
 // here is authored: change either observed value and the verdict follows the observation.
 test fn default_target_active_enter_is_the_boundary_that_decides() -> std.types.Bool {
   match gunbc.spark.serving_boot_provenance.spark_serving_classify_boot_provenance(
-    active_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: "10675297"),
-    default_target_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: "10675297"),
+    active_enter: test.claim.spark_serving_boot_provenance_witness.ok(out: "10675297"),
+    default_target_enter: test.claim.spark_serving_boot_provenance_witness.ok(out: "10675297"),
     uptime: uptime(secs: "100"),
   ) {
     gunbc.spark.serving_boot_provenance.UnitStartedByManagerAtBoot { active_enter_monotonic: _, uptime: _ } =>
       match gunbc.spark.serving_boot_provenance.spark_serving_classify_boot_provenance(
-        active_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: "10675298"),
-        default_target_enter: test.claim.spark_serving_boot_provenance_witness_test.ok(out: "10675297"),
+        active_enter: test.claim.spark_serving_boot_provenance_witness.ok(out: "10675298"),
+        default_target_enter: test.claim.spark_serving_boot_provenance_witness.ok(out: "10675297"),
         uptime: uptime(secs: "100"),
       ) {
         gunbc.spark.serving_boot_provenance.UnitStartedAfterBoot { active_enter_monotonic: _, uptime: _ } => true

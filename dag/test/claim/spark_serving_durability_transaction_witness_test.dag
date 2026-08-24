@@ -12,7 +12,7 @@ fn proven_verdict() -> gunbc.spark.serving_durability_transaction.SparkServingDu
   gunbc.spark.serving_durability_transaction.DurabilityTransactionSettled {
     verdict: spark_serving_durability_verdict(
       host: "srv6",
-      transition: spark_serving_reboot_transition(before: test.claim.spark_serving_durability_transaction_witness_test.reading(id: test.claim.spark_serving_durability_transaction_witness_test.boot_a), after: test.claim.spark_serving_durability_transaction_witness_test.reading(id: test.claim.spark_serving_durability_transaction_witness_test.boot_b)),
+      transition: spark_serving_reboot_transition(before: test.claim.spark_serving_durability_transaction_witness.reading(id: test.claim.spark_serving_durability_transaction_witness.boot_a), after: test.claim.spark_serving_durability_transaction_witness.reading(id: test.claim.spark_serving_durability_transaction_witness.boot_b)),
       pending_action_count: 0,
       serving_healthy: true,
       health_cause: "served the planned model" as std.types.NonEmptyStr,
@@ -25,7 +25,7 @@ fn settled_with(pending: Int, healthy: Bool) -> gunbc.spark.serving_durability_t
   gunbc.spark.serving_durability_transaction.DurabilityTransactionSettled {
     verdict: spark_serving_durability_verdict(
       host: "srv6",
-      transition: spark_serving_reboot_transition(before: test.claim.spark_serving_durability_transaction_witness_test.reading(id: test.claim.spark_serving_durability_transaction_witness_test.boot_a), after: test.claim.spark_serving_durability_transaction_witness_test.reading(id: test.claim.spark_serving_durability_transaction_witness_test.boot_b)),
+      transition: spark_serving_reboot_transition(before: test.claim.spark_serving_durability_transaction_witness.reading(id: test.claim.spark_serving_durability_transaction_witness.boot_a), after: test.claim.spark_serving_durability_transaction_witness.reading(id: test.claim.spark_serving_durability_transaction_witness.boot_b)),
       pending_action_count: pending,
       serving_healthy: healthy,
       health_cause: "the generation did not answer" as std.types.NonEmptyStr,
@@ -80,8 +80,8 @@ test fn a_refused_transaction_is_not_proven_and_names_its_cause() -> Bool {
 // spellings of one verdict is the second authority this whole vertical keeps having to delete.
 test fn the_settled_wire_carries_the_durability_verdict_verbatim() -> Bool {
   string_contains(spark_serving_durability_transaction_wire(t: proven_verdict()), "PROVEN")
-    && string_contains(spark_serving_durability_transaction_wire(t: proven_verdict()), test.claim.spark_serving_durability_transaction_witness_test.boot_a)
-    && string_contains(spark_serving_durability_transaction_wire(t: proven_verdict()), test.claim.spark_serving_durability_transaction_witness_test.boot_b)
+    && string_contains(spark_serving_durability_transaction_wire(t: proven_verdict()), test.claim.spark_serving_durability_transaction_witness.boot_a)
+    && string_contains(spark_serving_durability_transaction_wire(t: proven_verdict()), test.claim.spark_serving_durability_transaction_witness.boot_b)
 }
 
 // A NOT-PROVEN VERDICT MUST NOT RENDER THE PROVEN WORD, which is what a reader and any downstream

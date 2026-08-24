@@ -9,11 +9,11 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-type CargoPackageVersion = extdeps.version.semver.SemVerIdentity
+type CargoPackageVersion = extdeps.cargo_version.semver.SemVerIdentity
 
-type CargoVersionRequirement = extdeps.version.semver.SemVerConstraint
+type CargoVersionRequirement = extdeps.cargo_version.semver.SemVerConstraint
 
-type CargoToolVersionFloor = extdeps.version.semver.SemVerConstraint where brand("CargoToolVersionFloor")
+type CargoToolVersionFloor = extdeps.cargo_version.semver.SemVerConstraint where brand("CargoToolVersionFloor")
 
 data default_stage0_package_version: CargoPackageVersion = "0.1.0"
 

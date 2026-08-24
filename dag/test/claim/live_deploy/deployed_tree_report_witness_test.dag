@@ -15,7 +15,7 @@ fn oid_b() -> extdeps.git.object_store.GitObjectId? {
 // happy one. A predicate tested only on the value it should accept cannot distinguish "returns true
 // for Converged" from "returns true".
 test fn witness_only_the_converged_arm_is_publication_converged() -> Bool {
-  match test.claim.live_deploy.deployed_tree_report_witness_test.oid_a() {
+  match test.claim.live_deploy.deployed_tree_report_witness.oid_a() {
     Absent => false
     Present { value: a } =>
       deployed_tree_standing_is_publication_converged(standing: gunbc.live_deploy.deployed_tree_observation.DeployedTreeConverged { revision: a })
@@ -35,10 +35,10 @@ test fn witness_only_the_converged_arm_is_publication_converged() -> Bool {
 // rather than by a Boolean that would stay true if one side were dropped or if both rendered the same
 // value. This is the arm a catch-up consumes as its compare-and-swap baseline.
 test fn witness_the_drifted_line_names_both_revisions_distinctly() -> Bool {
-  match test.claim.live_deploy.deployed_tree_report_witness_test.oid_a() {
+  match test.claim.live_deploy.deployed_tree_report_witness.oid_a() {
     Absent => false
     Present { value: a } =>
-      match test.claim.live_deploy.deployed_tree_report_witness_test.oid_b() {
+      match test.claim.live_deploy.deployed_tree_report_witness.oid_b() {
         Absent => false
         Present { value: b } => {
           let line = deployed_tree_standing_line(
@@ -55,7 +55,7 @@ test fn witness_the_drifted_line_names_both_revisions_distinctly() -> Bool {
 // THE MODIFIED LINE MUST CARRY THE PORCELAIN BODY. A verdict that says the bytes disagree without
 // naming which ones sends a reader to the host to re-derive what the run already knew.
 test fn witness_the_modified_line_carries_what_git_reported() -> Bool {
-  match test.claim.live_deploy.deployed_tree_report_witness_test.oid_a() {
+  match test.claim.live_deploy.deployed_tree_report_witness.oid_a() {
     Absent => false
     Present { value: a } => {
       let line = deployed_tree_standing_line(
@@ -83,7 +83,7 @@ test fn witness_the_unobserved_line_carries_its_cause() -> Bool {
 // per-arm witness would not catch it -- each would pass on its own text while a reader could not tell
 // the two states apart.
 test fn witness_every_arm_renders_a_distinct_label() -> Bool {
-  match test.claim.live_deploy.deployed_tree_report_witness_test.oid_a() {
+  match test.claim.live_deploy.deployed_tree_report_witness.oid_a() {
     Absent => false
     Present { value: a } => {
       let c = deployed_tree_standing_line(standing: gunbc.live_deploy.deployed_tree_observation.DeployedTreeConverged { revision: a })
@@ -99,7 +99,7 @@ test fn witness_every_arm_renders_a_distinct_label() -> Bool {
 
 // The converged line must NOT read as one of the failure labels -- the string a human greps for.
 test fn witness_the_converged_line_is_not_confusable_with_a_failure() -> Bool {
-  match test.claim.live_deploy.deployed_tree_report_witness_test.oid_a() {
+  match test.claim.live_deploy.deployed_tree_report_witness.oid_a() {
     Absent => false
     Present { value: a } => {
       let c = deployed_tree_standing_line(standing: gunbc.live_deploy.deployed_tree_observation.DeployedTreeConverged { revision: a })

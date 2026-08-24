@@ -22,13 +22,13 @@ type IdentityScan { found: Bool, idx: Int, seen: Int }
 // equality because the per-blob identities carry the digest hex, and reconstructing them here would
 // test this file's string building instead of the step sequence.
 fn first_index_containing(needle: String) -> Int {
-  let scan = fold(step_identities(), init: test.claim.spark_serving_model_materialization_witness_test.IdentityScan { found: false, idx: 0 - 1, seen: 0 }, f: fn(acc, id) {
+  let scan = fold(step_identities(), init: test.claim.spark_serving_model_materialization_witness.IdentityScan { found: false, idx: 0 - 1, seen: 0 }, f: fn(acc, id) {
     if acc.found {
-      test.claim.spark_serving_model_materialization_witness_test.IdentityScan { found: true, idx: acc.idx, seen: acc.seen + 1 }
+      test.claim.spark_serving_model_materialization_witness.IdentityScan { found: true, idx: acc.idx, seen: acc.seen + 1 }
     } else if string_contains(id, needle) {
-      test.claim.spark_serving_model_materialization_witness_test.IdentityScan { found: true, idx: acc.seen, seen: acc.seen + 1 }
+      test.claim.spark_serving_model_materialization_witness.IdentityScan { found: true, idx: acc.seen, seen: acc.seen + 1 }
     } else {
-      test.claim.spark_serving_model_materialization_witness_test.IdentityScan { found: false, idx: 0 - 1, seen: acc.seen + 1 }
+      test.claim.spark_serving_model_materialization_witness.IdentityScan { found: false, idx: 0 - 1, seen: acc.seen + 1 }
     }
   })
   scan.idx

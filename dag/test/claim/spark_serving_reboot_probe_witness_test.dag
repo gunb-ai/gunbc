@@ -13,7 +13,7 @@ data subject: product.placement_supply.HostIdentity = "srv6" as product.placemen
 test fn a_sudo_password_refusal_is_a_rejection_not_an_issued_reboot() -> Bool {
   spark_serving_reboot_was_rejected_outright(result: exec(code: 1, err: "sudo: a password is required"))
     && !spark_serving_reboot_was_attempted(outcome: gunbc.spark.serving_reboot_probe.SparkServingRebootRejected {
-         host: test.claim.spark_serving_reboot_probe_witness_test.subject, exit_code: 1, stderr: "sudo: a password is required",
+         host: test.claim.spark_serving_reboot_probe_witness.subject, exit_code: 1, stderr: "sudo: a password is required",
        })
 }
 
@@ -47,7 +47,7 @@ test fn the_exit_code_alone_does_not_decide_it() -> Bool {
 test fn the_issued_wire_disclaims_establishing_durability() -> Bool {
   string_contains(
     spark_serving_reboot_outcome_wire(outcome: gunbc.spark.serving_reboot_probe.SparkServingRebootIssued {
-      host: test.claim.spark_serving_reboot_probe_witness_test.subject, exit_code: 255, stderr: "closed",
+      host: test.claim.spark_serving_reboot_probe_witness.subject, exit_code: 255, stderr: "closed",
     }),
     "durability is NOT established",
   )
@@ -58,7 +58,7 @@ test fn the_issued_wire_disclaims_establishing_durability() -> Bool {
 test fn the_rejection_wire_says_the_host_is_still_up() -> Bool {
   string_contains(
     spark_serving_reboot_outcome_wire(outcome: gunbc.spark.serving_reboot_probe.SparkServingRebootRejected {
-      host: test.claim.spark_serving_reboot_probe_witness_test.subject, exit_code: 1, stderr: "sudo: a password is required",
+      host: test.claim.spark_serving_reboot_probe_witness.subject, exit_code: 1, stderr: "sudo: a password is required",
     }),
     "still up",
   )
