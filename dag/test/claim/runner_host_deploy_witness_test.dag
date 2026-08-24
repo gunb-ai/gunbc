@@ -219,12 +219,6 @@ fn witness_ready_receipt() -> BuildCacheInstanceReady {
       start_time: "80000000" as NonEmptyStr,
     },
     managed_unit: ci_cache_instance(host: srv4_runner_host_deploy.host_label as HostIdentity).intended_unit,
-    endpoint_verified: true,
-    executable_verified: true,
-    principal_verified: true,
-    storage_verified: true,
-    capacity_verified: true,
-    compile_pool_verified: true,
   }
 }
 

@@ -19,6 +19,7 @@ import extdeps.cache.sccache {
   SccacheServerTcpPort, SccacheServerUnixSocket, sccache_installed_binary_path,
   sccache_start_server_env_assignment, sccache_no_daemon_env_assignment,
   sccache_idle_timeout_never_env_assignment,
+  sccache_cache_dir_env_var, sccache_cache_size_env_var,
 }
 
 data build_cache_unit_scope_disposition: Disposition = SingleAuthority
@@ -43,7 +44,7 @@ fn capacity_env_directives(instance: BuildCacheInstance) -> List<SystemdServiceD
     Absent => []
     Present { value: b } => [
       Environment {
-        assignment: concat("SCCACHE_CACHE_SIZE=", to_string(byte_size_count(b: b))) as NonEmptyStr,
+        assignment: concat(concat(sccache_cache_size_env_var as String, "="), to_string(byte_size_count(b: b))) as NonEmptyStr,
       },
     ]
   }
@@ -105,7 +106,7 @@ fn build_cache_unit_file(instance: BuildCacheInstance) -> SystemdUnitFile {
         ServiceUser { name: instance.intended_principal },
         ServiceGroup { name: instance.intended_principal },
         Environment {
-          assignment: concat("SCCACHE_DIR=", instance.intended_storage as String) as NonEmptyStr,
+          assignment: concat(concat(sccache_cache_dir_env_var as String, "="), instance.intended_storage as String) as NonEmptyStr,
         },
         Environment {
           assignment: concat(

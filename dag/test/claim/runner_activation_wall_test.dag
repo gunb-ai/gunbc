@@ -78,12 +78,6 @@ fn fully_verified_ready_for(instance: BuildCacheInstance, unit: NonEmptyStr) -> 
     instance: instance,
     owner: owner_fixture(),
     managed_unit: unit,
-    endpoint_verified: true,
-    executable_verified: true,
-    principal_verified: true,
-    storage_verified: true,
-    capacity_verified: true,
-    compile_pool_verified: true,
   }
 }
 
@@ -211,23 +205,6 @@ test fn witness_unready_compile_pool_refuses_even_with_a_managed_owner() -> Bool
     },
   )
   yields_command(outcome: declared_not_observed) == false
-}
-
-test fn witness_partially_verified_instance_refuses() -> Bool {
-  let d = srv1_deploy_fixture()
-  let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
-  let partial = BuildCacheInstanceReady {
-    instance: ready_instance_fixture(host: d.host_label as HostIdentity),
-    owner: owner_fixture(),
-    managed_unit: intended,
-    endpoint_verified: true,
-    executable_verified: true,
-    principal_verified: true,
-    storage_verified: false,
-    capacity_verified: true,
-    compile_pool_verified: true,
-  }
-  yields_command(outcome: activation_for(cache_ready: partial, pool_ready: ready_pool_fixture())) == false
 }
 
 data materialization_does_not_activate_doc: String = "The split's own control. Materializing a slot must remain possible on nothing more than host enrollment — that is the whole point of separating it — while activation must not. If this witness ever fails because the installer command started demanding a readiness receipt, the split has collapsed in the other direction and materialization has become impossible to perform first, which would make the ordering unsatisfiable rather than enforced."
