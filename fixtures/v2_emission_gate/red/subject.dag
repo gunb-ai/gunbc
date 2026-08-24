@@ -1,0 +1,10 @@
+module fixture.v2_emission_gate.red
+
+data v2_emission_gate_red_subject: String = "red control: emission must refuse over this module"
+
+// The 2026-08-23 specimen, authored deliberately: a standalone `//` block with NO module
+// item after it, so the annotation names no subject. DESIGN §4c admits only leading
+// blocks attached to a module-scope declaration, and this trailing form is what made
+// `gunbc compile --entry src/v2/compiler/03_ingest.dag` refuse on main while every
+// required phase stayed green. This file MUST make the phase refuse; if it ever stops
+// doing so, the phase has lost the class it was built for.

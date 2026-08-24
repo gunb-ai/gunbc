@@ -112,7 +112,7 @@ fn emit_variant_construct_eval_composed_facts(key: Node) -> Optional<InferredFac
 fn emit_variant_construct_eval_tree_for(root: Node) -> InferredTree {
   InferredTree {
     root: root,
-    facts: Map { lookup: emit_variant_construct_eval_composed_facts }
+    facts: PartialFunction { lookup: emit_variant_construct_eval_composed_facts }
   }
 }
 

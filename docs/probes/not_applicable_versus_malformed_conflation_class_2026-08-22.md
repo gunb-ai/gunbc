@@ -1,10 +1,10 @@
-# One reason symbol over two states: "malformed input" and "this path was never applicable", found three times in three stages
+# One reason symbol over two states: "malformed input" and "this path was never applicable", found five times in five stages
 
 | | |
 |---|---|
-| what this is | a CLASS record, written after the third independent instance in one lane, so the fourth is recognised rather than rediscovered |
-| how each was found | by reading the producer, in every case — never from the diagnostic's text |
-| lane | the B4 product door (`v2.workflow.product_receipt_transport`), 2026-08-21 / 2026-08-22 |
+| what this is | a CLASS record, written after the third independent instance in one lane, so the next would be recognised rather than rediscovered. It has since worked: the fifth (§7) was caught by the recognition rule, by a different lane, without reading the producer |
+| how each was found | by reading the producer for the first four — never from the diagnostic's text. The fifth broke that pattern and is the evidence the rule is usable |
+| lanes | §2's three from the B4 product door (`v2.workflow.product_receipt_transport`), 2026-08-21 / 2026-08-22; §6 and §7 from two other lanes on 2026-08-24. The spread across lanes is part of the claim — a class rediscovered independently by people not reading each other is a property of the corpus, not of one author's habits |
 
 ---
 
@@ -27,7 +27,9 @@ They have opposite repairs. Malformed is fixed by the input's author; not-applic
 | gunbc#8828 | body lowering / normalize | `body_lowering_reason_unsupported_form` | a malformed form vs the ordinary statement-form `let`, whose body is not in its own subtree at all |
 | this record | parse | `parse_g0_tokens_remain` | a real partial parse leaving tokens over (`parse_production_prepared`) vs a **`PreparedVoidGrammar` beside a non-empty source** (`parse_module_prepared`) — where no parse was attempted and the fact is about grammar preparation, not about the source |
 
-Three stages, three independent discoveries, one shape. That is a property of this corpus's diagnostic vocabulary rather than three coincidences.
+| gunbc#9075 | parse / §4c annotation adjudication | `source annotation names no subject` | an annotation genuinely lacking a following module item vs **parse never reaching module scope**, so the check cannot see one |
+
+Five stages, five independent discoveries, one shape. That is a property of this corpus's diagnostic vocabulary rather than five coincidences.
 
 ## 3. Why it is expensive, in the currency this repository already counts
 
@@ -52,3 +54,200 @@ Here the receipt already carried the answer. `overlap_residue_stage_from_prepare
 No symbol was minted. The evidence to eliminate one arm was already inside the artifact that reported the other.
 
 *(The two producers still share one reason, and the class above still applies to them. What this section establishes is which one fired here, not that the conflation is harmless.)*
+
+
+---
+
+## 6. A fourth specimen, and the first one that is CROSS-STAGE
+
+*2026-08-24, from gunbc#9075's CI run 32725969809. Added because it extends the class in a way
+the three above do not: the conflated arm is not in the producer that failed.*
+
+### What happened
+
+An invalid `else match` in `src/v1/04_types.dag` left braces unbalanced. That run's
+`required-ci: parse` phase emitted **311 FAIL lines**, which partition into exactly three texts:
+
+```
+309  source annotation names no subject: no module item follows it. Move it above the declaration it describes.
+  1  expected LBrace, found keyword 'match'      <- the actual defect, named precisely
+  1  expected RParen, found Colon
+```
+
+### Why it is this class
+
+§4c attaches annotations to module-scope declarations, and the check asks *does a module item
+follow this annotation*. With braces unbalanced the parser never returns to module scope — so from
+its view nothing follows anything, and the check fires **correctly by its own logic on a premise
+that an earlier stage destroyed**. One reason symbol over two states with opposite owners:
+
+- **MALFORMED** — the annotation really does dangle, and its author must move it;
+- **NOT APPLICABLE** — the annotation is fine and *this check could not see its subject*, which is
+  the parser's problem and nobody else's.
+
+### What is new here
+
+**The conflation is cross-stage.** The three specimens above are each one producer whose own
+predecessor test returned "no". Here the check has no defective predecessor test — it has a
+*poisoned input*, produced two stages upstream. §4's recognition rule still reaches it, but only if
+you extend "what did the arm's predecessor test return" to include *did the pipeline that built my
+input succeed*. That is a question no arm currently asks.
+
+**The remediation text is actively wrong, at scale.** *"Move it above the declaration it describes"*
+instructs a reader to relocate 309 correctly-placed annotations. §3's specimens send an
+investigation to the wrong subject; this one issues a confident, specific, wrong instruction 309
+times. That is worse than an unhelpful diagnostic and worse than silence, because a reader acts on
+the majority.
+
+**And the correct diagnostic was already there.** This is the encouraging half: nothing needs to be
+written. `expected LBrace, found keyword 'match'` was emitted, first try, exactly right — at a
+signal-to-noise ratio of **1:154**.
+
+### The repair
+
+Not a split, and not a new symbol. **A parse failure should make §4c adjudication for that file
+refuse rather than answer**: `cannot adjudicate annotations: parse did not reach module scope`.
+The check does not need to be smarter; it needs an arm for *my input is not trustworthy*. That is
+§5's fail-closed shape — refuse rather than assert a specific wrong cause — and it costs one
+condition.
+
+This also satisfies §5's caution from §4 above: it is not instrument work dressed as progress,
+because it removes 309 wrong instructions rather than relabelling them.
+
+### A method note, recorded because it nearly corrupted this entry
+
+The first version of this specimen claimed **zero** of the 311 named the cause. That was false, and
+it came from grepping for `annotation|expected item declaration|parse error` — none of which appear
+in `expected LBrace, found keyword 'match'`. The pattern could not match a true positive, so the
+absence was a property of the search.
+
+The correction, and it generalises to any run failing with hundreds of diagnostics:
+
+> **Partition the message texts before reading any of them.**
+
+`... | sed 's|<prefix>||' | sort | uniq -c | sort -rn` turned 311 lines into three rows in one
+command, and the two singletons at the bottom were the entire content. Reading top-down, or
+grepping for what you expect, finds the 309 every time.
+
+## 7. A fifth specimen — and the first one caught by the recognition rule rather than by reading the producer
+
+*`src/v1/04_types.dag` `make_container_type`, found by smart-wolf-868 on 2026-08-24 while closing an
+unrelated emission gate.*
+
+Every specimen so far was found the hard way: someone read the producer and discovered the arm was
+answering for two states. This one was found the way §4 says it should be — **from the shape of the
+call**, without reading the diagnostic's implementation at all.
+
+    match container_param_name(kind_name: kind_name, index: 0) {
+      Present { value: param_name } => ...build the container type...
+      Absent => KernelTypeBuild {
+        ty: missing_kernel_container_profile_type(kind_name: kind_name),
+        diagnostics: [kernel_container_profile_miss_diagnostic(kind_name: kind_name)]
+      }
+    }
+
+`container_param_name` is a **lookup**. It returned `Absent`. The recognition rule fires on exactly
+that, and it is right: the single `Absent` arm answers for two states with opposite owners —
+
+    "this IS a container kind and its profile row is missing"  -> a defect; someone must add the row
+    "this is not a container kind at all"                      -> not applicable; nothing is wrong
+
+— and reports both as `kernel_container_profile_miss_diagnostic`, a *malformed* verdict. The symptom
+was a synthetic name (`workspace_band_paints`) drawing a complaint that its profile row was missing,
+for something that was never a container.
+
+### What makes this specimen worth its own section: the repair was applied three times
+
+The finder's fix was an `is_kernel_type` guard **at the call site**, returning a nominal type for
+non-container names while preserving the missing-profile diagnostic for real container kinds. Correct,
+and it works. But it was **the third such guard** — the `ReceiverElement`, `Key` and `Value` arms had
+each already acquired one.
+
+**That repetition is itself the diagnostic.** A distinction that must be re-established at every call
+site is a distinction the callee should have drawn once. Three guards do not make the fourth caller
+safe; they make the fourth caller's absence of a guard invisible, because nothing refuses — the
+un-guarded call simply gets the wrong diagnostic again, exactly as this one did.
+
+**So the structural repair is to split the reason at the lookup, not at its callers:** give
+`container_param_name`'s absence two answers — `NotAContainerKind` and `ProfileRowMissing` — so that
+`make_container_type` must match on which, and a caller that forgets **cannot compile**. That is §5's
+construction move applied to this class: the conflated state stops being writable rather than being
+re-detected per site, and the three accumulated guards are deleted rather than joined by a fourth.
+
+**This is the general form of the repair for the whole class**, and this specimen is the one that
+shows why the per-site fix is not merely weaker but actively concealing: each guard removes one
+symptom and leaves the producer entitled to keep answering for both states.
+
+### One caution recorded with it
+
+The guard reads a **third** predicate into a decision that
+`docs/probes/carrier_resolution_authority_fork_2026-08-24.md` censuses as already forked across two
+unjoined authorities — `std.algebra` `kernel_algebra_profile_value` and `std.types`
+`container_template_alias_rows`. Before the split above is built, it should be scoped against that
+census rather than beside it: the canonical authority proposed there would carry container-resolution
+as one field, which subsumes this repair. And that document's §4 constraint binds any such merge —
+preserve every refusal **and the stage each refusal comes from**, since flattening moves which stage
+refuses only for inputs that are already broken, so nothing goes red to announce it.
+
+## 8. A sixth specimen, and the first where the render is a VALUE rather than a diagnostic
+
+Every specimen above renders not-applicable as **malformed** — a wrong error, blaming the input. This
+one renders it as a **determinate answer**, and the pair is worth more than either half, because the
+variant is what the recognition rule was not looking for.
+
+`v1.compiler.infer`, `ExprListLit`. Three arms, of which two are correct:
+
+    expected type present, no element type   -> refuses, located
+    expected type present, not a collection  -> refuses, located
+    NO EXPECTED TYPE AT ALL                  -> Absent => unit_type, and no diagnostic
+
+The third arm's trigger is not-applicable in its purest form: **no expected type was supplied**, so
+there is nothing about the input to be right or wrong about. It answers `unit`. *"I could not
+determine the element type"* rendered as *"the element type is unit."*
+
+### The two renders, and why this one is worse
+
+    not-applicable -> malformed         loud, wrong owner, findable at the stage that refused
+    not-applicable -> a real answer     silent, no owner, findable only by its consequences
+
+**A wrong error at least names a stage.** A wrong *answer* travels. The measured path here: the
+fabricated `unit` flows into `fold(init: [])`, the accumulator becomes `List<()>`, the inner binder
+emits as `|found: bool, k: ()|`, and the refusal finally arrives **from rustc** — naming neither the
+empty literal nor the missing expected type. The diagnosis then points at the choke rather than the
+source, which is the same distance-from-cause property that made the pool-fallback defects hard to
+attribute.
+
+So the class's cost argument (§3) has a second tier: the malformed render misattributes **blame** and
+costs the reader a wrong search; the value render suppresses the signal entirely and costs the reader
+the whole distance between the fabrication and its first observable consequence.
+
+### The recognition rule fires unchanged — and that is the finding
+
+    if the arm sits downstream of a search, lookup or alternative that returned `Absent`,
+    it is not-applicable and needs its own reason
+
+The arm is spelled `Absent => unit_type`. **The rule catches it on the trigger, with no reference to
+what the arm produces** — which is why the rule generalises to a render it was not written for. That
+is a stronger property than the rule's authors claimed for it in §4, and it is stated here because
+the natural next move was to widen the rule to cover value-shaped arms. **It does not need
+widening.** The trigger was always the discriminating half; the render was incidental.
+
+### Why the obvious repair is not the one to make
+
+Recorded from an executed counterfactual (gunbc#9099) rather than argued: making the arm refuse
+surfaces **12 blocking diagnostics** on the entry against 0 in the control, across **24 sites** in
+the affected-set closure alone. The fabrication is load-bearing — it is currently the only thing
+keeping those sites compiling.
+
+**The split is still correct and the repair is still upstream.** The `fold(init: [])` site *has* a
+determinable element type — the outer fold's accumulator — and inference lacks it only because the
+callee's type variable is unsolved when the literal is judged. Solving that variable, or deferring
+the literal's judgement until the expected type is known, makes the fabricating arm **unreachable**
+rather than refusing.
+
+That is the one place in this document where the repair is not *"give the not-applicable case its own
+reason symbol."* Here the better outcome is that the not-applicable state **cannot arise** — §5's
+construction-over-validation preference, one rung above every other repair recorded above. Worth
+noting the asymmetry: a reason symbol is the right repair when the state is genuinely reachable and
+the caller must distinguish it; it is the *second-best* repair when the state exists only because an
+upstream judgement ran too early.

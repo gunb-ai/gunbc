@@ -16,7 +16,7 @@ import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.collection {
   Map,
-  Set,
+  PointwisePower,
   empty_map,
   map_get,
   map_insert
@@ -87,7 +87,7 @@ type ResolvedTree = Node
 
 type Namespace {
   bindings: Map<Symbol, Symbol>
-  canonical_symbols: Set<Symbol>
+  canonical_symbols: PointwisePower<Symbol>
   symbol_index: SymbolIndex
   module_qn: QualifiedName
 }
@@ -128,8 +128,8 @@ fn empty_namespace() -> Namespace {
   }
 }
 
-fn empty_canonical_symbol_set() -> Set<Symbol> {
-  Set {
+fn empty_canonical_symbol_set() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(_) {
       false
     }

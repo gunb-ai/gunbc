@@ -37,6 +37,41 @@ type BuildCacheInstance {
   intended_compile_pool: NonEmptyStr
 }
 
+data build_cache_configuration_observation_note: String = "STORAGE ROOT AND CAPACITY ARE TWO OBSERVED CONFIGURATION AXES, and each observation is bound to both the exact deployed BuildCacheInstance and the ProcessIdentity whose environment was read. A path or byte count without both subjects could be replayed across hosts, across the CI and session instances that share one sccache implementation, or across two processes after pid reuse. The owner is the process already proven to hold the instance endpoint; a unit file would answer what systemd WOULD start, not how the live server is configured, and every host in the incident population currently runs a server systemd did not start.\n\nUNSET AND READ UNAVAILABLE ARE DIFFERENT OBSERVATIONS WITH DIFFERENT REMEDIES. Unset means the owner environment was read and carries no assignment; unavailable means the read did not answer, and must never narrow to unset. Endpoint or owner absence does not appear as a third arm here: without the prerequisite endpoint-owner observation there is no configuration subject, so these carriers are not constructed at all. That is not-applicability at the join rather than malformed configuration.\n\nCAPACITY ALSO RETAINS CONFIGURED TEXT THAT CANNOT YET BE GROUNDED AS BYTES. gunbc.build_cache_unit emits a plain decimal byte count, which has one exact decoding. sccache also accepts suffixed text such as its documented 10G default, but this repository has no cited rule deciding whether G denotes 10^9 or 2^30. Choosing either would fabricate a magnitude whose seven-percent difference could silently pass or refuse convergence. BuildCacheCapacityConfiguredUngrounded therefore carries the text verbatim; it narrows when extdeps.cache.sccache cites and models the accepted size grammar. The instance itself retains whether capacity intent is declared, so a later comparison can refuse intended_capacity Absent rather than freezing a vendor default as a decision.\n\nThese are carriers only: they mint no verified flag and perform no host read. A producer must read the endpoint owner's environment into one of these arms before runner activation can replace storage_verified and capacity_verified with typed observed-versus-intended comparisons."
+
+type BuildCacheStorageConfiguration
+  = BuildCacheStorageRootConfigured { root: NonEmptyStr }
+  | BuildCacheStorageRootUnset
+
+type BuildCacheStorageObservation
+  = BuildCacheStorageObserved {
+      instance: BuildCacheInstance
+      owner: ProcessIdentity
+      configuration: BuildCacheStorageConfiguration
+    }
+  | BuildCacheStorageObservationUnavailable {
+      instance: BuildCacheInstance
+      owner: ProcessIdentity
+      detail: NonEmptyStr
+    }
+
+type BuildCacheCapacityConfiguration
+  = BuildCacheCapacityConfigured { capacity: ByteSize }
+  | BuildCacheCapacityConfiguredUngrounded { configured_text: NonEmptyStr }
+  | BuildCacheCapacityUnset
+
+type BuildCacheCapacityObservation
+  = BuildCacheCapacityObserved {
+      instance: BuildCacheInstance
+      owner: ProcessIdentity
+      configuration: BuildCacheCapacityConfiguration
+    }
+  | BuildCacheCapacityObservationUnavailable {
+      instance: BuildCacheInstance
+      owner: ProcessIdentity
+      detail: NonEmptyStr
+    }
+
 data process_identity_note: String = "A BARE PID IS NOT AN IDENTITY: the kernel reuses pids, so a pid recorded in one observation and re-read in the next may name a different process, and a receipt that says 'pid 3975946 is the endpoint owner' is only true relative to a boot and a start time. boot_id distinguishes across reboots; start_time (the process's own start, monotonic within a boot) distinguishes across pid reuse within one. The triple is what makes two consecutive observations comparable, which is exactly what the non-mutation control asserts."
 
 type ProcessIdentity {

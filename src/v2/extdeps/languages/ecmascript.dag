@@ -57,7 +57,7 @@ import v2.std.compilers.lexing {
 import v2.std.compilers.target_model {
   ProducedDeclUnwired, ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
-import v2.std.collection { List, Map, Set, empty_map, map_insert }
+import v2.std.collection { List, Map, PointwisePower, empty_map, map_insert }
 import v2.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
@@ -270,17 +270,15 @@ fn ecmascript_primitive_spec_facts(
   surface_spelling: Symbol,
   encoding_value: Symbol
 ) -> Map<Symbol, Node> {
-  Map {
-    lookup: fn(axis) {
-      if axis == discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) {
-          v2.std.optional.Present { value: ecmascript_inhabitant_atom(id: surface_spelling) }
-      } else if axis == discriminant(v: ModelCoreFactAxisEncoding {}) {
-          v2.std.optional.Present { value: ecmascript_inhabitant_atom(id: encoding_value) }
-      } else {
-          v2.std.optional.Absent
-      }
-    }
-  }
+  map_insert(
+    map_insert(
+      empty_map(),
+      discriminant(v: ModelCoreFactAxisSurfaceSpelling {}),
+      ecmascript_inhabitant_atom(id: surface_spelling)
+    ),
+    discriminant(v: ModelCoreFactAxisEncoding {}),
+    ecmascript_inhabitant_atom(id: encoding_value)
+  )
 }
 
 fn ecmascript_primitive_algebra_witness_node(
@@ -1315,8 +1313,8 @@ fn ecmascript_catalog_surface_symbol(sym: Symbol) -> Bool {
     ecmascript_singleton_catalog_surface_symbol(sym: sym)
 }
 
-fn ecmascript_language_model_canonical_symbols() -> Set<Symbol> {
-  Set {
+fn ecmascript_language_model_canonical_symbols() -> PointwisePower<Symbol> {
+  PointwisePower {
     member: fn(sym) {
       ecmascript_catalog_surface_symbol(sym: sym) ||
         ecmascript_lex_token_symbol(sym: sym) ||

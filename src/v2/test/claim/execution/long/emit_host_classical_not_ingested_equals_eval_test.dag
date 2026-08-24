@@ -186,7 +186,7 @@ fn ingested_staging_inferred_tree_from_source(source: String) -> Outcome<Inferre
           outcome_accepted(
             value: InferredTree {
               root: inferred.root,
-              facts: Map {
+              facts: PartialFunction {
                 lookup: fn(key) {
                   ingested_classical_not_staging_facts_lookup(canonical: inferred, key: key)
                 }
@@ -206,7 +206,7 @@ fn ingested_emit_shape_frontier_tree_from_source(source: String) -> Outcome<Infe
       outcome_accepted(
         value: InferredTree {
           root: arrow,
-          facts: Map {
+          facts: PartialFunction {
             lookup: fn(_key) {
               Absent
             }
@@ -227,7 +227,7 @@ fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> Outcome<I
           outcome_accepted(
             value: InferredTree {
               root: inferred.root,
-              facts: Map {
+              facts: PartialFunction {
                 lookup: fn(key) {
                   Present { value: ingested_classical_not_composed_facts(key: key) }
                 }

@@ -19,6 +19,8 @@ use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::{
 pub use crate::v1_compiler_infer_occurrence_binding::{
     ambiguity_labels_from_decide, module_path_owner_binding_decide,
 };
+pub use crate::v1_compiler_type_head_exposure::TypeHeadExposure;
+use crate::v1_compiler_type_head_exposure::TypeHeadExposure::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::*;
@@ -126,6 +128,7 @@ pub struct SymbolIndex {
     pub global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     pub services: Rc<HashMap<String, Rc<ServiceCensusEntry>>>,
     pub transparent_alias_rep: Rc<HashMap<String, String>>,
+    pub type_head_exposures: Rc<HashMap<String, Rc<TypeHeadExposure>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -139,6 +142,7 @@ pub fn empty_symbol_index() -> Rc<SymbolIndex> {
         global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
         services: v1_rt::rc_empty_map::<String, Rc<ServiceCensusEntry>>(),
         transparent_alias_rep: v1_rt::rc_empty_map::<String, String>(),
+        type_head_exposures: v1_rt::rc_empty_map::<String, Rc<TypeHeadExposure>>(),
     })
 }
 
@@ -260,6 +264,7 @@ pub fn symbol_index_insert(
         global_bare: index.global_bare.clone(),
         services: index.services.clone(),
         transparent_alias_rep: index.transparent_alias_rep.clone(),
+        type_head_exposures: index.type_head_exposures.clone(),
     })
 }
 
@@ -284,6 +289,7 @@ pub fn symbol_index_insert_decl(
         ),
         services: index.services.clone(),
         transparent_alias_rep: index.transparent_alias_rep.clone(),
+        type_head_exposures: index.type_head_exposures.clone(),
     })
 }
 
@@ -305,6 +311,7 @@ pub fn symbol_index_insert_service(
             }),
         ),
         transparent_alias_rep: index.transparent_alias_rep.clone(),
+        type_head_exposures: index.type_head_exposures.clone(),
     })
 }
 
