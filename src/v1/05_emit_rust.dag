@@ -10031,7 +10031,25 @@ fn struct_candidates_by_field_names(field_names: List<String>, type_summaries: M
   )
 }
 
-data anonymous_record_struct_resolution_note: String = "gunbc dashboard node://adhoc-e47d0143-6a2. An anonymous record literal has no authored nominal identity, so the Rust emitter may name a struct only when the literal's field shape (and, when necessary, its inferred field-type hints) identifies exactly one TypeSummary. The old find_struct_name_by_fields fallback sorted multiple shape candidates alphabetically and selected the first whenever hints left zero OR multiple candidates. That made declaration spelling/order decide the runtime type. anonymous_record_struct_candidates is now the single candidate authority: an unambiguous typed refinement replaces the broader shape set; otherwise the full shape ambiguity survives. Consumers may project a name only from a singleton. ambiguous_anonymous_record_literal_diagnostics walks the typed module before rendering and returns one located AmbiguousAnonymousRecordLiteral ErrorNode per ambiguous construction through EmitResult.diagnostics, so the deficit is counted at the emitter boundary and emission refuses before target text exists. emit_typed_record_lit's compile_error! arm remains a defensive construction wall if a future caller bypasses emit_rust's diagnostic fold; zero candidates retain the structural tuple realization. RUNG: mechanically preventable at the v1 emitter boundary, not structurally impossible in the source language; the target compiler is never counted as part of this guarantee."
+// gunbc dashboard node://adhoc-e47d0143-6a2. An anonymous record literal has no authored
+// nominal identity, so the Rust emitter may name a struct only when the literal's field shape
+// (and, when necessary, its inferred field-type hints) identifies exactly one TypeSummary. The
+// old find_struct_name_by_fields fallback sorted multiple shape candidates alphabetically and
+// selected the first whenever hints left zero OR multiple candidates. That made declaration
+// spelling/order decide the runtime type.
+//
+// anonymous_record_struct_candidates is the single candidate authority: an unambiguous typed
+// refinement replaces the broader shape set; otherwise the full shape ambiguity survives.
+// Consumers may project a name only from a singleton.
+// ambiguous_anonymous_record_literal_diagnostics walks the typed module before rendering and
+// returns one located AmbiguousAnonymousRecordLiteral ErrorNode per ambiguous construction
+// through EmitResult.diagnostics, so the deficit is counted at the emitter boundary and emission
+// refuses before target text exists. emit_typed_record_lit's compile_error! arm remains a
+// defensive construction wall if a future caller bypasses emit_rust's diagnostic fold; zero
+// candidates retain the structural tuple realization.
+//
+// RUNG: mechanically preventable at the v1 emitter boundary, not structurally impossible in the
+// source language; the target compiler is never counted as part of this guarantee.
 
 fn anonymous_record_struct_candidates(field_names: List<String>, field_type_hints: Map<String, String>, type_summaries: Map<String, TypeSummary>) -> List<TypeSummary> {
   let candidates = struct_candidates_by_field_names(field_names: field_names, type_summaries: type_summaries)
