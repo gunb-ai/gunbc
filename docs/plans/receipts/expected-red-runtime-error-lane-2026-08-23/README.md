@@ -299,3 +299,48 @@ open question when the loop started.
 section: the `Atom.identity` type hole behind `atom_identity_hash`, the `eval_call` lexical-tier
 gap behind `render`, the corpus-ambiguous `Hit` behind `.raw on Int`, and a `test fn` that is
 literally `fn f() { f() }`. They stay enrolled and honest.
+
+## Round 4 executed: the reference class is drained
+
+**Subject:** required-floor run `32671448306` at `eee5a43ee` (the merge commit resolving a roster
+conflict with a parallel lane). Ledger:
+
+    planned=10785 executed=10785 terminal=10785 passed=10634 known_red_held=35 failed=0
+    stale_quarantine=7 known_red_now_passing=7 known_red_budget_refused=0
+    known_red_runtime_errored=15 route_gap_held=94
+
+Seven more flipped and are removed: the three `runtime_axis` rows (their fourth frontier name
+cleared), the two `accelerator_demo` rows (fixed at `dag/gunbc/accelerator_demo_plan.dag`, the
+module actually holding the bare reference), and — worth naming — the two
+`generated_coproduct_exhaustiveness` rows that round 3 left BUDGET-REFUSED at 5001/5003ms. They
+now complete inside budget, so the cost debt this receipt recorded against them is discharged
+rather than merely re-classified.
+
+**`known_red_runtime_errored` = 15, and every one of them is a non-reference root.** The final
+population is exactly the three defects named in the tail-families section:
+
+| cause | rows | root |
+|---|---|---|
+| `atom_identity_hash requires exactly one string argument` | 12 | `Atom.identity` declares `Symbol`; `semantic_decl_string_to_bundle_node` puts a char code point (`Int`) there and the compiler accepts it |
+| `cannot access field 'raw' on Int` | 2 | corpus-ambiguous `Hit` resolving to `std.cache_interface`'s rather than `v2.std.staging`'s |
+| `call contract mismatch calling 'render'` | 1 | `eval_call` consults `ctx.lookup_fn` before the lexical `Value::Fn` arm, so `std.layout.render` answers a call bound by a match pattern |
+
+## The lane, end to end
+
+| round | head | run | runtime-errored | now passing | roster |
+|---|---|---|---|---|---|
+| baseline | `faf6583461a` | `32633501354` (prior receipt, re-derived) | 143 | — | 203 |
+| 1 | `05993e0` | `32660721426` | 135 | 8 | 195 |
+| 2 | `42d0a8502` | `32664512304` | 111 | 24 | 171 |
+| 3 | `7026838` | `32667349586` | 21 | 88 | 83 |
+| 4 | `eee5a43ee` | `32671448306` | 15 | 7 | 74 |
+
+**143 -> 15 in four rounds, 127 identities unenrolled, every one of them removed because a run
+observed it PASSING and it named itself.** No row was removed to make it quiet. `failed=0` on
+every round, so no repair broke a sibling witness. The frontier converged: depth 1 to 4, deepest
+chain four successive names in one file.
+
+The 15 that remain are enrolled honestly — they run, they throw, and the throw has a named root
+that is not an import. They are handed on rather than drained, and the roster does not reach zero:
+`ExpectedRedRosterEmpty` refuses at preparation, and only the final cut deletes that refusal along
+with the machinery.
