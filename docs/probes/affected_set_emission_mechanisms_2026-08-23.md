@@ -22,11 +22,11 @@ mechanism owned elsewhere and is listed only so the arithmetic closes.
 | id | mechanism | rows | evidence |
 |----|-----------|------|----------|
 | A | coproduct realization has no unused-parameter carrier | 10 | **measured** (executed counterfactual) |
-| B | fn-typed params captured into an `Rc` closure demanding `'static` | 4 | read |
+| B | callable lifetime obligations arise at `Rc<dyn Fn>` materialization and propagate | 4 | **measured** (counterfactual, negative) |
 | C | `ABSENT_CLONE_BOUND` (established, not documented here) | 2 | read |
 | D | authority substitution after resolution (emission rebinds to a v1_rt builtin) | 5 | **measured** (peer board, 28 blocks) |
-| E | empty list literal element type resolves to unit | 2 | read |
-| F | by-value closure params against a reference-yielding iterator | 1 | read |
+| E | an undetermined empty-list element type is answered as `unit`, silently | 2 | **measured** (counterfactual, negative) |
+| F | fold's unused-element strip changes the item type without telling the signature | 1 | **measured** (counterfactual) — **REPAIRED**, gunbc#9101 |
 
 10 + 4 + 2 + 5 + 2 + 1 = 24.
 
@@ -371,9 +371,11 @@ code-partitioned view does not surface it: each code's rows look like unrelated 
 
 ---
 
-## E — empty list literal element type resolves to unit
+## E — an undetermined empty-list element type is answered as `unit`, silently
 
-**Rows:** 2 (`E0308` x1, `E0631` x1, same line). **Read.**
+**Rows:** 2 (`E0308` x1, `E0631` x1, same line). **Measured** — and, like B, the measurement moved the
+mechanism upstream of where the rows appear. The rows are a *downstream symptom*; the defect is that
+inference fabricates an answer where it has none.
 
 ### Source
 
@@ -411,11 +413,61 @@ error[E0308]: mismatched types
 
 Both rows are the same emitted line.
 
+### The producing arm, and why this is a §5 defect rather than a missing feature
+
+`v1.compiler.infer`, the `ExprListLit` arm, chooses the element type of an empty literal:
+
+```dag
+Absent => unit_type      // elem_type_node, when there is no expected type
+...
+Absent => []             // empty_list_diags — no diagnostic
+```
+
+Its two siblings refuse with located diagnostics — *"empty list literal: expected type has no element
+type"* and *"...expected type is not a collection"*. The arm reached when there is **no expected type at
+all** answers `unit` and says nothing. That is *"I could not determine the element type"* rendered as
+*"the element type is unit"*: the fabricated plausible output §5 forbids, and the ⊥-as-answer /
+⊥-as-ignorance conflation in the recurring-failure list.
+
+It also explains the distance between cause and report. `fold(init: [], ..)` takes the fabricated
+`unit`, the accumulator becomes `List<()>`, the inner fold's binder emits as `|found: bool, k: ()|`, and
+rustc refuses **that** — a message naming neither the empty literal nor the missing expected type, two
+stages from the decision that caused it.
+
+### Counterfactual (executed) — the local refusal is NOT affordable
+
+The repair the defect invites: make that arm refuse instead of fabricating. Implemented, regenerated,
+installed, rebuilt, and run against this entry, with the positive control taken on the installed mirror
+(`CONTROL_installed=1`, generation-2 build clean at 0 errors).
+
+| | result |
+|---|---|
+| sites hitting the fabricating arm, **affected-set closure alone** | **24** |
+| entry's blocking diagnostics, control → refusal | 0 → **12** |
+
+The fabrication is load-bearing: 24 empty-list literals in this one closure reach that arm, and refusing
+locally does not surface E's two rows — it stops the entry compiling at 12 blocking errors. A refusal
+that converts one downstream rustc row into twelve blocking refusals is not the fail-closed repair; it
+is the same local-patch error B already paid for, in the opposite direction.
+
+**Where E actually lives.** The `fold(init: [])` site *has* a determinable element type — the outer
+fold's accumulator — and inference lacks it only because the callee's type variable is unsolved at the
+point the literal is judged. The repair is therefore upstream: solve the accumulator type variable, or
+defer the literal's judgement until the expected type is known, so the arm becomes unreachable rather
+than refusing. Until that lands, the fabrication is the *only* thing keeping 24 sites compiling, which
+is why the arm is left exactly as `main` has it rather than reddened.
+
 ---
 
-## F — by-value closure params against a reference-yielding iterator
+## F — fold's unused-element strip changes the item type without telling the closure signature
 
-**Rows:** 1 (`E0631`). **Read.**
+**Rows:** 1 (`E0631`). **Measured, and REPAIRED** — gunbc#9101. One producer fact, `elem_unused`, decides
+two things: it strips `.cloned()` (so the iterator yields `&T`) and it should decide the lambda's element
+annotation (which still declared `T`). The second consequence was never told. `emit_typed_fold_lambda`
+now forces `_` at the element position, so inference supplies whichever of `T` / `&T` the iterator yields.
+Counterfactual, both arms on one tree with the positive control on the installed mirror: board primary
+100 -> 99, `E0631` 2 -> 1, eleven other codes byte-identical, generation-2 seed clean. Retired, not
+relocated. The surviving `E0631` is mechanism E's — a different mechanism sharing the code.
 
 ### Source
 
@@ -459,8 +511,8 @@ mechanisms already went through.
 | B | **measured** (executed counterfactual, negative) | **unowned, and reclassified** — the local repair was implemented, measured, and rejected; what remains is a lifetime-propagation engine this board does not own | build the transitive obligation derivation: requirements inferred at every `dyn`-callable materialization site and propagated backward through callable-valued parameters to a fixpoint. Until then the 4 rows stand, and the honest reason is recorded rather than a trigger nobody can act on. |
 | C | read | **owned elsewhere** — the corpus-wide `ABSENT_CLONE_BOUND` population (`docs/probes/rustc_mechanism_partition_2026-08-23.md`, 22 manifestations at `967b5bc1b92`) | none here. This board contributes 2 rows to that population and tracks nothing separately; a second trigger beside that document's would be a second authority for one class. |
 | D | measured (peer board) | **lane open: #9060**, which states itself to be PR A of the resolved-call identity repair and reserves PR B for carrying resolved callable identity through all three Rust-emission seams | PR B of that lane. The seam this board adds is a defect-side property: the decisive `&&` consults resolved semantics in its first conjunct and the leaf spelling in its second, so what is missing is a recorded target identity for `PlainCallSemantics`, not a different table lookup — which is the fact PR B is reserved to carry. **Not #8952**, though the two share the `map_get` collision and it is the near-miss worth naming: #8952 refuses the ambiguity at *resolution*, while D is emission rebinding a call that resolution already answered correctly. Same collision, opposite sides of the resolve boundary, different repairs. |
-| E | read | **unowned** — no lane holds it | promote to measured: annotate the element type of the empty list literal at the cited site and confirm the 2 rows retire. |
-| F | read | **unowned** — no lane holds it | promote to measured: vary the closure parameter's by-value/by-reference binding against the reference-yielding iterator and confirm the 1 row retires. |
+| E | **measured** (executed counterfactual, negative) | **unowned, and reclassified** — the local refusal was implemented and measured: 24 sites in this closure depend on the fabricated `unit`, and refusing turns 1 downstream row into 12 blocking ones | solve the empty literal's element type from the callee's unsolved type variable, or defer its judgement until the expected type is known, so the fabricating arm becomes unreachable rather than refusing. The arm is left as `main` has it until then, because it is currently the only thing keeping those 24 sites compiling. |
+| F | **measured** (executed counterfactual) | **REPAIRED** — gunbc#9101, with the regenerated stage0 mirror at its fixed point | none. `E0631` 2 -> 1 with eleven codes byte-identical; the row is retired, not relocated. |
 
 **Three mechanisms are declared unowned, and that is the disposition rather than a gap in it.** B, E and F
 are 7 rows between them; nothing in the repository holds them today, and writing a lane row here would

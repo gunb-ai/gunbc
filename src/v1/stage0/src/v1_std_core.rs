@@ -17,6 +17,7 @@ use self::MatchPattern::*;
 use self::MethodSemantics::*;
 use self::NodeFieldRole::*;
 use self::OperationModifier::*;
+use self::ServiceConfigField::*;
 use self::StringPart::*;
 use self::TokenShape::*;
 use self::TransportKind::*;
@@ -37,10 +38,10 @@ pub use crate::std_occurrence_identity::{
     authored_token_ordinal_space_from_allocator, authored_token_ordinal_space_initial,
     occurrence_id_allocator_advance_to,
 };
-pub use crate::std_occurrence_identity::{AuthoredTokenOrdinal, OccurrenceId, OccurrenceRole};
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinalSpace, OccurrenceIdAllocator, OccurrenceTransportRefusal,
 };
+pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceRole};
 pub use crate::std_source_annotation::AnnotationAttachmentRefusal;
 use crate::std_source_annotation::AnnotationAttachmentRefusal::*;
 pub use crate::std_source_annotation::{
@@ -536,6 +537,10 @@ pub enum CompilerDiagnostic {
         candidates: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
+    AmbiguousAnonymousRecordLiteral {
+        candidates: Rc<Vec<String>>,
+        span: Rc<SourceSpan>,
+    },
     CallArgumentNameUnknown {
         callee: String,
         argument: String,
@@ -571,6 +576,12 @@ pub enum CompilerDiagnostic {
     ContainerSpellingUnrecognized {
         name: String,
         container_leaf: String,
+        span: Rc<SourceSpan>,
+    },
+    ServiceConfigReferenceJudgmentDeferred {
+        field: String,
+        referenced_name: String,
+        trigger: String,
         span: Rc<SourceSpan>,
     },
     TransportEmissionNotModeled {
@@ -680,6 +691,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::AdmitCallersEntryNotDeclRef { span: s, .. } => s.clone(),
         CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
         CompilerDiagnostic::AmbiguousReference { span: s, .. } => s.clone(),
+        CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallPositionalSurplus { span: s, .. } => s.clone(),
         CompilerDiagnostic::CallArgumentDuplicate { span: s, .. } => s.clone(),
@@ -692,6 +704,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
             None => no_span(),
         },
         CompilerDiagnostic::ContainerSpellingUnrecognized { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { span: s, .. } => s.clone(),
         CompilerDiagnostic::TransportEmissionNotModeled { span: s, .. } => s.clone(),
     }
 }
@@ -729,6 +742,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::AdmitCallersEntryNotDeclRef { constructor_decl_name: cn, .. } => v1_rt::concat(v1_rt::concat("admit_callers entry on '".to_string(), cn.clone()), "' is not a decl_ref(module_path: \"...\", decl_name: \"...\") call: an entry that cannot be interpreted would otherwise be dropped, silently shrinking the permitted-caller roster below what was authored".to_string()),
     CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(v1_rt::concat("unlisted import use '".to_string(), n.clone()), "' (referenced but not in any import's name list)".to_string()),
     CompilerDiagnostic::AmbiguousReference { name: n, candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous reference '".to_string(), n.clone()), "': ".to_string()), ((cs.clone().len() as i64)).to_string()), " candidates: ".to_string()), cs.clone().join(&", ".to_string())), " — qualify by containment path, alias, or rename".to_string()),
+    CompilerDiagnostic::AmbiguousAnonymousRecordLiteral { candidates: cs, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("ambiguous anonymous record literal shape matches ".to_string(), ((cs.clone().len() as i64)).to_string()), " structs: ".to_string()), cs.clone().join(&", ".to_string())), " — add a nominal type".to_string()),
     CompilerDiagnostic::CallArgumentNameUnknown { callee: c, argument: a, declared: ds, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': no parameter named '".to_string()), a.clone()), "' (declared: [".to_string()), ds.clone().join(&", ".to_string())), "])".to_string()),
     CompilerDiagnostic::CallPositionalSurplus { callee: c, supplied: s, capacity: cap, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': too many positional arguments: ".to_string()), (s.clone()).to_string()), " supplied, ".to_string()), (cap.clone()).to_string()), " positional parameter(s) declared".to_string()),
     CompilerDiagnostic::CallArgumentDuplicate { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling '".to_string(), c.clone()), "': argument '".to_string()), a.clone()), "' supplied more than once".to_string()),
@@ -736,6 +750,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::CallNamedArgOnFunctionValue { callee: c, argument: a, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("call shape mismatch calling function value '".to_string(), c.clone()), "': named argument '".to_string()), a.clone()), "' is not supported — use positional arguments".to_string()),
     CompilerDiagnostic::OccurrenceTransportViolation { refusal: refusal, .. } => occurrence_transport_refusal_diagnostic_message(refusal.clone()),
     CompilerDiagnostic::ContainerSpellingUnrecognized { name: n, container_leaf: leaf, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unrecognized container spelling '".to_string(), n.clone()), "': its last segment '".to_string()), leaf.clone()), "' names a container, but no arity is declared for '".to_string()), n.clone()), "' in std.types container_type_arity — declare the row or spell the container by a declared name".to_string()),
+    CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { field: f, referenced_name: n, trigger: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("service config field '".to_string(), f.clone()), "' carries the reference '".to_string()), n.clone()), "', and the reference judgment does not yet run on this field -- ".to_string()), t.clone()), ". This is a counted deferral, not a pass: nothing has established that '".to_string()), n.clone()), "' names anything".to_string()),
     CompilerDiagnostic::TransportEmissionNotModeled { transport_kind: kind, service: svc, operation: op, declaring_module: m, target: tgt, missing_realization_fact: missing, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("'".to_string(), kind.clone()), "' transport emission is not modeled: operation '".to_string()), svc.clone()), ".".to_string()), op.clone()), "' declared in '".to_string()), m.clone()), "' cannot be emitted for target '".to_string()), tgt.clone()), "' -- ".to_string()), missing.clone()), ". Bind a realization handler for the '".to_string()), kind.clone()), "' transport (DESIGN §3: interface shape and transport are two facts); do not add a per-target renderer".to_string()),
 }
 }
@@ -825,6 +840,7 @@ pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
         CompilerDiagnostic::UnlistedImportUse { .. } => false,
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => false,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => false,
+        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => false,
         _ => true,
     }
 }
@@ -834,6 +850,7 @@ pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnosti
         CompilerDiagnostic::UnlistedImportUse { .. } => true,
         CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. } => true,
         CompilerDiagnostic::ReceiverTypeUnestablished { .. } => true,
+        CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => true,
         CompilerDiagnostic::WhereRefinementUnenforced { reason: r, .. } => {
             is_where_refinement_unenforced_advisory_reason(r.clone())
         }
@@ -3399,25 +3416,70 @@ pub fn expr_has_non_tail_self_call(
     })
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum ServiceConfigField {
+    SvcEndpoint,
+    SvcAuth,
+    SvcAuthInput,
+    SvcAuthSource,
+    SvcRateLimit,
+}
+
+pub fn service_config_field_property_name(field: ServiceConfigField) -> String {
+    match field.clone() {
+        ServiceConfigField::SvcEndpoint => "svc_endpoint".to_string(),
+        ServiceConfigField::SvcAuth => "svc_auth".to_string(),
+        ServiceConfigField::SvcAuthInput => "svc_auth_input".to_string(),
+        ServiceConfigField::SvcAuthSource => "svc_auth_source".to_string(),
+        ServiceConfigField::SvcRateLimit => "svc_rate_limit".to_string(),
+    }
+}
+
+pub fn service_config_known_fields() -> Rc<Vec<ServiceConfigField>> {
+    Rc::new(vec![
+        ServiceConfigField::SvcEndpoint,
+        ServiceConfigField::SvcAuth,
+        ServiceConfigField::SvcAuthInput,
+        ServiceConfigField::SvcAuthSource,
+        ServiceConfigField::SvcRateLimit,
+    ])
+}
+
+pub fn service_config_field_for_property_name(name: String) -> Option<ServiceConfigField> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for f in service_config_known_fields().iter().cloned() {
+            if (service_config_field_property_name(f.clone()) == name.clone()) {
+                __result.push(f);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+}
+
 pub fn service_config_properties(
     endpoint: Rc<Node>,
     auth: Option<Rc<Node>>,
     auth_input: Option<Rc<Node>>,
     auth_source: Option<Rc<Node>>,
     rate_limit: Option<Rc<Node>>,
-    retry: Option<Rc<Node>>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
         let zero_span = no_span();
         let ep_prop = Rc::new(vec![make_field_init_node(
-            "svc_endpoint".to_string(),
+            service_config_field_property_name(ServiceConfigField::SvcEndpoint),
             endpoint.clone(),
             zero_span.clone(),
             zero_span.clone(),
         )]);
         let auth_prop = match auth.clone() {
             Some(a) => Rc::new(vec![make_field_init_node(
-                "svc_auth".to_string(),
+                service_config_field_property_name(ServiceConfigField::SvcAuth),
                 a.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -3426,7 +3488,7 @@ pub fn service_config_properties(
         };
         let auth_input_prop = match auth_input.clone() {
             Some(ai) => Rc::new(vec![make_field_init_node(
-                "svc_auth_input".to_string(),
+                service_config_field_property_name(ServiceConfigField::SvcAuthInput),
                 ai.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -3435,7 +3497,7 @@ pub fn service_config_properties(
         };
         let auth_source_prop = match auth_source.clone() {
             Some(src) => Rc::new(vec![make_field_init_node(
-                "svc_auth_source".to_string(),
+                service_config_field_property_name(ServiceConfigField::SvcAuthSource),
                 src.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -3444,16 +3506,7 @@ pub fn service_config_properties(
         };
         let rate_prop = match rate_limit.clone() {
             Some(r) => Rc::new(vec![make_field_init_node(
-                "svc_rate_limit".to_string(),
-                r.clone(),
-                zero_span.clone(),
-                zero_span.clone(),
-            )]),
-            None => Rc::new(vec![]),
-        };
-        let retry_prop = match retry.clone() {
-            Some(r) => Rc::new(vec![make_field_init_node(
-                "svc_retry".to_string(),
+                service_config_field_property_name(ServiceConfigField::SvcRateLimit),
                 r.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
@@ -3463,15 +3516,12 @@ pub fn service_config_properties(
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(ep_prop.clone(), auth_prop.clone()),
-                        auth_input_prop.clone(),
-                    ),
-                    auth_source_prop.clone(),
+                    v1_rt::concat(ep_prop.clone(), auth_prop.clone()),
+                    auth_input_prop.clone(),
                 ),
-                rate_prop.clone(),
+                auth_source_prop.clone(),
             ),
-            retry_prop.clone(),
+            rate_prop.clone(),
         )
     }
 }
@@ -3523,17 +3573,6 @@ pub fn service_config_rate_limit(
     find_property(
         n.properties.clone(),
         "svc_rate_limit".to_string(),
-        source_indices.clone(),
-    )
-}
-
-pub fn service_config_retry(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    find_property(
-        n.properties.clone(),
-        "svc_retry".to_string(),
         source_indices.clone(),
     )
 }
@@ -4528,3 +4567,13 @@ pub struct ChildrenListField;
 pub struct SubValueField;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MetadataField;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SvcEndpoint;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SvcAuth;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SvcAuthInput;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SvcAuthSource;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SvcRateLimit;
