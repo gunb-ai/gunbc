@@ -61,7 +61,30 @@ data witness_layer_roots: List<String> = ["dag", "src/v2"]
 // repository is FOR. A cost objection whose cost went to zero is not an objection any more.
 //
 // WHY 00_compile AND NOT 03_ingest. It is the root of the v2 pipeline, so its closure is the
-// widest one entry names, which is what "full compile" means here. The producer is unchanged
+// widest one entry names.
+//
+// **THAT IS NOT THE SAME AS "ALL THE COMPILER FILES", AND THE DIFFERENCE IS MEASURED RATHER
+// THAN ESTIMATED.** Of the 42 modules under `src/v2/compiler/`, this entry's emitted closure
+// contains 24; eighteen are absent, including `ingest`, `emit_module`, `emit_host`,
+// `emit_produced`, `emit_semantic_decl`, `program_partition` and `self_host`. Counting the
+// `self_host/` subtree the compiler namespace is 69 modules, so the shortfall is larger still.
+// The instrument is the emission itself: emit this entry and join the emitted file names
+// against the module line of every `src/v2/compiler/**.dag`.
+//
+// It is named here because "full v2 compile" invites the reading that the phase covers the
+// compiler, and it does not -- it covers the pipeline root's reference-derived closure, which
+// is a strictly smaller thing. A STATIC IMPORT-CLOSURE ESTIMATE CANNOT SUBSTITUTE FOR THAT
+// MEASUREMENT and reports zero coverage for this entry, because this corpus resolves most
+// cross-module references without `import` lines; only the compiler's own reference-derived
+// closure is the truth.
+//
+// WIDENING THE SUBJECT TO EVERY COMPILER FILE IS AN OPERATOR ASK ON A SEPARATE CLOCK
+// (2026-08-25: "the intention is to v2 build ALL of the .dag compiler files, and then ratchet
+// THAT count in CI"). It is not taken in this row, because a covering entry set cannot be
+// derived from the import graph for the reason just given, and the alternative -- a whole-tree
+// emission -- has a cost that has to be measured before it is enrolled in a required lane.
+// This row records what the phase covers TODAY so that the widening is a change to a known
+// number rather than to an assumed one. The producer is unchanged
 // (`cli_run::compile_entry_emission`, primary-precedence, RenderTarget::Rust -- the phase has
 // always pinned those and the split does not touch them), so this is a change of SUBJECT and
 // of nothing else.
