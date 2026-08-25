@@ -2,6 +2,7 @@ module gunbc.witness_floor_workflow
 
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import gunbc.roadmap_execution_contract { CargoCapability, RustfmtCapability }
+import gunbc.repo_self_build { repo_self_build_command }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
   StepCapabilityRole,
@@ -231,11 +232,7 @@ fn witness_floor_toolchain_step() -> Step {
 // an sccache deficit unobservable by construction (DESIGN section 5, the absorbing fallback), so
 // it is not re-derived. A build failure is a build failure and stops the line.
 fn witness_floor_build_script() -> String {
-  fold(
-    witness_floor_required_bins,
-    init: "cargo build --release -p v1-compiler",
-    f: fn(acc, bin) { concat(acc, concat(" --bin ", bin)) }
-  )
+  repo_self_build_command(bins: witness_floor_required_bins)
 }
 
 fn witness_floor_build_step() -> Step {
