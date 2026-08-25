@@ -1,6 +1,5 @@
 module gunbc.cli_dispatch_surface
 
-import std.constructors { Cardinality, Many, Optional, Required }
 import std.types { Bool, Int, List, String }
 
 // THE gunbc CLI'S OWN DISPATCH SURFACE, AS ROWS.
@@ -31,6 +30,34 @@ import std.types { Bool, Int, List, String }
 // coproduct and not a `String` with a spelling beside it -- `--port` and `--eval-budget-cpu-ms`
 // differ in what they MEAN, and an emitter that knows only "unsigned" has to be told the width by
 // hand at every site.
+// HOW MANY VALUES ONE OPTION ADMITS -- and this coproduct is minted here UNDER PROTEST, with the
+// reason recorded because minting it is the move this file otherwise argues against.
+//
+// `std.constructors.Cardinality` is the right authority and was consumed by an earlier revision of
+// this module, widened from `Required | Optional` to carry a `Many` arm. It does not work, and the
+// failure is not this module's: `v1.compiler.core` declares a SECOND `Cardinality`
+// (`Required | CardOptional`), so the two share the variant name `Required` and any module the v1
+// seed imports that also reaches `std.constructors` puts both in one closure. Measured by
+// execution on the required-regen path: `variant 'Required' appears in both 'Cardinality' and
+// 'Cardinality'`, one hard diagnostic, and the emitter is exactly such a module.
+//
+// The fork is KNOWN and predates this work -- `gunbc.emit_summary_map_consumer_partition` carries
+// it as a named specimen, recording that the two are "two DIFFERENT unit-only enums under one
+// key" and that the emitter's variant map answers from whichever module its fold reached last.
+// Consolidating them is a v1-seed migration across dozens of `CardOptional` sites in `00_core`,
+// `04_lookup`, `04_types`, `04_patterns` and the three emitters; it is not this change's to make,
+// and doing it badly under cover of a CLI model would be worse than naming it.
+//
+// So this is a THIRD name for multiplicity and it is debt, not a design. It is preferred to the
+// alternatives only because the other two are worse: consuming `std.constructors` does not
+// compile, and consuming `v1.compiler.core`'s would make a product model depend on the seed
+// compiler's internal node vocabulary. DISSOLVES WHEN: the two `Cardinality` authorities
+// consolidate, at which point this type is deleted and the rows take the survivor.
+type CliOptionArity
+  = CliRequired
+  | CliAtMostOne
+  | CliRepeated
+
 type CliOptionValue
   = CliTextValue
   | CliToggleValue
@@ -66,7 +93,7 @@ type CliOptionRow {
   field: String
   long: String
   value: CliOptionValue
-  cardinality: Cardinality
+  arity: CliOptionArity
   default_value: String?
   doc: List<String>
   emission: CliSurfaceEmission
@@ -109,7 +136,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "source_roots",
           long: "source-root",
           value: CliTextValue,
-          cardinality: Many,
+          arity: CliRepeated,
           default_value: none,
           doc: [
             "Source root directories (searched recursively for .dag files).",
@@ -121,7 +148,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "source_dir",
           long: "source-dir",
           value: CliTextValue,
-          cardinality: Optional,
+          arity: CliAtMostOne,
           default_value: none,
           doc: ["Legacy: single source directory (all .dag files loaded, no import resolution)"],
           emission: EmittedByEmitMainRs
@@ -130,7 +157,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "output_dir",
           long: "output-dir",
           value: CliTextValue,
-          cardinality: Required,
+          arity: CliRequired,
           default_value: none,
           doc: [],
           emission: EmittedByEmitMainRs
@@ -139,7 +166,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "target",
           long: "target",
           value: CliTextValue,
-          cardinality: Required,
+          arity: CliRequired,
           default_value: Present { value: "rust" },
           doc: ["Target language: rust, python, go, dag, or + separated set such as rust+dag"],
           emission: EmittedByEmitMainRs
@@ -148,7 +175,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "dependency_pool_index",
           long: "dependency-pool-index",
           value: CliTextValue,
-          cardinality: Required,
+          arity: CliRequired,
           default_value: Present { value: "strict" },
           doc: [],
           emission: EmittedByEmitMainRs
@@ -157,7 +184,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "entry",
           long: "entry",
           value: CliTextValue,
-          cardinality: Optional,
+          arity: CliAtMostOne,
           default_value: none,
           doc: [
             "Entry `.dag` file: compile only this module and its transitive imports",
@@ -187,7 +214,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "source_roots",
           long: "source-root",
           value: CliTextValue,
-          cardinality: Many,
+          arity: CliRepeated,
           default_value: none,
           doc: ["Source root directories (searched recursively for .dag files)"],
           emission: EmittedByEmitMainRs
@@ -196,7 +223,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "function",
           long: "function",
           value: CliTextValue,
-          cardinality: Required,
+          arity: CliRequired,
           default_value: Present { value: "main" },
           doc: ["Entry function to execute (default: \"main\")"],
           emission: EmittedByEmitMainRs
@@ -205,7 +232,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "entry",
           long: "entry",
           value: CliTextValue,
-          cardinality: Optional,
+          arity: CliAtMostOne,
           default_value: none,
           doc: [
             "Entry `.dag` file: load only this module and its transitive imports",
@@ -217,7 +244,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "claim_run",
           long: "claim-run",
           value: CliToggleValue,
-          cardinality: Required,
+          arity: CliRequired,
           default_value: none,
           doc: ["TestClaim / witness run: Bool false -> exit 1; requires --entry"],
           emission: EmittedByEmitMainRs
@@ -226,7 +253,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "args",
           long: "arg",
           value: CliTextValue,
-          cardinality: Many,
+          arity: CliRepeated,
           default_value: none,
           doc: [
             "Named argument for the entry function, repeatable: `--arg name=value`.",
@@ -251,7 +278,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "host",
           long: "host",
           value: CliTextValue,
-          cardinality: Required,
+          arity: CliRequired,
           default_value: none,
           doc: ["Fleet host identity (e.g. \"srv1\") to converge"],
           emission: AbsentFromEmitMainRs
@@ -273,7 +300,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "source_roots",
           long: "source-root",
           value: CliTextValue,
-          cardinality: Many,
+          arity: CliRepeated,
           default_value: none,
           doc: ["Source root directories (searched recursively for .dag files)"],
           emission: AbsentFromEmitMainRs
@@ -282,7 +309,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "entry",
           long: "entry",
           value: CliTextValue,
-          cardinality: Required,
+          arity: CliRequired,
           default_value: none,
           doc: ["Entry `.dag` file: load only this module and its transitive imports"],
           emission: AbsentFromEmitMainRs
@@ -291,7 +318,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "function",
           long: "function",
           value: CliTextValue,
-          cardinality: Required,
+          arity: CliRequired,
           default_value: none,
           doc: ["Handler function: fn(method: String, path: String, body: String) -> ServeWireResponse"],
           emission: AbsentFromEmitMainRs
@@ -300,7 +327,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "host",
           long: "host",
           value: CliTextValue,
-          cardinality: Required,
+          arity: CliRequired,
           default_value: Present { value: "127.0.0.1" },
           doc: [],
           emission: AbsentFromEmitMainRs
@@ -309,7 +336,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "port",
           long: "port",
           value: CliPortValue,
-          cardinality: Required,
+          arity: CliRequired,
           default_value: Present { value: "8080" },
           doc: [],
           emission: AbsentFromEmitMainRs
@@ -318,7 +345,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "release_revision",
           long: "release-revision",
           value: CliTextValue,
-          cardinality: Required,
+          arity: CliRequired,
           default_value: none,
           doc: [
             "Release revision this process serves, bound ONCE at startup and",
@@ -330,7 +357,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "eval_budget_cpu_ms",
           long: "eval-budget-cpu-ms",
           value: CliMillisecondValue,
-          cardinality: Optional,
+          arity: CliAtMostOne,
           default_value: none,
           doc: ["Per-request THREAD-CPU evaluation budget in milliseconds."],
           emission: AbsentFromEmitMainRs
@@ -339,7 +366,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           field: "eval_budget_wall_ms",
           long: "eval-budget-wall-ms",
           value: CliMillisecondValue,
-          cardinality: Optional,
+          arity: CliAtMostOne,
           default_value: none,
           doc: ["Per-request MONOTONIC-WALL evaluation budget in milliseconds."],
           emission: AbsentFromEmitMainRs

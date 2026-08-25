@@ -49,8 +49,11 @@ import extdeps.cargo_version { render_cargo_package_header_prefix }
 import gunbc.stage0_crate_layout_generated { generated_pub_mod_block }
 import gunbc.rust_decl_type_overlay { rust_decl_type_container_overlay_is_admitted }
 import gunbc.cli_dispatch_surface {
+  CliAtMostOne,
   CliMillisecondValue,
   CliOptionRow,
+  CliRepeated,
+  CliRequired,
   CliPortValue,
   CliSubcommandRow,
   CliTextValue,
@@ -58,7 +61,6 @@ import gunbc.cli_dispatch_surface {
   cli_subcommand_emitted_options,
   gunbc_cli_emitted_subcommands
 }
-import std.constructors { Many, Optional, Required }
 import gunbc.stage0_emitted_population_manifest {
   emitted_population_manifest_basename,
   emitted_population_manifest_line_prefix,
@@ -12656,10 +12658,10 @@ fn cli_option_rust_type(opt: CliOptionRow) -> String {
     CliPortValue => "u16"
     CliMillisecondValue => "u64"
   }
-  match opt.cardinality {
-    Required => base
-    Optional => concat("Option<", base, ">")
-    Many => concat("Vec<", base, ">")
+  match opt.arity {
+    CliRequired => base
+    CliAtMostOne => concat("Option<", base, ">")
+    CliRepeated => concat("Vec<", base, ">")
   }
 }
 

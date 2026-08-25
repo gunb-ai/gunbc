@@ -19,7 +19,7 @@ fn option_row(long: String, emission: CliSurfaceEmission) -> CliOptionRow {
     field: long,
     long: long,
     value: CliTextValue,
-    cardinality: Required,
+    arity: CliRequired,
     default_value: none,
     doc: [],
     emission: emission
