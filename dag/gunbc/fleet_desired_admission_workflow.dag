@@ -13,6 +13,7 @@ import extdeps.github.actions {
 }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
+import gunbc.repo_self_build { repo_self_build_command }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.witness_floor_workflow { witness_floor_workflow_name, witness_floor_toolchain_step }
 import gunbc.fleet_desired_admission {
@@ -82,7 +83,7 @@ fn fleet_desired_admission_build_step() -> Step {
   RunStep {
     name: Present { value: "Build the admission binary" },
     id: none,
-    run: "cargo build --release -p v1-compiler --bin gunbc\n",
+    run: concat(repo_self_build_command(bins: ["gunbc"]), "\n"),
     shell: none,
     env: none,
     working_directory: none,

@@ -31,6 +31,19 @@ import extdeps.languages.json.emit {
   json_object,
   json_string,
 }
+import gunbc.scm.json_member {
+  MemberReadRefusal,
+  MemberReadSubjectNotObject,
+  MemberReadMissing,
+  MemberReadDuplicated,
+  MemberReadWrongShape,
+  MemberString,
+  MemberArray,
+  MemberObject,
+  MemberFailed,
+  read_member,
+  read_string_member,
+}
 import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme }
 import extdeps.languages.json.parse {
   JsonMemberLookup,
@@ -112,11 +125,14 @@ import gunbc.scm.object_store {
 // object. A position cannot forge an identity the way a digest could, because the identity at that
 // position is still derived from the bytes that follow it; a corrupted position names a different
 // object or no object at all, and the second refuses.
+// ONE ARM FOR MEMBER READS, NOT FOUR RESTATED ONES. gunbc.scm.json_member owns what reading a named
+// member off a JSON object can fail with; this vocabulary owns what is wrong with a CLOSURE DOCUMENT
+// specifically. Restating that population here put the same four facts under two authorities, and
+// the consequence was measured rather than hypothetical: the repository envelope needed the same
+// reader, imported these arms to get it, and so reported its OWN member failures as closure-document
+// refusals -- a document whose closure was never read.
 type ClosureDocRefusal
-  = ClosureDocNotAnObject
-  | ClosureDocMemberMissing { key: String }
-  | ClosureDocMemberDuplicated { key: String }
-  | ClosureDocMemberWrongShape { key: String }
+  = ClosureDocMemberReadRefused { cause: MemberReadRefusal }
   | ClosureDocFormatUnrecognized { found: String }
   | ClosureDocUnknownKindTag { found: String }
   | ClosureDocUnknownConnectiveTag { found: String }
@@ -191,7 +207,7 @@ fn unexpected_member_step(found: String?, m: JsonKeyValue, allowed: List<String>
 }
 
 // A non-object subject answers `none` here, and that is not a fail-open: every caller reads a
-// required member from the same subject, and read_member refuses a non-object as ClosureDocNotAnObject.
+// required member from the same subject, and read_member refuses a non-object subject outright.
 // Answering an unexpected-member refusal for something that is not an object at all would report the
 // wrong cause for the wrong defect.
 fn unexpected_member_key(v: JsonValue, allowed: List<String>) -> String? {
@@ -534,42 +550,6 @@ fn encode_closure_document(store: ObjectStore, root: ObjectId) -> JsonValue {
 // Decoding
 // ---------------------------------------------------------------------------
 
-// Every member read goes through this, so a missing member, a duplicated member and a non-object
-// subject are three DIFFERENT typed refusals rather than one absent value. json_object_unique_member
-// already separates them; collapsing them here into an Optional would be the state-space conflation
-// DESIGN section 5 names -- and the duplicate arm matters specifically, because a JSON object with
-// the key twice is the shape a naive last-wins reader accepts while carrying two answers.
-type MemberRead
-  = MemberString { value: String }
-  | MemberArray { elements: List<JsonValue> }
-  | MemberObject { value: JsonValue }
-  | MemberFailed { cause: ClosureDocRefusal }
-
-fn read_member(v: JsonValue, key: String) -> MemberRead {
-  match json_object_unique_member(v: v, key: key) {
-    JsonMemberAbsent => MemberFailed { cause: ClosureDocMemberMissing { key: key } }
-    JsonMemberDuplicated { count: _ } => MemberFailed { cause: ClosureDocMemberDuplicated { key: key } }
-    JsonMemberNotAnObject => MemberFailed { cause: ClosureDocNotAnObject }
-    JsonMemberFound { value: found } =>
-      match found {
-        JsonString { value: s } => MemberString { value: s }
-        JsonArray { elements: es } => MemberArray { elements: es }
-        JsonObject { members: _ } => MemberObject { value: found }
-        JsonNull => MemberFailed { cause: ClosureDocMemberWrongShape { key: key } }
-        JsonBool { value: _ } => MemberFailed { cause: ClosureDocMemberWrongShape { key: key } }
-        JsonNumber { lexeme: _ } => MemberFailed { cause: ClosureDocMemberWrongShape { key: key } }
-      }
-  }
-}
-
-fn read_string_member(v: JsonValue, key: String) -> MemberRead {
-  match read_member(v: v, key: key) {
-    MemberString { value: s } => MemberString { value: s }
-    MemberFailed { cause: c } => MemberFailed { cause: c }
-    _ => MemberFailed { cause: ClosureDocMemberWrongShape { key: key } }
-  }
-}
-
 type ConnectiveDecode
   = ConnectiveDecoded { connective: Connective }
   | ConnectiveDecodeFailed { cause: ClosureDocRefusal }
@@ -582,8 +562,8 @@ fn decode_connective(kind_value: JsonValue, tag: String) -> ConnectiveDecode {
     match read_string_member(v: kind_value, key: "identity") {
       MemberString { value: lexeme } =>
         ConnectiveDecoded { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } }
-      MemberFailed { cause: c } => ConnectiveDecodeFailed { cause: c }
-      _ => ConnectiveDecodeFailed { cause: ClosureDocMemberWrongShape { key: "identity" } }
+      MemberFailed { cause: c } => ConnectiveDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
+      _ => ConnectiveDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "identity" } } }
     }
   } else if tag == "conj" { ConnectiveDecoded { connective: Conj } }
   else if tag == "disj" { ConnectiveDecoded { connective: Disj } }
@@ -648,24 +628,24 @@ fn decode_computation_kind(kind_value: JsonValue, btag: String) -> KindDecode {
 
 fn decode_kind(kind_value: JsonValue) -> KindDecode {
   match read_string_member(v: kind_value, key: "kind") {
-    MemberFailed { cause: c } => KindDecodeFailed { cause: c }
+    MemberFailed { cause: c } => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
     MemberString { value: tag } =>
       if tag == "type" {
         match read_string_member(v: kind_value, key: "connective") {
-          MemberFailed { cause: c } => KindDecodeFailed { cause: c }
+          MemberFailed { cause: c } => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
           MemberString { value: ctag } => decode_type_kind(kind_value: kind_value, ctag: ctag)
-          _ => KindDecodeFailed { cause: ClosureDocMemberWrongShape { key: "connective" } }
+          _ => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "connective" } } }
         }
       } else if tag == "computation" {
         match read_string_member(v: kind_value, key: "behavior") {
-          MemberFailed { cause: c } => KindDecodeFailed { cause: c }
+          MemberFailed { cause: c } => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
           MemberString { value: btag } => decode_computation_kind(kind_value: kind_value, btag: btag)
-          _ => KindDecodeFailed { cause: ClosureDocMemberWrongShape { key: "behavior" } }
+          _ => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "behavior" } } }
         }
       } else {
         KindDecodeFailed { cause: ClosureDocUnknownKindTag { found: tag } }
       }
-    _ => KindDecodeFailed { cause: ClosureDocMemberWrongShape { key: "kind" } }
+    _ => KindDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } } }
   }
 }
 
@@ -696,10 +676,10 @@ fn decode_named_label(edge_value: JsonValue) -> LabelDecode {
     Present { value: c } => LabelDecodeFailed { cause: c }
     Absent =>
       match read_string_member(v: edge_value, key: "name") {
-        MemberFailed { cause: c } => LabelDecodeFailed { cause: c }
+        MemberFailed { cause: c } => LabelDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
         MemberString { value: lexeme } =>
           LabelDecoded { label: Named { name: symbol_intern_lexeme(lexeme: lexeme) } }
-        _ => LabelDecodeFailed { cause: ClosureDocMemberWrongShape { key: "name" } }
+        _ => LabelDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "name" } } }
       }
   }
 }
@@ -717,7 +697,7 @@ fn decode_positional_label(edge_value: JsonValue) -> LabelDecode {
 
 fn decode_label(edge_value: JsonValue) -> LabelDecode {
   match read_string_member(v: edge_value, key: "label") {
-    MemberFailed { cause: c } => LabelDecodeFailed { cause: c }
+    MemberFailed { cause: c } => LabelDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
     MemberString { value: tag } =>
       if tag == "named" {
         decode_named_label(edge_value: edge_value)
@@ -726,7 +706,7 @@ fn decode_label(edge_value: JsonValue) -> LabelDecode {
       } else {
         LabelDecodeFailed { cause: ClosureDocUnknownLabelTag { found: tag } }
       }
-    _ => LabelDecodeFailed { cause: ClosureDocMemberWrongShape { key: "label" } }
+    _ => LabelDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "label" } } }
   }
 }
 
@@ -785,7 +765,7 @@ fn decode_target(positions: DecodePositions, target_value: JsonValue) -> TargetD
 // executes it).
 //
 // A duplicated key counts as PRESENT here, so a target carrying `at` twice reaches the arm reader
-// and is refused as ClosureDocMemberDuplicated rather than being miscounted as two arms; the two
+// and is refused as a duplicated member rather than being miscounted as two arms; the two
 // failures are different and keep different names.
 fn target_arm_count(v: JsonValue) -> Int {
   arm_present(v: v, key: "at") + arm_present(v: v, key: "uncontained")
@@ -817,8 +797,8 @@ fn decode_target_arm(positions: DecodePositions, target_value: JsonValue) -> Tar
   match json_object_unique_member(v: target_value, key: "at") {
     JsonMemberFound { value: _ } => decode_at_arm(positions: positions, target_value: target_value)
     JsonMemberDuplicated { count: _ } =>
-      TargetDecodeFailed { cause: ClosureDocMemberDuplicated { key: "at" } }
-    JsonMemberNotAnObject => TargetDecodeFailed { cause: ClosureDocNotAnObject }
+      TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadDuplicated { key: "at" } } }
+    JsonMemberNotAnObject => TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadSubjectNotObject } }
     JsonMemberAbsent => decode_uncontained_arm(target_value: target_value)
   }
 }
@@ -831,8 +811,8 @@ fn decode_at_arm(positions: DecodePositions, target_value: JsonValue) -> TargetD
         Absent =>
           TargetDecodeFailed { cause: ClosureDocEdgeTargetUnresolved { reference: reference } }
       }
-    MemberFailed { cause: c } => TargetDecodeFailed { cause: c }
-    _ => TargetDecodeFailed { cause: ClosureDocMemberWrongShape { key: "at" } }
+    MemberFailed { cause: c } => TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
+    _ => TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "at" } } }
   }
 }
 
@@ -843,8 +823,8 @@ fn decode_uncontained_arm(target_value: JsonValue) -> TargetDecode {
         Present { value: digest } => TargetDecoded { target: digest }
         Absent => TargetDecodeFailed { cause: ClosureDocUncontainedDigestInvalid { found: hex } }
       }
-    MemberFailed { cause: c } => TargetDecodeFailed { cause: c }
-    _ => TargetDecodeFailed { cause: ClosureDocMemberWrongShape { key: "uncontained" } }
+    MemberFailed { cause: c } => TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: c } }
+    _ => TargetDecodeFailed { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "uncontained" } } }
   }
 }
 
@@ -861,7 +841,7 @@ fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonVa
         LabelDecoded { label: label } =>
           match read_member(v: edge_value, key: "target") {
             MemberFailed { cause: c } =>
-              EdgeAcc { edges: acc.edges, refusal: Present { value: c } }
+              EdgeAcc { edges: acc.edges, refusal: Present { value: ClosureDocMemberReadRefused { cause: c } } }
             MemberObject { value: target_value } =>
               match decode_target(positions: positions, target_value: target_value) {
                 TargetDecodeFailed { cause: c } =>
@@ -875,7 +855,7 @@ fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonVa
             _ =>
               EdgeAcc {
                 edges: acc.edges,
-                refusal: Present { value: ClosureDocMemberWrongShape { key: "target" } },
+                refusal: Present { value: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "target" } } },
               }
           }
       }
@@ -919,7 +899,7 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
     Absent =>
       match read_member(v: object_value, key: "kind") {
         MemberFailed { cause: c } =>
-          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
+          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ClosureDocMemberReadRefused { cause: c } } }
         MemberObject { value: kind_value } =>
           match decode_kind(kind_value: kind_value) {
             KindDecodeFailed { cause: c } =>
@@ -927,7 +907,7 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
             KindDecoded { kind: kind } =>
               match read_member(v: object_value, key: "children") {
                 MemberFailed { cause: c } =>
-                  DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: c } }
+                  DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ClosureDocMemberReadRefused { cause: c } } }
                 MemberArray { elements: child_values } =>
                   match fold(
                     child_values,
@@ -964,11 +944,25 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
                       }
                   }
                 _ =>
-                  DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ClosureDocMemberWrongShape { key: "children" } } }
+                  DecodeAcc {
+                    store: acc.store,
+                    positions: acc.positions,
+                    next: acc.next,
+                    refusal: Present {
+                      value: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "children" } }
+                    },
+                  }
               }
           }
         _ =>
-          DecodeAcc { store: acc.store, positions: acc.positions, next: acc.next, refusal: Present { value: ClosureDocMemberWrongShape { key: "kind" } } }
+          DecodeAcc {
+            store: acc.store,
+            positions: acc.positions,
+            next: acc.next,
+            refusal: Present {
+              value: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "kind" } }
+            },
+          }
       }
   }
 }
@@ -989,7 +983,7 @@ fn decode_object_table(object_values: List<JsonValue>) -> DecodeAcc {
 // a format mismatch rather than as a pile of unknown-tag errors from the middle of a walk.
 fn decode_closure_document(v: JsonValue) -> ClosureDocLoadOutcome {
   match read_string_member(v: v, key: "format") {
-    MemberFailed { cause: c } => ClosureDocRefused { cause: c }
+    MemberFailed { cause: c } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: c } }
     MemberString { value: format } =>
       if format != closure_document_format_tag {
         ClosureDocRefused { cause: ClosureDocFormatUnrecognized { found: format } }
@@ -1003,13 +997,13 @@ fn decode_closure_document(v: JsonValue) -> ClosureDocLoadOutcome {
           Absent => decode_closure_document_body(v: v)
         }
       }
-    _ => ClosureDocRefused { cause: ClosureDocMemberWrongShape { key: "format" } }
+    _ => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "format" } } }
   }
 }
 
 fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
   match read_member(v: v, key: "objects") {
-    MemberFailed { cause: c } => ClosureDocRefused { cause: c }
+    MemberFailed { cause: c } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: c } }
     MemberArray { elements: object_values } =>
       match decode_object_table(object_values: object_values) {
         DecodeAcc { store: store, positions: positions, next: _, refusal: refusal } =>
@@ -1017,20 +1011,19 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
             Present { value: c } => ClosureDocRefused { cause: c }
             Absent =>
               match read_member(v: v, key: "root") {
-                MemberFailed { cause: c } => ClosureDocRefused { cause: c }
+                MemberFailed { cause: c } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: c } }
                 MemberObject { value: root_value } =>
                   match decode_target(positions: positions, target_value: root_value) {
                     TargetDecodeFailed { cause: c } => ClosureDocRefused { cause: c }
                     TargetDecoded { target: root } => ClosureDocLoaded { store: store, root: root }
                   }
-                _ => ClosureDocRefused { cause: ClosureDocMemberWrongShape { key: "root" } }
+                _ => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "root" } } }
               }
           }
       }
-    _ => ClosureDocRefused { cause: ClosureDocMemberWrongShape { key: "objects" } }
+    _ => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "objects" } } }
   }
 }
-
 // ---------------------------------------------------------------------------
 // Publication standing
 // ---------------------------------------------------------------------------
@@ -1058,14 +1051,24 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
 // the forged pairing is prevented by construction, so a collision means the structural locator
 // cannot represent both -- not that either is damaged. Classifying it as malformed would let a
 // reader DISCARD A WRITER'S VALID GENERATION over an honest hash coincidence.
+// THE MEMBER-READ ARM DESCENDS ON PURPOSE, and collapsing it to `cause: _` would be the failure
+// mode that costs the most in this particular function. All four member-read causes really do share
+// one remedy today, so the collapsed form is total, compiles, and looks complete -- and a NEW
+// member-read mode would then inherit LoadDocumentMalformed in silence. Malformed is the SOLE
+// standing that permits superseding a newer generation, so an inherited arm sits one step from a
+// reader overwriting a writer's valid document. Descending makes the next mode fail to compile
+// here, where whoever adds it can see what it would cost.
 fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
   match cause {
     ClosureDocFormatUnrecognized { found: _ } => LoadUnsupportedProtocol
     ClosureDocObjectCollision { identity: _ } => LoadIdentityCollision
-    ClosureDocNotAnObject => LoadDocumentMalformed
-    ClosureDocMemberMissing { key: _ } => LoadDocumentMalformed
-    ClosureDocMemberDuplicated { key: _ } => LoadDocumentMalformed
-    ClosureDocMemberWrongShape { key: _ } => LoadDocumentMalformed
+    ClosureDocMemberReadRefused { cause: c } =>
+      match c {
+        MemberReadSubjectNotObject => LoadDocumentMalformed
+        MemberReadMissing { key: _ } => LoadDocumentMalformed
+        MemberReadDuplicated { key: _ } => LoadDocumentMalformed
+        MemberReadWrongShape { key: _ } => LoadDocumentMalformed
+      }
     ClosureDocUnknownKindTag { found: _ } => LoadDocumentMalformed
     ClosureDocUnknownConnectiveTag { found: _ } => LoadDocumentMalformed
     ClosureDocUnknownBehaviorTag { found: _ } => LoadDocumentMalformed
