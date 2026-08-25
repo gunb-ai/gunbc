@@ -28,7 +28,8 @@ use std::rc::Rc;
 
 use v1_compiler::cli_run::declaration_index::{
     citation_debt_findings_against, cited_symbol_findings_against, corpus_findings, index_findings,
-    index_population, DeclarationIntegrityKind,
+    index_get, index_population, planted_control_findings_against, DeclarationIndex,
+    DeclarationIntegrityKind, ModuleDeclarationRecord,
 };
 use v1_compiler::cli_run::run_dag_parse_sweep;
 
