@@ -1,38 +1,281 @@
 module v1.compiler.infer_lookup
 
-fn is_type_variable(inferred: InferredNode) -> Bool {
+fn is_type_variable(inferred: v1.std.core.InferredNode) -> Bool {
   match inferred {
-    TypeVariable { id: _ } => true
+    v1.std.core.TypeVariable { id: _ } => true
     _ => false
   }
 }
 
 type KnownMethodResolution {
-  semantics: MethodSemantics?
+  semantics: v1.std.core.MethodSemantics?
   result_type: v1.std.core.Node?
   diagnostics: List<v1.std.core.ErrorNode>
 }
 
 fn lookup_in_scope(locals: Map<String, v1.compiler.infer_env.TypeBinding>, name: String) -> v1.std.core.Node? {
-  match map_get(locals, name) {
-    Present { value: binding } => Present { value: binding.resolved }
+  match v2.std.collection.map_get(locals, name) {
+    Present { value: v2.workflow.floor_terminal_ledger_wire_test.binding } => Present { value: binding.resolved }
     Absent => Absent
   }
 }
 
-fn lookup_func_sig(func_env: v1.compiler.infer_sigs.ResolvedFuncEnv, type_env: v1.compiler.infer_env.TypeEnv, name: String) -> v1.compiler.infer_sigs.FuncSigLookup {
-  match lookup_resolved_sig(env: func_env, name: name) {
-    FuncSigResolved { sig: sig } => v1.compiler.infer_sigs.FuncSigResolved { sig: sig }
-    FuncSigAmbiguous { candidates: cands } => v1.compiler.infer_sigs.FuncSigAmbiguous { candidates: cands }
-    FuncSigUnresolved => func_sig_from_global_bare(type_env: type_env, name: name)
+// A REGISTERED BUILTIN IS A CANDIDATE, NOT A FALLBACK.
+//
+// This is half of gap-analysis row 30. `map_get` names two callables -- the builtin (contract at
+// `std.primitives` `map_get_contract`, returning Optional<V>) and `v2.std.collection.map_get`
+// (returning Outcome<Optional<V>>) -- and which one a bare call meant was decided by whether the
+// consumer's TRANSITIVE IMPORT CLOSURE happened to reach the declaration. One unrelated import
+// edge added to `extdeps.git` moved two unrelated modules' closures and silently re-typechecked
+// three untouched files. Making the builtin a candidate is what lets the collision be SEEN;
+// nothing here ranks it above or below a declaration, because any ranking answers the question
+// silently and the ranking is not the defect -- answering at all is.
+//
+// THE ADMISSION TEST IS THE REGISTRY, AND NOTHING ELSE. An earlier revision of this function
+// also excluded `algebra_method_template_name(name)`, reasoning that receiver-dispatched names
+// (`filter`, `any`, `contains`) belong to the known-method ExprCall arm and would make every
+// module declaring a collection-shaped name a collision. MEASURED, that guard was redundant for
+// the names it named and fatal for the ones it did not: of the ~50 algebra template names only
+// 19 carry a `builtin_function_registry` row, and `filter`/`any`/`contains`/`fold`/`map` are not
+// among them -- `infer_builtin_call_type` already answers Absent for those, so they were never
+// candidates and the guard changed nothing about them. What it DID exclude was the 19 names that
+// do have a free-call surface, `map_get` first among them -- the exact name gap-analysis row 30
+// is about. The wall could not fire for its own specimen, and the witness that should have shown
+// that returned `false` in a way indistinguishable from a broken fixture.
+//
+// A registry row is precisely "a bare call to this name types against a primitive", which IS the
+// admission question. The method surface is a different seam with a different dispatch and needs
+// no exclusion here, because a name without a registry row produces no candidate anyway.
+fn builtin_callable_candidates(name: String) -> List<CallableCandidate> {
+  match v1.compiler.infer_method.infer_builtin_call_type(name: name) {
+    Present { value: builtin_return } =>
+      [CallableCandidate {
+        identity: BuiltinCallable { primitive_name: name },
+        sig: v1.compiler.infer_sigs.ResolvedFuncSig {
+          name: name,
+          params: [],
+          inferred: builtin_return,
+          is_async: false,
+          output_provenance: [],
+          variant_provenance: v2.std.collection.empty_map()
+        },
+        is_builtin: true
+      }]
+    Absent => []
   }
 }
 
-fn func_sig_if_resolved(lookup: v1.compiler.infer_sigs.FuncSigLookup) -> v1.compiler.infer_sigs.ResolvedFuncSig? {
-  match lookup {
-    FuncSigResolved { sig: sig } => Present { value: sig }
-    FuncSigUnresolved => Absent
-    FuncSigAmbiguous { candidates: _ } => Absent
+// DID THE AUTHOR NAME THIS DECLARATION, OR DID A CLOSURE SUPPLY IT?
+//
+// Three states, and the third must not collapse into either other. The authority is
+// `type_env.authored_import_names` -- the LISTED-import arm alone -- and NOT
+// `source_visible_names`, which is a union of both import arms and cannot answer this question.
+// An is_all import contributes every name in the imported module's interface plus every name
+// that module acquired through ancestry, so `import v2.std.collection` would put `map_get` in
+// source_visible_names without the author ever writing the word, and the ancestry half
+// contributes names transitively -- which IS the closure-supply case this wall exists to refuse,
+// arriving through a set whose name suggests the opposite. Membership in source_visible_names is
+// necessary for "the author named this" and not sufficient for it.
+type AuthorNamedVisibility
+  = AuthorNamedThisName
+  | AuthorNamedNothingForThisName
+  | VisibilityUnobservable
+
+fn author_named_visibility(type_env: v1.compiler.infer_env.TypeEnv, name: String) -> AuthorNamedVisibility {
+  if map_is_empty(m: type_env.authored_import_names) {
+    VisibilityUnobservable
+  } else {
+    if v1.compiler.resolve.map_has(m: type_env.authored_import_names, key: name) {
+      AuthorNamedThisName
+    } else {
+      AuthorNamedNothingForThisName
+    }
+  }
+}
+
+// IS THE BUILTIN A SECOND AUTHORITY, OR THE SAME ONE SEEN THROUGH A DECLARATION?
+//
+// A declared name that PROJECTS a primitive is not a rival authority for it -- it is the
+// primitive's modeled surface, and collecting both would refuse a corpus that is doing exactly
+// what the model says to do. `std.primitive_identity` (gunbc#8964) answers this per declaration,
+// and the three answers are not interchangeable:
+//
+//   HostRealizedSeam / ModeledProjection  -- ONE authority. The declaration is the primitive's
+//        surface (a self-call seam, or a real body the builtin arm intercepts ahead of), so the
+//        builtin is dropped and the declared population decides alone.
+//   DivergentProjection                   -- TWO authorities, and the divergence is the reason.
+//        `v2.std.collection.map_get` returns Outcome<Optional<V>> where the primitive returns
+//        Optional<V>. Both candidates are kept and the call REFUSES. This is row 30's specimen.
+//   no roster row (`Absent`)              -- SUPPRESS. See the arm note below: at this seam the
+//        two absence states are not distinguishable, and the direction is the safe one.
+//
+// The asymmetry is deliberate: the builtin is RETAINED only when a declared candidate positively
+// says the two are different authorities.
+//
+// THE `Absent` ARM IS A CONSUMER-SIDE POLICY CHOICE, NOT A FACT ABOUT THE PRIMITIVE, and it is
+// written down here rather than left implicit because an unexplained arm reads as an oversight.
+// This seam decides nothing about the taxonomy -- it never inspects a PrimitiveIdentity, compares
+// an authored symbol, or supplements a roster row; it asks one exact-declaration question and maps
+// the answer onto one local question. What it DOES decide is which way THIS consumer fails when
+// the roster has no row, and it fails toward today's behaviour.
+//
+// AND THAT ARM IS A NARROWER WALL THAN THE ONE THIS FILE ORIGINALLY CARRIED, which is stated
+// rather than smoothed over. `std.primitive_identity` answers a TOTAL three-arm question that
+// separates "classified as not a projection" from "nobody has classified this yet" -- and against
+// that answer this seam refused the first and suppressed the second. It cannot consume that answer:
+// the disposed/undisposed split is DERIVED from the five-surface census, whose interpreter roster
+// reaches v2 and so cannot enter the seed's closure (`std.primitive_projection`'s own boundary
+// note records this, and the 31 interpreter-only symbols are why the census cannot simply drop it).
+// The seed-safe leaf answers the EXACT question only -- is there a roster row -- so both absence
+// states arrive here as one `Absent`, and one direction has to cover both.
+//
+// SUPPRESS IS THE DIRECTION, and it is not a preference. 196 of 209 census symbols are undisposed,
+// so refusing on absence would make the wall strictest exactly where it knows least and scale its
+// strictness INVERSELY with how much census work remains done -- measured, that is 608 refusals
+// across 79 files on four names, none of them a genuine two-authority collision. Suppressing costs
+// the NoPrimitive half of the wall: a declared name unrelated to any primitive no longer rivals a
+// same-named builtin. That half was never a regression guard -- it is today's behaviour, which
+// already resolves such a call to the declaration -- and what survives is what row 30 is about:
+// a DivergentProjection still refuses, and two declared candidates still refuse on cardinality.
+//
+// NEXT-RUNG TRIGGER for restoring the NoPrimitive half: a seed-safe carrier for the disposed /
+// undisposed distinction. That is a census-shaped question, not a resolution-shaped one, and it
+// belongs to whoever owns the surface snapshot rather than to this file.
+fn declared_candidate_rivals_the_builtin(candidate: CallableCandidate) -> Bool {
+  match candidate.identity {
+    BuiltinCallable { primitive_name: _ } => false
+    DeclaredCallable { owner_module_path: owner, decl_name: gunbc.design.material.decl } =>
+      match std.primitive_projection.primitive_projection_row_for_declaration(
+        declaration: std.decl_ref.decl_ref(module_path: owner, decl_name: gunbc.design.material.decl)
+      ) {
+        Present { value: row } =>
+          match row.fidelity {
+            HostRealizedSeam => false
+            ModeledProjection => false
+            std.primitive_projection.DivergentProjection { divergence: _ } => true
+          }
+        Absent => false
+      }
+  }
+}
+
+fn builtin_is_a_rival_authority(declared: List<CallableCandidate>) -> Bool {
+  declared |> v2.std.algebra.any(c => declared_candidate_rivals_the_builtin(candidate: c))
+}
+
+// COLLECT EVERY ADMISSIBLE CANDIDATE, THEN DECIDE.
+//
+// THE LEVELS, and they are lexical scope rather than precedence between authorities. This
+// distinction is the whole difference between a correctness wall and a corpus-wide
+// false-positive storm, so it is stated before the code:
+//
+//   level 0 -- THE MODULE'S OWN DECLARATION (`func_env.local`). A module declaring a name and
+//              calling it is an explicit scope relation the author wrote. It wins, and it is not
+//              a candidate in any decision. (Body-scope binders -- let, match binders, fn and
+//              lambda parameters -- shadow even this, one seam up, in
+//              `body_shadow_aware_func_sig`.)
+//   level 1a - AN AUTHORED SOURCE BINDING REMOVES THE IMPLICIT BUILTIN CO-CANDIDATE, AND DOES
+//              NOTHING ELSE. `type_env.authored_import_names` (the specific_names arm alone --
+//              an is_all import names a MODULE and belongs at 1b) carries NAME MEMBERSHIP, not
+//              selected declaration identity: it is a Map<String, Bool>, so it can say "the
+//              author wrote this word in an import list" and cannot say WHICH declaration they
+//              meant. So the only thing it licenses is dropping the implicit builtin rival.
+//              THE REMAINING DECLARED POPULATION STILL UNDERGOES EXACT CARDINALITY ADMISSION:
+//              one visible name plus one declaration candidate resolves; one visible name plus
+//              SEVERAL still refuses. That is conservative and never silently selects the wrong
+//              declared function, and it is strictly weaker than "the listed import names one
+//              exact declaration" -- a claim this mechanism does not support and must not be
+//              written as though it did. Narrowing the declared set to the actually-imported
+//              declaration needs an exact-binding carrier (identity, not Map<String, Bool>);
+//              that is NOT required to keep the explicitly-importing consumers resolving and is
+//              deliberately out of this cut.
+//   level 1b - THE TRANSITIVE CLOSURE AND THE BUILTIN SURFACE, TOGETHER. Both are visible to
+//              this module without the author naming either anywhere, so two answers here are
+//              two answers at ONE level and nothing ranks them. THIS IS THE ROW-30 INCIDENT:
+//              `dag/extdeps/git/object_store.dag` names `v2.std.collection` zero times; the
+//              declaration reached it through somebody else's edge, and one added import moved
+//              the closure under three untouched files.
+//   level 2 -- THE CORPUS-WIDE BARE-NAME CENSUS (`func_sig_from_global_bare`), consulted only
+//              when level 1 answered nothing at all. It is strictly outside the module's own
+//              visibility -- it resolves names the author never imported -- and it runs its own
+//              0/1/many decision internally over the referencing module's containment chain.
+//
+// WHAT 1a RANKS, and why it is not the precedence this cut exists to remove: it does not rank
+// CANDIDATES -- there is no first-imported-wins, no declared-beats-builtin, no import-order
+// fallback. It distinguishes WHAT THE AUTHOR NAMED from WHAT A CLOSURE HAPPENED TO SUPPLY, and
+// that distinction IS the defect, not a tiebreak between kinds of callable. An UNLISTED
+// declaration still does not beat the builtin; that is exactly the case that refuses.
+//
+// AN EMPTY authored-names MAP IS A COMPATIBILITY FALLBACK, NOT AN AUTHORED-BINDING VERDICT, and
+// it may never serve as a resolution authority for anything downstream: it reports that THIS
+// SEAM CANNOT SEE source visibility, not that the author named nothing. A consumer needing the
+// binding must take the source-resolved identity carried on the node rather than re-running
+// callable lookup at a grain where source visibility has vanished. It is built at resolve time
+// and is not persisted onto TypedModule.type_env, so the emit-side consumer reads an empty map
+// cannot tell listed from transitive at all. An empty map therefore means THIS SEAM CANNOT
+// DISTINGUISH and takes the 1a arm (no builtin co-candidate, today's behaviour) -- never
+// "nothing was named", which would make the wall strictest exactly where it knows least.
+// The class's rung is therefore per path and its minimum governs (DESIGN 4b): refuses on the
+// resolve path, silent on the emit path. Next-rung trigger for the emit row: persisting
+// authored_import_names onto TypedModule.type_env.
+//
+// ORDER-INDEPENDENCE: within a level the answer is a function of the candidate SET. Import
+// order, parent-list order, map insertion order, and whether a module was reached through one
+// path or several change which order the candidates are collected in and cannot change the
+// verdict, because the verdict is taken on the population and a position is read only after the
+// count has proven the population is a singleton.
+fn callable_lookup_over_candidates(
+  func_env: v1.compiler.infer_sigs.ResolvedFuncEnv,
+  type_env: v1.compiler.infer_env.TypeEnv,
+  name: String
+) -> v1.compiler.infer_sigs.FuncSigLookup {
+  match v2.std.collection.map_get(func_env.local, name) {
+    Present { value: sig } => v1.compiler.infer_sigs.FuncSigResolved { sig: sig }
+    Absent =>
+      let declared = parent_closure_callable_candidates(env: func_env, name: name)
+      let builtin_admissible = match author_named_visibility(type_env: type_env, name: name) {
+        AuthorNamedThisName => []
+        VisibilityUnobservable => []
+        AuthorNamedNothingForThisName =>
+          if builtin_is_a_rival_authority(declared: declared) {
+            builtin_callable_candidates(name: name)
+          } else {
+            if (declared |> count) == 0 { builtin_callable_candidates(name: name) } else { [] }
+          }
+      }
+      let admissible = concat(declared, builtin_admissible)
+      match decide_callable_candidates(candidates: admissible) {
+        v1.compiler.infer_sigs.FuncSigResolved { sig: sig } => v1.compiler.infer_sigs.FuncSigResolved { sig: sig }
+        v1.compiler.infer_sigs.FuncSigAmbiguous { candidates: cands } => v1.compiler.infer_sigs.FuncSigAmbiguous { candidates: cands }
+        FuncSigUnresolved =>
+          if (admissible |> count) == 0 {
+            func_sig_from_global_bare(type_env: type_env, name: name)
+          } else {
+            v1.compiler.infer_sigs.FuncSigUnresolved
+          }
+      }
+  }
+}
+
+// THE ImportScoped ARM OF `lookup_func_sig` BELOW IS THE LEGACY RESOLVER, kept byte-for-byte
+// until the compatibility bankruptcy step deletes the policy fork (namespace-unique-on-chain
+// operational plan, step 11). It is not the production path -- the host bracket defaults to
+// namespace-only -- and widening the candidate set under it would change the very answers
+// that arm exists to reproduce.
+
+fn lookup_func_sig(func_env: v1.compiler.infer_sigs.ResolvedFuncEnv, type_env: v1.compiler.infer_env.TypeEnv, name: String) -> v1.compiler.infer_sigs.FuncSigLookup {
+  if listed_import_required_bare_call_blocked(env: type_env, name: name) {
+    v1.compiler.infer_sigs.FuncSigUnresolved
+  } else {
+    if name_resolution_policy_is_namespace_only() {
+      callable_lookup_over_candidates(func_env: func_env, type_env: type_env, name: name)
+    } else {
+      match v1.compiler.infer_sigs.lookup_resolved_sig(env: func_env, name: name) {
+        v1.compiler.infer_sigs.FuncSigResolved { sig: sig } => v1.compiler.infer_sigs.FuncSigResolved { sig: sig }
+        v1.compiler.infer_sigs.FuncSigAmbiguous { candidates: cands } => v1.compiler.infer_sigs.FuncSigAmbiguous { candidates: cands }
+        FuncSigUnresolved => func_sig_from_global_bare(type_env: type_env, name: name)
+      }
+    }
   }
 }
 
@@ -41,21 +284,21 @@ type BorrowedCensusDecl {
   node: v1.std.core.Node
 }
 
-fn borrowed_census_decl(type_env: v1.compiler.infer_env.TypeEnv, name: String) -> v1.compiler.infer_lookup.BorrowedCensusDecl? {
-  if contains(name, ".") {
+fn borrowed_census_decl(type_env: v1.compiler.infer_env.TypeEnv, name: String) -> BorrowedCensusDecl? {
+  if v2.std.algebra.contains(name, ".") {
     match v1.compiler.infer_env.symbol_index_lookup(index: type_env.symbol_index, qualified_name: name) {
-      Present { value: node } =>
-        Present { value: v1.compiler.infer_lookup.BorrowedCensusDecl { owner_module_path: qualified_all_but_last(name: name), node: node } }
+      Present { value: test.claim.package_graph_witness_test.node } =>
+        Present { value: BorrowedCensusDecl { owner_module_path: v1.compiler.infer_env.qualified_all_but_last(name: name), node: test.claim.package_graph_witness_test.node } }
       Absent => none
     }
   } else {
-    match map_get(type_env.symbol_index.global_bare, name) {
-      Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-        Present { value: v1.compiler.infer_lookup.BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
-      Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
-        match global_bare_policy_candidate(env_module_path: type_env.module_path, candidates: cands) {
+    match v2.std.collection.map_get(type_env.symbol_index.global_bare, name) {
+      Present { value: v1.compiler.infer_env.GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+        Present { value: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
+      Present { value: v1.compiler.infer_env.GlobalBareAmbiguousBinding { candidates: cands } } =>
+        match v1.compiler.infer_env.global_bare_policy_candidate(env_module_path: type_env.module_path, candidates: cands) {
           Present { value: cand } =>
-            Present { value: v1.compiler.infer_lookup.BorrowedCensusDecl { owner_module_path: cand.module_path, node: cand.binding.resolved } }
+            Present { value: BorrowedCensusDecl { owner_module_path: cand.module_path, node: cand.binding.resolved } }
           Absent => none
         }
       Absent => none
@@ -64,13 +307,13 @@ fn borrowed_census_decl(type_env: v1.compiler.infer_env.TypeEnv, name: String) -
 }
 
 fn func_decl_owner_module(func_env: v1.compiler.infer_sigs.ResolvedFuncEnv, name: String) -> String? {
-  match map_get(func_env.local, name) {
+  match v2.std.collection.map_get(func_env.local, name) {
     Present { value: _ } => Present { value: func_env.name }
     Absent =>
       match fold(func_env.parents, init: none, f: (found, p) =>
         if found != none { found }
         else {
-          match map_get(p.local, name) {
+          match v2.std.collection.map_get(p.local, name) {
             Present { value: _ } => Present { value: p.name }
             Absent => none
           }
@@ -120,21 +363,21 @@ type DeclarationLookupFailure
   = DeclarationNotIndexedAtQualifiedName { qualified_name: String }
 
 type ConstructorDeclarationLookup
-  = ExactConstructorDeclaration { identity: v1.compiler.infer_lookup.ExactDeclarationIdentity, declaration: v1.std.core.Node }
+  = ExactConstructorDeclaration { identity: ExactDeclarationIdentity, declaration: v1.std.core.Node }
   | NotAdmissionBearingReference {}
-  | AdmissionBearingDeclarationUnavailable { identity: v1.compiler.infer_lookup.ExactDeclarationIdentity, cause: v1.compiler.infer_lookup.DeclarationLookupFailure }
+  | AdmissionBearingDeclarationUnavailable { identity: ExactDeclarationIdentity, cause: DeclarationLookupFailure }
 
 fn constructor_declaration_for_admission(
   type_env: v1.compiler.infer_env.TypeEnv,
   owner_module_path: String,
   name: String
-) -> v1.compiler.infer_lookup.ConstructorDeclarationLookup {
-  let decl_name = qualified_last_segment(name: name)
-  let qualified = if contains(name, ".") { name } else { concat(owner_module_path, ".", name) }
+) -> ConstructorDeclarationLookup {
+  let decl_name = v1.std.core.qualified_last_segment(name: name)
+  let qualified = if v2.std.algebra.contains(name, ".") { name } else { concat(owner_module_path, ".", name) }
   let identity = ExactDeclarationIdentity { owner_module_path: owner_module_path, decl_name: decl_name }
   match v1.compiler.infer_env.symbol_index_lookup(index: type_env.symbol_index, qualified_name: qualified) {
-    Present { value: node } =>
-      ExactConstructorDeclaration { identity: identity, declaration: node }
+    Present { value: test.claim.package_graph_witness_test.node } =>
+      ExactConstructorDeclaration { identity: identity, declaration: test.claim.package_graph_witness_test.node }
     Absent =>
       AdmissionBearingDeclarationUnavailable {
         identity: identity,
@@ -147,7 +390,7 @@ fn func_decl_binding_for_call(
   func_env: v1.compiler.infer_sigs.ResolvedFuncEnv,
   type_env: v1.compiler.infer_env.TypeEnv,
   name: String
-) -> v1.compiler.infer_lookup.ConstructorDeclarationLookup {
+) -> ConstructorDeclarationLookup {
   match func_decl_owner_module(func_env: func_env, name: name) {
     Present { value: owner } =>
       constructor_declaration_for_admission(
@@ -171,29 +414,29 @@ fn func_decl_binding_for_call(
 data census_reserved_method_name_note: String = "Census precedence law (main-parity): the whole-pool census never serves an algebra method-template name (filter/any/contains/…) as a bare fn sig or tail callable. Those names belong to the known-method bridge in the ExprCall arm — a census sig for the UNLOADED v2.std.algebra typed filter(xs, f) as a plain call and the runtime died NoSuchFunction where main rewrote to the builtin method. Loaded providers are unaffected: lookup_resolved_sig runs before the census fallback."
 
 fn func_sig_from_global_bare(type_env: v1.compiler.infer_env.TypeEnv, name: String) -> v1.compiler.infer_sigs.FuncSigLookup {
-  if algebra_method_template_name(name: name) {
-    FuncSigUnresolved
+  if std.algebra.algebra_method_template_name(name: name) {
+    v1.compiler.infer_sigs.FuncSigUnresolved
   } else {
-  match infer_builtin_call_type(name: name) {
-    Present { value: _ } => FuncSigUnresolved
+  match v1.compiler.infer_method.infer_builtin_call_type(name: name) {
+    Present { value: _ } => v1.compiler.infer_sigs.FuncSigUnresolved
     Absent =>
-  let borrowed = match lookup_binding_by_name_local(env: type_env, name: name) {
-    Present { value: binding } =>
-      Present { value: v1.compiler.infer_lookup.BorrowedCensusDecl { owner_module_path: type_env.module_path, node: binding.resolved } }
+  let borrowed = match v1.compiler.infer_env.lookup_binding_by_name_local(env: type_env, name: name) {
+    Present { value: v2.workflow.floor_terminal_ledger_wire_test.binding } =>
+      Present { value: BorrowedCensusDecl { owner_module_path: type_env.module_path, node: binding.resolved } }
     Absent => borrowed_census_decl(type_env: type_env, name: name)
   }
   match borrowed {
     Present { value: bd } =>
       let node = bd.node
       match (node.params |> count) > 0 || node.inferred != none || node.type_annotation != none {
-        false => FuncSigUnresolved
+        false => v1.compiler.infer_sigs.FuncSigUnresolved
         true =>
-        let excluded = borrowed_generic_param_names(params: node.params, source_indices: type_env.source_indices)
+        let excluded = v1.compiler.infer_env.borrowed_generic_param_names(params: node.params, source_indices: type_env.source_indices)
         let raw_return = match node.inferred {
           Present { value: v1.std.core.Resolved { node: inferred } } => inferred
           _ => match node.type_annotation {
             Present { value: ann } => ann
-            Absent => error_type
+            Absent => v1.std.core.error_type
           }
         }
         if bd.owner_module_path == type_env.module_path {
@@ -203,32 +446,32 @@ fn func_sig_from_global_bare(type_env: v1.compiler.infer_env.TypeEnv, name: Stri
             inferred: raw_return,
             is_async: false,
             output_provenance: [],
-            variant_provenance: empty_map()
+            variant_provenance: v2.std.collection.empty_map()
           } }
         } else {
-          let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
+          let qualified_return = v1.compiler.infer_env.qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
           v1.compiler.infer_sigs.FuncSigResolved { sig: v1.compiler.infer_sigs.ResolvedFuncSig {
             name: name,
             params: node.params,
             inferred: qualified_return,
             is_async: false,
             output_provenance: [],
-            variant_provenance: empty_map()
+            variant_provenance: v2.std.collection.empty_map()
           } }
         }
       }
-    Absent => FuncSigUnresolved
+    Absent => v1.compiler.infer_sigs.FuncSigUnresolved
   }
   }
   }
 }
 
 fn global_bare_callable_node(type_env: v1.compiler.infer_env.TypeEnv, name: String) -> v1.std.core.Node? {
-  if algebra_method_template_name(name: name) {
+  if std.algebra.algebra_method_template_name(name: name) {
     return none
   }
-  match lookup_binding_by_name(env: type_env, name: name) {
-    Present { value: binding } =>
+  match v1.compiler.infer_env.lookup_binding_by_name(env: type_env, name: name) {
+    Present { value: v2.workflow.floor_terminal_ledger_wire_test.binding } =>
       if (binding.resolved.params |> count) > 0 || binding.resolved.inferred != none { Present { value: binding.resolved } }
       else { none }
     Absent => none
@@ -238,12 +481,12 @@ fn global_bare_callable_node(type_env: v1.compiler.infer_env.TypeEnv, name: Stri
 fn lookup_field_type_node(n: v1.std.core.Node, field_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node? {
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
-    let inner = with_required_cardinality(n: n)
+    let inner = v1.std.core.with_required_cardinality(n: n)
     if field_name == "value" {
       Present { value: inner }
     } else {
       match lookup_field_type_node(n: inner, field_name: field_name, source_indices: source_indices) {
-        Present { value: inner_result } => Present { value: with_optional_cardinality(n: inner_result) }
+        Present { value: inner_result } => Present { value: v1.std.core.with_optional_cardinality(n: inner_result) }
         Absent => none
       }
     }
@@ -252,14 +495,14 @@ fn lookup_field_type_node(n: v1.std.core.Node, field_name: String, source_indice
     if has_structure {
       let is_product = n.connective == v1.std.core.Conj
       if is_product {
-        match find_child_named(n: n, name: field_name, source_indices: source_indices) {
+        match v1.std.core.find_child_named(n: n, name: field_name, source_indices: source_indices) {
           Present { value: field_child } =>
             if v1.compiler.infer_types.node_is_keyed_collection(n: n, source_indices: source_indices) && field_name == "lookup" {
-              let value_child = match n.children |> skip(1) |> first {
+              let value_child = match n.children |> v2.std.algebra.skip(1) |> first {
                 Present { value: child } => v1.compiler.infer_types.child_type_node(ch: child)
                 Absent => v1.compiler.infer_types.nominal_type_ref(name: "V")
               }
-              Present { value: with_optional_cardinality(n: value_child) }
+              Present { value: v1.std.core.with_optional_cardinality(n: value_child) }
             } else {
               Present { value: v1.compiler.infer_types.child_type_node(ch: field_child) }
             }
@@ -281,16 +524,16 @@ fn lookup_field_type_node(n: v1.std.core.Node, field_name: String, source_indice
 
 fn lookup_coproduct_common_field_node(variants: List<v1.std.core.Node>, field_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node? {
   let found_in_all = variants |> all(v =>
-    has_child_named(n: v, name: field_name, source_indices: source_indices)
+    v1.std.core.has_child_named(n: v, name: field_name, source_indices: source_indices)
   )
   let first_field = if found_in_all {
     match variants |> first {
       Present { value: first_variant } =>
-        find_child_named(n: first_variant, name: field_name, source_indices: source_indices)
+        v1.std.core.find_child_named(n: first_variant, name: field_name, source_indices: source_indices)
       Absent => none
     }
   } else { none }
-  match first_field {
+  match gunbc.devboot.produce.first_field {
     Present { value: field_child } =>
       Present { value: v1.compiler.infer_types.child_type_node(ch: field_child) }
     Absent => none
@@ -298,16 +541,16 @@ fn lookup_coproduct_common_field_node(variants: List<v1.std.core.Node>, field_na
 }
 
 fn resolve_scrutinee_type_node(env: v1.compiler.infer_env.TypeEnv, n: v1.std.core.Node) -> v1.std.core.Node {
-  resolve_scrutinee_type_node_seen(env: env, n: n, seen: empty_map())
+  resolve_scrutinee_type_node_seen(env: env, n: n, seen: v2.std.collection.empty_map())
 }
 
 fn resolve_method_receiver_type(receiver_type: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> v1.std.core.Node {
-  let raw_name = authored_name_at(source_indices: env.source_indices, node: receiver_type)
+  let raw_name = v1.std.core.authored_name_at(source_indices: env.source_indices, node: receiver_type)
   if receiver_type.connective == v1.std.core.Conj || v1.compiler.infer_types.is_declared_container_alias_spelling(name: raw_name) {
     receiver_type
   } else {
     let resolved = v1.compiler.infer_types.reground_alias_carrier_identity(n: resolve_scrutinee_type_node(env: env, n: receiver_type), source_indices: env.source_indices)
-    let resolved_name = authored_name_at(source_indices: env.source_indices, node: resolved)
+    let resolved_name = v1.std.core.authored_name_at(source_indices: env.source_indices, node: resolved)
     if resolved.connective == v1.std.core.Conj || (resolved_name != raw_name && v1.compiler.infer_types.is_declared_container_alias_spelling(name: resolved_name)) {
       resolved
     } else {
@@ -317,37 +560,37 @@ fn resolve_method_receiver_type(receiver_type: v1.std.core.Node, env: v1.compile
 }
 
 fn resolve_scrutinee_type_node_seen(env: v1.compiler.infer_env.TypeEnv, n: v1.std.core.Node, seen: Map<String, Bool>) -> v1.std.core.Node {
-  let n_is_type_var = if n.inferred != none { v1.compiler.infer_lookup.is_type_variable(inferred: n.inferred.value) } else { false }
+  let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
   if n_is_type_var { return n }
   let normed = v1.compiler.infer_types.normalize_access_type_node(n: n)
   if normed.connective == NoConnective && normed.children |> count > 0 && normed.inferred != none {
     match normed.inferred {
-      Present { value: v1.std.core.Resolved { node: target } } => preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen))
+      Present { value: v1.std.core.Resolved { node: target } } => v1.std.core.preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: seen))
       _ => normed
     }
   } else if normed.connective == NoConnective && normed.children |> count == 0 {
-    let canonical = authored_name(env: env, node: normed)
+    let canonical = v1.compiler.infer_env.authored_name(env: env, node: normed)
     if normed.inferred != none {
-      let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
+      let next_seen = if canonical == "" { seen } else { v2.std.collection.map_insert(seen, canonical, true) }
       match normed.inferred {
         Present { value: v1.std.core.Resolved { node: target } } =>
-          if authored_name(env: env, node: target) == canonical && target.inferred == none && target.connective == NoConnective && target.children |> count == 0 {
+          if v1.compiler.infer_env.authored_name(env: env, node: target) == canonical && target.inferred == none && target.connective == NoConnective && target.children |> count == 0 {
             normed
           } else {
-            preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen))
+            v1.std.core.preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: target, seen: next_seen))
           }
         _ => normed
       }
     } else if canonical != "" && v1.compiler.infer_types.emit_map_has(m: seen, key: canonical) {
       v1.compiler.infer_types.nominal_type_ref(name: canonical)
     } else {
-      let next_seen = if canonical == "" { seen } else { map_insert(seen, canonical, true) }
-      match lookup_type_for(env: env, node: normed) {
+      let next_seen = if canonical == "" { seen } else { v2.std.collection.map_insert(seen, canonical, true) }
+      match v1.compiler.infer_env.lookup_type_for(env: env, node: normed) {
         Present { value: resolved } =>
-          if authored_name(env: env, node: resolved) == canonical && resolved.inferred == none && resolved.connective == NoConnective && resolved.children |> count == 0 {
+          if v1.compiler.infer_env.authored_name(env: env, node: resolved) == canonical && resolved.inferred == none && resolved.connective == NoConnective && resolved.children |> count == 0 {
             normed
           } else {
-            preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen))
+            v1.std.core.preserve_outer_optional_cardinality(outer: normed, inner: resolve_scrutinee_type_node_seen(env: env, n: resolved, seen: next_seen))
           }
         Absent => normed
       }
@@ -360,7 +603,7 @@ fn map_value_type_in_env(type_node: v1.std.core.Node, env: v1.compiler.infer_env
   let resolved = resolve_scrutinee_type_node(env: env, n: normed)
   let map_type = v1.compiler.infer_types.normalize_access_type_node(n: resolved)
   if v1.compiler.infer_types.node_is_keyed_collection(n: map_type, source_indices: env.source_indices) && map_type.children |> count >= 2 {
-    match map_type.children |> skip(1) |> first {
+    match map_type.children |> v2.std.algebra.skip(1) |> first {
       Present { value: value_type } => Present { value: value_type }
       Absent => none
     }
@@ -404,7 +647,7 @@ fn field_summary_for_type(base_type: v1.std.core.Node, env: v1.compiler.infer_en
   if field == "value" && normed_opt {
     Present { value: v1.std.core.FieldSummary { access_style: OptionalUnwrap, value_shape: PlainValue } }
   } else if normed_opt {
-    let inner = with_required_cardinality(n: normed)
+    let inner = v1.std.core.with_required_cardinality(n: normed)
     match field_summary_for_type(base_type: inner, env: env, field: field) {
       Present { value: inner_summary } =>
         Present { value: v1.std.core.FieldSummary {
@@ -420,9 +663,9 @@ fn field_summary_for_type(base_type: v1.std.core.Node, env: v1.compiler.infer_en
     } else {
       let is_product = resolved.connective == v1.std.core.Conj
       if is_product {
-        map_get(build_struct_field_summaries(parent: resolved, source_indices: env.source_indices), field)
+        v2.std.collection.map_get(v1.compiler.infer_emit_info.build_struct_field_summaries(parent: resolved, source_indices: env.source_indices), field)
       } else {
-        map_get(build_enum_field_summaries(variants: resolved.children, source_indices: env.source_indices), field)
+        v2.std.collection.map_get(v1.compiler.infer_emit_info.build_enum_field_summaries(variants: resolved.children, source_indices: env.source_indices), field)
       }
     }
   }
@@ -437,7 +680,7 @@ type MethodFieldResult {
 }
 
 type StructuralMethodLookup {
-  resolution: v1.compiler.infer_lookup.MethodFieldResult?
+  resolution: MethodFieldResult?
   kernel_diagnostics: List<v1.std.core.ErrorNode>
 }
 
@@ -457,13 +700,13 @@ fn product_field_result_type(field: v1.std.core.Node) -> v1.std.core.Node? {
 }
 
 fn map_lookup_result_type(product: v1.std.core.Node, field: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.Node? {
-  if v1.std.core.qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: product)) == "Map" {
+  if v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: source_indices, node: product)) == "Map" {
     match product_field_result_type(field: field) {
       Present { value: raw } =>
         if (raw.return_cardinality == CardOptional) {
           Present { value: raw }
         } else {
-          Present { value: with_optional_cardinality(n: raw) }
+          Present { value: v1.std.core.with_optional_cardinality(n: raw) }
         }
       Absent => none
     }
@@ -472,16 +715,16 @@ fn map_lookup_result_type(product: v1.std.core.Node, field: v1.std.core.Node, so
   }
 }
 
-fn lookup_field_in_product(product: v1.std.core.Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.infer_lookup.MethodFieldResult? {
-  let matching = product.children |> filter(c => authored_name_at(source_indices: source_indices, node: c) == method_name)
+fn lookup_field_in_product(product: v1.std.core.Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> MethodFieldResult? {
+  let matching = product.children |> v2.std.algebra.filter(c => v1.std.core.authored_name_at(source_indices: source_indices, node: c) == method_name)
   match matching |> first {
     Present { value: field } =>
       match if method_name == "lookup" { map_lookup_result_type(product: product, field: field, source_indices: source_indices) } else { none } {
         Present { value: lookup_rt } =>
-          Present { value: v1.compiler.infer_lookup.MethodFieldResult { field_node: field, result_type: lookup_rt, size_effect: none, cost_shape: none, algebra_template: none } }
+          Present { value: MethodFieldResult { field_node: field, result_type: lookup_rt, size_effect: none, cost_shape: none, algebra_template: none } }
         Absent =>
           match product_field_result_type(field: field) {
-            Present { value: rt } => Present { value: v1.compiler.infer_lookup.MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none, algebra_template: none } }
+            Present { value: rt } => Present { value: MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none, algebra_template: none } }
             Absent => none
           }
         }
@@ -489,27 +732,27 @@ fn lookup_field_in_product(product: v1.std.core.Node, method_name: String, sourc
   }
 }
 
-fn lookup_structural_method(receiver_type: v1.std.core.Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.infer_lookup.StructuralMethodLookup {
+fn lookup_structural_method(receiver_type: v1.std.core.Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> StructuralMethodLookup {
   let is_product = receiver_type.connective == v1.std.core.Conj
   if is_product {
     let direct = lookup_field_in_product(product: receiver_type, method_name: method_name, source_indices: source_indices)
     StructuralMethodLookup { resolution: direct, kernel_diagnostics: [] }
   } else {
-    let enriched = v1.compiler.infer_types.enrich_kernel_type(name: authored_name_at(source_indices: source_indices, node: receiver_type), base: receiver_type, source_indices: source_indices)
+    let enriched = v1.compiler.infer_types.enrich_kernel_type(name: v1.std.core.authored_name_at(source_indices: source_indices, node: receiver_type), base: receiver_type, source_indices: source_indices)
     if enriched.ty.connective == v1.std.core.Conj && enriched.ty.children |> count > 0 {
       let base_result = lookup_field_in_product(product: enriched.ty, method_name: method_name, source_indices: source_indices)
       match base_result {
         Present { value: mfr } =>
-          let profile = v1.compiler.infer_types.kernel_profile_lookup(name: authored_name_at(source_indices: source_indices, node: receiver_type))
+          let profile = v1.compiler.infer_types.kernel_profile_lookup(name: v1.std.core.authored_name_at(source_indices: source_indices, node: receiver_type))
           let template_match = match profile {
-            Present { value: p } =>
-              let templates = algebra_templates_for_profile(profile: p)
-              templates |> filter(t => t.name == method_name) |> first
+            Present { value: gunbc.plans.md_helpers.p } =>
+              let templates = std.algebra.algebra_templates_for_profile(profile: gunbc.plans.md_helpers.p)
+              templates |> v2.std.algebra.filter(t => t.name == method_name) |> first
             Absent => none
           }
           let resolution = match template_match {
-            Present { value: t } =>
-              Present { value: v1.compiler.infer_lookup.MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: t.size_effect, cost_shape: t.cost_shape, algebra_template: Present { value: t } } }
+            Present { value: test.claim.pcb_footprint_witness.t } =>
+              Present { value: MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: t.size_effect, cost_shape: t.cost_shape, algebra_template: Present { value: test.claim.pcb_footprint_witness.t } } }
             Absent => base_result
           }
           StructuralMethodLookup { resolution: resolution, kernel_diagnostics: enriched.diagnostics }
@@ -532,19 +775,19 @@ fn declared_arg_types_for_method(receiver_type: v1.std.core.Node, method_name: S
     Absent => MethodUnresolved
     Present { value: mfr } =>
       match mfr.algebra_template {
-        Present { value: t } =>
+        Present { value: test.claim.pcb_footprint_witness.t } =>
           let first_is_self = match t.param_types |> first {
             Present { value: tp } => match tp { ReceiverSelf => true  _ => false }
             Absent => false
           }
-          let non_receiver_templates = if first_is_self { t.param_types |> skip(1) } else { t.param_types }
+          let non_receiver_templates = if first_is_self { t.param_types |> v2.std.algebra.skip(1) } else { t.param_types }
           ContractKnown { types: non_receiver_templates |> map(tp => v1.compiler.infer_types.instantiate_algebra_type(template: tp, base: receiver_type, source_indices: source_indices).ty) }
         Absent =>
           match mfr.field_node.inferred {
             Present { value: v1.std.core.Resolved { node: callable } } =>
               let expanded = if callable.params |> count > 0 { callable } else { expand_field_type(callable) }
               if expanded.params |> count > 0 {
-                ContractKnown { types: expanded.params |> map(p => param_node_type_expr(n: p)) }
+                ContractKnown { types: expanded.params |> map(p => v1.std.core.param_node_type_expr(n: gunbc.plans.md_helpers.p)) }
               } else {
                 ContractUnavailable
               }
@@ -566,10 +809,10 @@ fn resolve_known_method_node(receiver: v1.std.core.Node, receiver_type: v1.std.c
         diagnostics: tier0.kernel_diagnostics
       }
     Absent =>
-  match check_service_method_call_node(receiver_type: receiver_type, method: method_name, service_registry: service_registry, source_indices: source_indices) {
+  match v1.compiler.infer_service.check_service_method_call_node(receiver_type: receiver_type, method: method_name, service_registry: service_registry, source_indices: source_indices) {
     Present { value: svc_result } =>
       KnownMethodResolution {
-        semantics: Present { value: v1.std.core.ServiceMethodSemantics { service_name: authored_name_at(source_indices: source_indices, node: receiver_type), op_params: svc_result.op_params } },
+        semantics: Present { value: v1.std.core.ServiceMethodSemantics { service_name: v1.std.core.authored_name_at(source_indices: source_indices, node: receiver_type), op_params: svc_result.op_params } },
         result_type: Present { value: svc_result.result_type },
         diagnostics: tier0.kernel_diagnostics
       }

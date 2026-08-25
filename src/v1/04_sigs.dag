@@ -16,17 +16,17 @@ type ResolvedFuncSig {
 
 type ResolvedFuncEnv {
   name: String
-  local: Map<String, v1.compiler.infer_sigs.ResolvedFuncSig>
-  parents: List<v1.compiler.infer_sigs.ResolvedFuncEnv>
+  local: Map<String, ResolvedFuncSig>
+  parents: List<ResolvedFuncEnv>
 }
 
 type ResolveFuncSigsResult {
-  func_env: v1.compiler.infer_sigs.ResolvedFuncEnv
+  func_env: ResolvedFuncEnv
   diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type SigsAccum {
-  signatures: Map<String, v1.compiler.infer_sigs.ResolvedFuncSig>
+  signatures: Map<String, ResolvedFuncSig>
   diagnostics: List<v1.std.core.ErrorNode>
 }
 
@@ -39,67 +39,187 @@ data sigs_env_flat_parents_note: String = "Cost shape (§6 bare-minimum cost): R
 
 type FlattenAccum {
   seen: Map<String, Bool>
-  out: List<v1.compiler.infer_sigs.ResolvedFuncEnv>
+  out: List<ResolvedFuncEnv>
 }
 
-fn flatten_parent_envs(direct_parents: List<v1.compiler.infer_sigs.ResolvedFuncEnv>) -> List<v1.compiler.infer_sigs.ResolvedFuncEnv> {
-  let ordered = flat_map(direct_parents |> reverse, p => concat([p], p.parents))
-  let dedup = fold(ordered, init: v1.compiler.infer_sigs.FlattenAccum { seen: empty_map(), out: [] }, f: (acc, p) =>
-    if emit_map_has(m: acc.seen, key: p.name) { acc }
-    else { FlattenAccum { seen: map_insert(acc.seen, p.name, true), out: list_push(acc.out, p) } }
+fn flatten_parent_envs(direct_parents: List<ResolvedFuncEnv>) -> List<ResolvedFuncEnv> {
+  let ordered = flat_map(direct_parents |> reverse, p => concat([gunbc.plans.md_helpers.p], p.parents))
+  let dedup = fold(ordered, init: FlattenAccum { seen: v2.std.collection.empty_map(), out: [] }, f: (acc, p) =>
+    if v1.compiler.infer_types.emit_map_has(m: acc.seen, key: p.name) { acc }
+    else { FlattenAccum { seen: v2.std.collection.map_insert(acc.seen, p.name, true), out: list_push(acc.out, gunbc.plans.md_helpers.p) } }
   )
   dedup.out
 }
 
 type ParentSigScan {
-  sig: v1.compiler.infer_sigs.ResolvedFuncSig?
+  sig: ResolvedFuncSig?
   match_count: Int
   first_parent: String?
 }
 
-data func_sig_lookup_outcome_note: String = "namespace-resolution-design.md 13 / 8 step 1, fn path: ResolvedFuncSig? overloaded Absent as 'keep looking' (the census fallback fires on it), so a refusal had nowhere to go — the first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds, FuncSigUnresolved means genuinely-no-sig (census fallback may still run), FuncSigAmbiguous carries the full candidate list and REFUSES — it never falls through to a fallback. Under ImportScoped (host bracket false) the first-hit behavior remains until the downstream production flip; under NamespaceOnlyY exactly-one match across the flat parent closure resolves, two-plus refuses through module_path_owner_binding_decide. Own-module local hit stays first on both arms."
+// namespace-resolution-design.md 13 / 8 step 1, fn path. `ResolvedFuncSig?` overloaded Absent as
+// "keep looking" -- the census fallback fires on it -- so a refusal had nowhere to go, and the
+// first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO
+// refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds,
+// FuncSigUnresolved means no admissible callable answered (the census fallback may still run),
+// FuncSigAmbiguous carries every candidate and REFUSES -- it never falls through to a fallback.
+// Under ImportScoped (host bracket false) the first-hit behaviour remains until the downstream
+// production flip; under NamespaceOnlyY the candidates are COLLECTED and then decided.
+// Own-module local hit stays first on both arms.
+//
+// WHAT THE 2026-08-22 CUT CHANGED, because the paragraph above was true when written and
+// described a wall that could not describe the collision it was built for (gap-analysis row 30).
+// Two independent mechanisms kept FuncSigAmbiguous unreachable for a cross-authority collision,
+// and either one alone leaves the class open:
+//
+//   (a) THE CANDIDATE SET WAS NEVER ASSEMBLED. `lookup_func_sig` asked this environment first
+//       and consulted the global/builtin path ONLY on the Unresolved arm, so a declared
+//       `map_get` and the registered builtin `map_get` were never co-candidates -- the declared
+//       one won by SHORT-CIRCUIT, and the arm was reachable only among declarations. The fix is
+//       here and in `v1.compiler.infer_lookup` `callable_lookup_over_candidates`: one admissible
+//       level is collected whole, then decided.
+//   (b) WHERE AMBIGUITY WAS CONSTRUCTED, ONE PROJECTION ERASED IT. `func_sig_if_resolved` mapped
+//       FuncSigAmbiguous to the same Absent that means "no such signature", and ten call sites
+//       read the seed's inference through it. That projection is deleted; see its replacement's
+//       note in `v1.compiler.infer_lookup`.
+//
+// The lesson this file keeps: a variant that exists, is named, and is documented as refusing
+// still establishes nothing while nothing can construct it for the class it was built for. A
+// grep for `FuncSigAmbiguous` reported this wall as built for as long as that was true.
 
-type FuncSigLookup
-  = FuncSigResolved { sig: v1.compiler.infer_sigs.ResolvedFuncSig }
-  | FuncSigUnresolved
-  | FuncSigAmbiguous { candidates: List<String> }
+// WHAT A CALLABLE NAME CAN RESOLVE TO, AS AN IDENTITY RATHER THAN A SPELLING.
+//
+// FuncSigAmbiguous carried List<String> and the strings were built at the point of refusal by
+// pasting an owner path onto the referenced name. That is enough to print and not enough to
+// decide with: it cannot represent a REGISTERED BUILTIN at all, and a builtin is one half of
+// the collision this vocabulary exists to describe (gap-analysis row 30 -- `map_get` is both
+// `v2.std.collection.map_get` returning Outcome<Optional<V>> and a builtin returning
+// Optional<V>). So the candidate is the identity, and the label is a projection of it.
+type CallableIdentity
+  = DeclaredCallable { owner_module_path: String, decl_name: String }
+  | BuiltinCallable { primitive_name: String }
 
-type ChainSigScan {
-  first_sig: v1.compiler.infer_sigs.ResolvedFuncSig?
-  owners: List<String>
+type CallableCandidate {
+  identity: CallableIdentity
+  sig: ResolvedFuncSig
+  is_builtin: Bool
 }
 
-fn lookup_resolved_sig_unique_across_parents(env: v1.compiler.infer_sigs.ResolvedFuncEnv, name: String) -> v1.compiler.infer_sigs.FuncSigLookup {
-  let scan = fold(env.parents, init: v1.compiler.infer_sigs.ChainSigScan { first_sig: none, owners: [] }, f: (acc, p) =>
-    match map_get(p.local, name) {
-      Present { value: sig } =>
-        ChainSigScan {
-          first_sig: if acc.first_sig != none { acc.first_sig } else { Present { value: sig } },
-          owners: concat(acc.owners, [p.name])
-        }
-      Absent => acc
-    }
-  )
-  match module_path_owner_binding_decide(owners: scan.owners) {
-    ModulePathBindingMiss => FuncSigUnresolved
-    ModulePathBindingHit { owner: _ } =>
-      match scan.first_sig {
-        Present { value: sig } => FuncSigResolved { sig: sig }
-        Absent => FuncSigUnresolved
-      }
-    ModulePathBindingAmbiguous { owners: _ } =>
-      FuncSigAmbiguous {
-        candidates: ambiguity_labels_from_decide(
-          owners: scan.owners,
-          name: name,
-        ),
-      }
+// The one rendering of a candidate for human-facing diagnostics. `<builtin:map_get>` is spelled
+// with the brackets deliberately: it is not a qualified name and must not read as one, because
+// the repair for it is not "qualify it" -- there is nothing to qualify.
+fn callable_identity_label(identity: CallableIdentity) -> String {
+  match identity {
+    DeclaredCallable { owner_module_path: owner, decl_name: gunbc.design.material.decl } => concat(owner, ".", gunbc.design.material.decl)
+    BuiltinCallable { primitive_name: prim } => concat("<builtin:", prim, ">")
   }
 }
 
-fn lookup_resolved_sig_with_telemetry(env: v1.compiler.infer_sigs.ResolvedFuncEnv, name: String) -> v1.compiler.infer_sigs.ResolvedFuncSig? {
-  let scan = fold(env.parents, init: v1.compiler.infer_sigs.ParentSigScan { sig: none, match_count: 0, first_parent: none }, f: (acc, p) =>
-    match map_get(p.local, name) {
+fn callable_candidate_labels(candidates: List<CallableCandidate>) -> List<String> {
+  v2.lens.grounding.candidates |> map(c => callable_identity_label(identity: c.identity))
+}
+
+type FuncSigLookup
+  = FuncSigResolved { sig: ResolvedFuncSig }
+  | FuncSigUnresolved
+  | FuncSigAmbiguous { candidates: List<CallableCandidate> }
+
+// THE PROJECTION THAT USED TO ERASE THE AMBIGUITY ARM, SPLIT SO IT CANNOT.
+//
+// `func_sig_if_resolved` returned `ResolvedFuncSig?` and mapped BOTH FuncSigUnresolved and
+// FuncSigAmbiguous onto Absent. Ten call sites read the seed's inference through it -- nine
+// provenance/descent derivations in `v1.compiler.infer` and one argument-ordering projection in
+// `v1.compiler.emit` -- so every one of them read "two authorities answered" as "no authority
+// answered". Those are different states with OPPOSITE repairs (qualify the reference / declare
+// the function), which is DESIGN's not-applicable-versus-malformed conflation in its third
+// recorded form.
+//
+// WHAT THE SITES ACTUALLY DO WITH IT, because the split must not be mistaken for a behaviour
+// change at a seam that has no way to refuse: every one of them derives an OPTIONAL FACT off a
+// signature -- output provenance, variant provenance, a receiver's parameter name, a named-arg
+// ordering -- and contributes nothing when there is no single signature to read. Contributing
+// nothing remains correct for an ambiguous callee: there is no one signature whose facts could
+// be read, and the reference itself is refused at the decision seams (the ExprVar and ExprCall
+// arms of `v1.compiler.infer`), so no `Accepted` program reaches emit carrying one. What the
+// split changes is that the carrier can no longer SPELL the collapse: a site must name the arm
+// it is handling, and a future site that wants to treat ambiguity differently has the candidate
+// list in hand rather than an Absent that has already forgotten it.
+type NoDerivableSigReason
+  = DerivationSigUnresolved
+  | DerivationSigAmbiguous { candidates: List<CallableCandidate> }
+
+type DerivedCalleeSig
+  = DerivedFromSig { sig: ResolvedFuncSig }
+  | NoDerivableSig { reason: NoDerivableSigReason }
+
+fn func_sig_for_derivation(lookup: FuncSigLookup) -> DerivedCalleeSig {
+  match lookup {
+    FuncSigResolved { sig: sig } => DerivedFromSig { sig: sig }
+    FuncSigUnresolved => NoDerivableSig { reason: DerivationSigUnresolved }
+    FuncSigAmbiguous { candidates: cands } =>
+      NoDerivableSig { reason: DerivationSigAmbiguous { candidates: cands } }
+  }
+}
+
+fn lookup_resolved_sig_unique_across_parents(env: ResolvedFuncEnv, name: String) -> FuncSigLookup {
+  decide_callable_candidates(candidates: parent_closure_callable_candidates(env: env, name: name))
+}
+
+
+// COLLECT, THEN DECIDE -- the whole point of this lane.
+//
+// EVERY member of the flat parent closure that declares the name becomes a candidate. The old
+// shape stopped at the FIRST hit and kept a separate owner list only to count with; the sig it
+// answered with therefore came from a position in a list rather than from a decision, and a
+// second authority that was not a `fn` at all could never appear beside it.
+fn parent_closure_callable_candidates(env: ResolvedFuncEnv, name: String) -> List<CallableCandidate> {
+  fold(env.parents, init: [], f: (acc, p) =>
+    match v2.std.collection.map_get(p.local, name) {
+      Present { value: sig } =>
+        concat(acc, [CallableCandidate {
+          identity: DeclaredCallable { owner_module_path: p.name, decl_name: name },
+          sig: sig,
+          is_builtin: false
+        }])
+      Absent => acc
+    }
+  )
+}
+
+// THE DECISION, AND IT IS ORDER-INDEPENDENT BY CONSTRUCTION.
+//
+// Cardinality routes through module_path_owner_binding_decide exactly as the two existing
+// candidate sites do -- 0/1/many is one authority in this compiler, not a count comparison
+// re-spelled per call site. Position in the list is read ONLY after the count has proven the
+// population is a singleton, which is extraction rather than selection (the rule
+// gunbc.roadmap_publish states for the same move).
+//
+// A LONE BUILTIN ANSWERS UNRESOLVED, DELIBERATELY. The builtin has no declared parameter list
+// in this compiler -- `builtin_function_registry` maps a name to a RETURN TYPE -- so a
+// FuncSigResolved built over it would carry `params: []` and lie about the call's shape to
+// every consumer of a sig. Unresolved is what the ExprCall arm already needs in order to route
+// the call to the known-builtin bridge, which is the path that types builtins correctly. So the
+// builtin is a CANDIDATE in the decision and never an answer: it can make a population
+// ambiguous, and on its own it hands the call back to the bridge exactly as before.
+fn decide_callable_candidates(candidates: List<CallableCandidate>) -> FuncSigLookup {
+  match v1.compiler.infer_occurrence_binding.module_path_owner_binding_decide(
+    owners: v2.lens.grounding.candidates |> map(c => callable_identity_label(identity: c.identity))
+  ) {
+    ModulePathBindingMiss => FuncSigUnresolved
+    v1.compiler.infer_occurrence_binding.ModulePathBindingHit { owner: _ } =>
+      match v2.lens.grounding.candidates |> first {
+        Present { value: only } =>
+          if only.is_builtin { FuncSigUnresolved } else { FuncSigResolved { sig: only.sig } }
+        Absent => FuncSigUnresolved
+      }
+    v1.compiler.infer_occurrence_binding.ModulePathBindingAmbiguous { owners: _ } =>
+      FuncSigAmbiguous { candidates: v2.lens.grounding.candidates }
+  }
+}
+
+fn lookup_resolved_sig_with_telemetry(env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? {
+  let scan = fold(env.parents, init: ParentSigScan { sig: none, match_count: 0, first_parent: none }, f: (acc, p) =>
+    match v2.std.collection.map_get(p.local, name) {
       Present { value: sig } =>
         ParentSigScan {
           sig: if acc.sig != none { acc.sig } else { Present { value: sig } },
@@ -124,8 +244,8 @@ fn lookup_resolved_sig_with_telemetry(env: v1.compiler.infer_sigs.ResolvedFuncEn
   scan.sig
 }
 
-fn lookup_resolved_sig(env: v1.compiler.infer_sigs.ResolvedFuncEnv, name: String) -> v1.compiler.infer_sigs.FuncSigLookup {
-  match map_get(env.local, name) {
+fn lookup_resolved_sig(env: ResolvedFuncEnv, name: String) -> FuncSigLookup {
+  match v2.std.collection.map_get(env.local, name) {
     Present { value: sig } => FuncSigResolved { sig: sig }
     Absent =>
       if name_resolution_policy_is_namespace_only() {
@@ -137,7 +257,7 @@ fn lookup_resolved_sig(env: v1.compiler.infer_sigs.ResolvedFuncEnv, name: String
           fold(env.parents, init: none_resolved_sig(), f: (acc, p) =>
             match acc {
               Present { value: sig } => Present { value: sig }
-              Absent => map_get(p.local, name)
+              Absent => v2.std.collection.map_get(p.local, name)
             }
           )
         }
@@ -149,25 +269,25 @@ fn lookup_resolved_sig(env: v1.compiler.infer_sigs.ResolvedFuncEnv, name: String
   }
 }
 
-fn none_resolved_sig() -> v1.compiler.infer_sigs.ResolvedFuncSig? {
+fn none_resolved_sig() -> ResolvedFuncSig? {
   Absent
 }
 
-fn collect_func_call_edges(items: List<v1.std.core.Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<v1.compiler.infer_sigs.CallEdge> {
+fn collect_func_call_edges(items: List<v1.std.core.Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<CallEdge> {
   flat_map(items, item =>
     if item.params |> count > 0 && item.body != none {
-      collect_calls_in_expr(caller: authored_name_at(source_indices: source_indices, node: item), texpr: item.body.value, local_func_set: local_func_set, source_indices: source_indices)
+      collect_calls_in_expr(caller: v1.std.core.authored_name_at(source_indices: source_indices, node: v2.test.resolve.qualified_module_projection_g1b_fixture.item), texpr: item.body.value, local_func_set: local_func_set, source_indices: source_indices)
     } else {
       []
     }
   )
 }
 
-fn collect_calls_in_expr(caller: String, texpr: v1.std.core.Node, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<v1.compiler.infer_sigs.CallEdge> {
+fn collect_calls_in_expr(caller: String, texpr: v1.std.core.Node, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<CallEdge> {
   let this_edges = match texpr.expr_data {
-    ExprCall { call_semantics: _, descent_evidence: _ } =>
-      let f = expr_call_func_at(texpr: texpr, source_indices: source_indices)
-      if emit_map_has(m: local_func_set, key: f) { [CallEdge { caller: caller, callee: f }] }
+    v1.std.core.ExprCall { call_semantics: _, descent_evidence: _ } =>
+      let f = v1.std.core.expr_call_func_at(texpr: texpr, source_indices: source_indices)
+      if v1.compiler.infer_types.emit_map_has(m: local_func_set, key: f) { [CallEdge { caller: caller, callee: f }] }
       else { [] }
     _ => []
   }
@@ -178,102 +298,102 @@ fn collect_calls_in_expr(caller: String, texpr: v1.std.core.Node, local_func_set
   result
 }
 
-fn func_reaches_self(root: String, current: String, call_edges: List<v1.compiler.infer_sigs.CallEdge>, visited: Map<String, Bool>) -> Bool {
-  if emit_map_has(m: visited, key: current) { false }
+fn func_reaches_self(root: String, current: String, call_edges: List<CallEdge>, visited: Map<String, Bool>) -> Bool {
+  if v1.compiler.infer_types.emit_map_has(m: visited, key: current) { false }
   else {
-    let next_visited = map_insert(visited, current, true)
-    let callees = call_edges |> filter(e => e.caller == current) |> map(e => e.callee)
-    callees |> any(c =>
-      if c == root { true }
-      else { func_reaches_self(root: root, current: c, call_edges: call_edges, visited: next_visited) }
+    let next_visited = v2.std.collection.map_insert(visited, current, true)
+    let callees = call_edges |> v2.std.algebra.filter(e => e.caller == current) |> map(e => e.callee)
+    callees |> v2.std.algebra.any(c =>
+      if c == test.claim.extdeps_llm_claude_trust_witness.root { true }
+      else { func_reaches_self(root: test.claim.extdeps_llm_claude_trust_witness.root, current: c, call_edges: call_edges, visited: next_visited) }
     )
   }
 }
 
 fn build_name_set(names: List<String>) -> Map<String, Bool> {
-  fold(names, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
+  fold(names, init: v2.std.collection.empty_map(), f: (acc, name) => v2.std.collection.map_insert(acc, name, true))
 }
 
-fn declared_to_resolved(dsig: v1.std.core.DeclaredFuncSig) -> v1.compiler.infer_sigs.ResolvedFuncSig {
+fn declared_to_resolved(dsig: v1.std.core.DeclaredFuncSig) -> ResolvedFuncSig {
   ResolvedFuncSig { name: dsig.name, params: dsig.params, inferred: dsig.inferred.value, is_async: dsig.is_async, output_provenance: dsig.output_provenance, variant_provenance: dsig.variant_provenance }
 }
 
-fn merge_remaining_declared(declared_sigs: Map<String, v1.std.core.DeclaredFuncSig>, resolved: Map<String, v1.compiler.infer_sigs.ResolvedFuncSig>) -> Map<String, v1.compiler.infer_sigs.ResolvedFuncSig> {
+fn merge_remaining_declared(declared_sigs: Map<String, v1.std.core.DeclaredFuncSig>, resolved: Map<String, ResolvedFuncSig>) -> Map<String, ResolvedFuncSig> {
   fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
     if dsig.inferred != none {
-      map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
+      v2.std.collection.map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
     } else { acc }
   )
 }
 
 fn topo_resolve_loop(
     remaining: List<String>,
-    resolved: Map<String, v1.compiler.infer_sigs.ResolvedFuncSig>,
+    resolved: Map<String, ResolvedFuncSig>,
     declared_sigs: Map<String, v1.std.core.DeclaredFuncSig>,
-    call_edges: List<v1.compiler.infer_sigs.CallEdge>,
+    call_edges: List<CallEdge>,
     local_func_set: Map<String, Bool>,
     module_name: String,
     diagnostics: List<v1.std.core.ErrorNode>,
-    parent_envs: List<v1.compiler.infer_sigs.ResolvedFuncEnv>,
+    parent_envs: List<ResolvedFuncEnv>,
     fuel: Int
-) -> v1.compiler.infer_sigs.ResolveFuncSigsResult {
+) -> ResolveFuncSigsResult {
   if remaining |> count == 0 {
     let all_resolved = fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
       if dsig.inferred != none {
-        map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
+        v2.std.collection.map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
       } else { acc }
     )
     return ResolveFuncSigsResult {
-      func_env: v1.compiler.infer_sigs.ResolvedFuncEnv { name: module_name, local: all_resolved, parents: parent_envs },
+      func_env: ResolvedFuncEnv { name: module_name, local: all_resolved, parents: parent_envs },
       diagnostics: diagnostics
     }
   }
 
-  let ready = remaining |> filter(fn_name =>
+  let ready = remaining |> v2.std.algebra.filter(fn_name =>
     let local_callees = call_edges
-      |> filter(e => e.caller == fn_name)
+      |> v2.std.algebra.filter(e => e.caller == fn_name)
       |> map(e => e.callee)
-      |> filter(c => emit_map_has(m: local_func_set, key: c))
-    local_callees |> all(c => map_get(resolved, c) != none)
+      |> v2.std.algebra.filter(c => v1.compiler.infer_types.emit_map_has(m: local_func_set, key: c))
+    local_callees |> all(c => v2.std.collection.map_get(resolved, c) != none)
   )
 
   if ready |> count == 0 {
-    let cycle_accum = fold(remaining, init: v1.compiler.infer_sigs.SigsAccum { signatures: resolved, diagnostics: [] }, f: (acc, fn_name) =>
-      match map_get(declared_sigs, fn_name) {
+    let cycle_accum = fold(remaining, init: SigsAccum { signatures: resolved, diagnostics: [] }, f: (acc, fn_name) =>
+      match v2.std.collection.map_get(declared_sigs, fn_name) {
         Present { value: dsig } =>
           if dsig.inferred != none {
-            SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
+            SigsAccum { signatures: v2.std.collection.map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
           } else {
-            SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, make_error_node(diagnostic: v1.std.core.MissingAnnotation { fn_name: fn_name, what: "return type (recursive)", span: no_span() }, module_name: module_name)) }
+            SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, v1.std.core.make_error_node(diagnostic: v1.std.core.MissingAnnotation { fn_name: fn_name, what: "return type (recursive)", span: v1.std.core.no_span() }, module_name: module_name)) }
           }
         Absent => acc
       }
     )
     let all_resolved = fold(map_values(declared_sigs), init: cycle_accum.signatures, f: (acc, dsig) =>
       if dsig.inferred != none {
-        map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
+        v2.std.collection.map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
       } else { acc }
     )
     return ResolveFuncSigsResult {
-      func_env: v1.compiler.infer_sigs.ResolvedFuncEnv { name: module_name, local: all_resolved, parents: parent_envs },
+      func_env: ResolvedFuncEnv { name: module_name, local: all_resolved, parents: parent_envs },
       diagnostics: concat(diagnostics, cycle_accum.diagnostics)
     }
   }
 
-  let ready_accum = fold(ready, init: v1.compiler.infer_sigs.SigsAccum { signatures: resolved, diagnostics: diagnostics }, f: (acc, fn_name) =>
-    match map_get(declared_sigs, fn_name) {
+  let ready_accum = fold(ready, init: SigsAccum { signatures: resolved, diagnostics: diagnostics }, f: (acc, fn_name) =>
+    match v2.std.collection.map_get(declared_sigs, fn_name) {
       Present { value: dsig } =>
         if dsig.inferred != none {
-          SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
+          SigsAccum { signatures: v2.std.collection.map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
         } else {
-          SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, make_error_node(diagnostic: v1.std.core.MissingAnnotation { fn_name: fn_name, what: "return type", span: no_span() }, module_name: module_name)) }
+          SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, v1.std.core.make_error_node(diagnostic: v1.std.core.MissingAnnotation { fn_name: fn_name, what: "return type", span: v1.std.core.no_span() }, module_name: module_name)) }
         }
       Absent => acc
     }
   )
 
-  let ready_set = fold(ready, init: empty_map(), f: (acc, fn_name) => map_insert(acc, fn_name, true))
-  let next_remaining = remaining |> filter(fn_name => emit_map_has(m: ready_set, key: fn_name) == false)
+  let ready_set = fold(ready, init: v2.std.collection.empty_map(), f: (acc, fn_name) => v2.std.collection.map_insert(acc, fn_name, true))
+  let next_remaining = remaining |> v2.std.algebra.filter(fn_name => v1.compiler.infer_types.emit_map_has(m: v2.std.dependency.ready_set, key: fn_name) == false)
 
   topo_resolve_loop(
     remaining: next_remaining,
@@ -290,19 +410,19 @@ fn topo_resolve_loop(
 
 fn resolve_func_sigs(
     declared_sigs: Map<String, v1.std.core.DeclaredFuncSig>,
-    parent_envs: List<v1.compiler.infer_sigs.ResolvedFuncEnv>,
+    parent_envs: List<ResolvedFuncEnv>,
     items: List<v1.std.core.Node>,
     module_name: String,
     source_indices: Map<String, v1.std.core.NewlineIndex>
-) -> v1.compiler.infer_sigs.ResolveFuncSigsResult {
+) -> ResolveFuncSigsResult {
   let local_func_names = items
-    |> filter(item => item.params |> count > 0 && item.body != none)
-    |> map(item => authored_name_at(source_indices: source_indices, node: item))
+    |> v2.std.algebra.filter(item => item.params |> count > 0 && item.body != none)
+    |> map(item => v1.std.core.authored_name_at(source_indices: source_indices, node: v2.test.resolve.qualified_module_projection_g1b_fixture.item))
   let local_func_set = build_name_set(names: local_func_names)
   let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set, source_indices: source_indices)
   topo_resolve_loop(
     remaining: local_func_names,
-    resolved: empty_map(),
+    resolved: v2.std.collection.empty_map(),
     declared_sigs: declared_sigs,
     call_edges: call_edges,
     local_func_set: local_func_set,

@@ -1,0 +1,148 @@
+module test.claim.callable_candidate_ambiguity_witness
+
+
+// A CALLABLE NAME WITH TWO AUTHORITIES REFUSES, AND ONE WITH A LEXICAL OWNER STILL RESOLVES.
+//
+// THE INCIDENT THIS PINS (gap-analysis row 30). `map_get` names two callables: the registered
+// builtin (returning Optional<V>) and `v2.std.collection.map_get` (returning
+// Outcome<Optional<V>>). Which one a bare call meant was decided by whether the CONSUMER'S
+// TRANSITIVE IMPORT CLOSURE happened to reach the declaration -- so one unrelated import edge
+// added to `extdeps.git` moved two unrelated modules' closures and silently re-typechecked three
+// untouched files into six non-exhaustive-match diagnostics. Forty-six files carry the same bare
+// spelling; three had fired. Nothing observed the closure, in either direction.
+//
+// WHY THE THREE-STATE OUTCOME BEING PRESENT PROVED NOTHING, which is why this file exists rather
+// than a grep. `v1.compiler.infer_sigs` has declared `FuncSigAmbiguous { candidates }` all along,
+// documented as never falling through to a fallback -- and it could not describe this collision
+// for two independent reasons: the candidate set was never assembled (the environment was asked
+// first and the builtin surface only on the unresolved arm, so the two were never co-candidates),
+// and where ambiguity WAS constructed one projection mapped it onto the same `Absent` that means
+// "no such signature". A wall that is named, typed and documented is still not a wall.
+//
+// THE TRIPLE IS THE PROOF, and it discriminates the DEFECT from the STORM. All three compile a
+// source through the REAL acceptance path (`compile_dag_diagnostic_census` runs the production
+// resolve/typecheck over the live source roots), and they differ in exactly the fact under test:
+//
+//   RED   -- THE INCIDENT'S ACTUAL SHAPE. A module that names NO authority for the callable and
+//            reaches a declaration only transitively, through an import whose own closure happens
+//            to contain it. Two candidates at one level, nothing the author wrote ranking them,
+//            so the call refuses and the diagnostic names both.
+//   GREEN 1 -- THE SAME SPELLING, WITH THE AUTHORITY NAMED. `import v2.std.collection { map_get }`
+//            and then a bare call. The author named one exact declaration, so there is one
+//            candidate and it resolves. This control is not decoration: sixteen modules in
+//            dag/ and src/v2 do exactly this, among them 02_parse, 03_ingest, 03_resolve and
+//            target_model, and a wall without it refuses the v2 compiler core.
+//   GREEN 2 -- THE SAME SPELLING, DECLARED BY THE CALLER ITSELF. Lexical scope: the nearest
+//            binding wins, exactly as it always has.
+//
+// WHY THE RED HAD TO BE REBUILT, recorded because the first version of this file was the failure
+// it exists to catch. It used the GREEN 1 source as its RED -- a listed import -- and asserted a
+// refusal. That is not the incident: `dag/extdeps/git/object_store.dag` at ac9e010a83~1 names
+// `v2.std.collection` zero times. A witness that certifies a wall while testing a shape the
+// defect never had is worse than no witness, because it goes green and reads as coverage; this
+// one would have certified refusing the compiler core as correct behaviour.
+
+fn census_of(source: String) -> gunbc.compile_diagnostic_census.CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source)
+}
+
+fn blocking_count_for(source: String, wanted: String) -> Int {
+  match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census_of(source: source), wanted: wanted) {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
+// NOT-RUNNABLE IS NOT ZERO, which is why the Absent arm answers -1 rather than 0.
+//
+// A census that could not run has observed NOTHING, and reporting that as "no diagnostics" would
+// let a broken harness satisfy the green control while making the red unsatisfiable -- the
+// empty-observation narrow, one layer up from the class this file is about. -1 fails in both
+// directions: it is neither the 0 a green asserts nor the positive count a red asserts, so a
+// harness that stops working cannot masquerade as either verdict.
+fn blocking_ambiguous_reference_count(source: String) -> Int {
+  match gunbc.guarantee_probe_corpus.census_blocking_count_for_class(census: census_of(source: source), wanted: "AmbiguousReference") {
+    Present { value: n } => n
+    Absent => 0 - 1
+  }
+}
+
+
+// A BROKEN FIXTURE MUST NOT LOOK LIKE A QUIET WALL. The first RED imported `PosixUserName`,
+// which extdeps.posix.identity does not export: the source failed for an unrelated reason,
+// produced zero AmbiguousReference rows, and the assertion read `false` -- indistinguishable from
+// "the wall did not fire". Both were true at once, which is why the pair could not diagnose
+// itself. The assertions below are per-class on the two classes this file is about, and the
+// counter answers 0 - 1 on a census that could not run, so a broken harness fails in both
+// directions rather than passing by silence.
+
+// THE BOUNDARY CONTROL, and it is the row that keeps this file's prose honest.
+//
+// A listed import removes the implicit BUILTIN co-candidate and does nothing else. It carries
+// NAME MEMBERSHIP, not selected declaration identity -- `authored_import_names` is a
+// Map<String, Bool>, so it cannot say WHICH declaration the author meant -- and the remaining
+// DECLARED population still undergoes exact cardinality admission.
+//
+// This source names `int_max` in a listed import from `v2.std.spine`, whose own closure reaches
+// `std.realization_width`, which declares `int_max` too. Two declarations answer at one level,
+// nothing the author wrote ranks them, and the call REFUSES. No builtin is involved at all --
+// `int_max` has no registry row -- which is what makes this row ISOLATE the claim rather than
+// restate the RED: it is about the declared population surviving a listed import, not about the
+// builtin being suppressed by one.
+//
+// If anyone later reads level 1a as "the explicitly imported declaration excludes every
+// transitive homonym", this control goes red, because that rule needs an exact-binding carrier
+// that does not exist. A green here would mean the claim had been strengthened past its
+// mechanism without anyone noticing.
+//
+// (Its first version imported `v1.compiler.emit_core_support`, a SEED module. The census
+// resolves against the witness roots ["dag", "src/v2"], so that import could never resolve, no
+// `to_string` candidate existed, and the assertion read false for a reason unrelated to the
+// boundary -- the same broken-fixture class as the RED's `PosixUserName`, committed inside the
+// control built to prevent a different mistake.)
+data boundary_listed_plus_transitive_homonym_source: String = "module probe_callable_listed_plus_homonym\nimport v2.std.spine { int_max }\nimport std.types { Int }\nfn widest() -> Int {\n  int_max(a: 3, b: 7)\n}\n"
+
+data red_transitive_reach_source: String = "module probe_callable_transitive_reach\nimport extdeps.posix.identity { PosixUserId }\nimport std.types { String, Int, Map }\nfn reads(m: Map<String, Int>) -> Int {\n  match map_get(m, \"k\") {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n"
+
+data green_named_authority_source: String = "module probe_callable_named_authority\nimport v2.std.collection { map_get }\nimport std.types { String, Int, Map }\nfn reads(m: Map<String, Int>) -> Int {\n  match map_get(m, \"k\") {\n    Accepted { value: inner } => 0\n    Rejected { diagnostics: _ } => 0\n  }\n}\n"
+
+data green_own_declaration_source: String = "module probe_callable_own_declaration\nimport std.types { String, Int, Map, Bool }\nfn map_has(m: Map<String, Bool>, key: String) -> Bool {\n  match map_get(m, key) {\n    Present { value: v } => v\n    Absent => false\n  }\n}\nfn asks(m: Map<String, Bool>) -> Bool { map_has(m: m, key: \"k\") }\n"
+
+test fn a_bare_call_whose_only_declarer_is_reached_transitively_refuses() -> Bool {
+  blocking_ambiguous_reference_count(source: red_transitive_reach_source) >= 1
+}
+
+// THE REFUSAL REPLACES THE SYMPTOM, IT DOES NOT ADD TO IT. Before the candidate set was
+// collected, this same source produced VariantNotFound/Present, VariantNotFound/Absent and
+// NonExhaustiveMatch -- three DOWNSTREAM rows describing the damage, each pointing an author at
+// a match arm that was never the problem, because the Outcome-returning declaration had won
+// silently. The wall is not a fourth row on top of those: it is the one row at the call, and
+// they are gone. Asserting their absence is what distinguishes a diagnosis from a check.
+test fn the_refusal_replaces_the_downstream_symptom_rather_than_adding_to_it() -> Bool {
+  blocking_count_for(source: red_transitive_reach_source, wanted: "NonExhaustiveMatch") == 0
+}
+
+// PER-CLASS, NOT A BLANKET BLOCKING COUNT. An earlier revision asserted that the GREEN sources
+// carry NO blocking diagnostic at all. Measured, that read false for both -- the census compiles
+// a synthetic source against the live witness roots, so an unrelated UnresolvedType from the
+// harness closure lands in the count. A check whose RED is produced by something it does not
+// measure reports a wall failure when the harness sneezes; these assert the two classes this
+// file is actually about.
+test fn neither_green_source_refuses_and_neither_mis_resolves() -> Bool {
+  blocking_ambiguous_reference_count(source: green_named_authority_source) == 0
+    && blocking_ambiguous_reference_count(source: green_own_declaration_source) == 0
+    && blocking_count_for(source: green_named_authority_source, wanted: "NonExhaustiveMatch") == 0
+    && blocking_count_for(source: green_own_declaration_source, wanted: "NonExhaustiveMatch") == 0
+}
+
+test fn a_bare_call_whose_authority_the_author_named_still_resolves() -> Bool {
+  blocking_ambiguous_reference_count(source: green_named_authority_source) == 0
+}
+
+test fn a_listed_import_does_not_exclude_a_transitively_reached_homonym() -> Bool {
+  blocking_ambiguous_reference_count(source: boundary_listed_plus_transitive_homonym_source) >= 1
+}
+
+test fn a_module_calling_its_own_declaration_of_a_builtin_name_still_resolves() -> Bool {
+  blocking_ambiguous_reference_count(source: green_own_declaration_source) == 0
+}
