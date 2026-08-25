@@ -1050,7 +1050,6 @@ fn optional_match_exhaustiveness_reports_missing_absent() {
             source_indices: Rc::new(im::HashMap::new()),
             intern_table: v1_compiler::v1_std_core::empty_intern_table(),
             source_visible_names: Rc::new(im::HashMap::new()),
-            authored_import_names: Rc::new(im::HashMap::new()),
             symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
         }),
         zero_span(),
