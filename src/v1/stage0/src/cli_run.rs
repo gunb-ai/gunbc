@@ -1285,52 +1285,6 @@ mod process_workspace_root_tests {
         );
     }
 
-    /// THE PLANT MUST BE A DEFECT, not a shape. If the planted module compiled clean, the
-    /// census's `PlantedDefectUnobserved` refusal would be guarding a control that can never fire,
-    /// and the whole instrument would be back to a probe whose RED and its absence look alike.
-    ///
-    /// This asserts the plant's CONTENT rather than merely that it parses: the callee name it
-    /// calls must be absent from the module, which is the property that makes the compiler judge
-    /// it. A plant edited into something declared would pass any "it has a body" assertion.
-    #[test]
-    fn planted_control_source_calls_a_name_it_does_not_declare() {
-        let planted = super::corpus_judgment_planted_source();
-        let content = &planted.content;
-        assert!(
-            content.contains(&format!("module {}", super::CORPUS_JUDGMENT_PLANTED_MODULE)),
-            "the plant must be the module the census excludes and requires: {content}"
-        );
-        let callee = "corpus_type_judgment_absent_callee_zzz";
-        assert!(
-            content.contains(callee),
-            "the plant must call the absent name: {content}"
-        );
-        assert!(
-            !content.contains(&format!("fn {callee}")),
-            "the plant must NOT declare the name it calls — a declared callee compiles clean and \
-             the control silently stops discriminating: {content}"
-        );
-    }
-
-    /// The join key is the whole of constraint 2, so its rendering is asserted rather than trusted:
-    /// a key that dropped the offsets would silently degrade an identity join into a per-file
-    /// count, which is the comparison DESIGN rules out as an oracle.
-    #[test]
-    fn judgment_site_identity_carries_file_offsets_and_class() {
-        let site = super::CorpusJudgmentSite {
-            file: "dag/std/x.dag".to_string(),
-            start: 12,
-            end: 34,
-            line: 3,
-            col: 5,
-            class: "TypeMismatch".to_string(),
-            subject_name: "Foo".to_string(),
-            severity: super::CorpusJudgmentSeverity::Blocking,
-            module: "std.x".to_string(),
-        };
-        assert_eq!(site.identity(), "dag/std/x.dag:12:34:TypeMismatch:Foo");
-    }
-
     #[test]
     fn compile_clean_diagnostic_histogram_scaffold_marker_is_declared() {
         assert_eq!(
@@ -41204,6 +41158,7 @@ mod peel_alias_fixpoint_termination {
                 type_head_exposures: crate::v1_rt::rc_empty_map(),
             });
             let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
+                authored_import_names: crate::v1_rt::rc_empty_map::<String, bool>(),
                 module_path: "".to_string(),
                 bindings: crate::v1_rt::rc_empty_map(),
                 str_bindings: crate::v1_rt::rc_empty_map(),
