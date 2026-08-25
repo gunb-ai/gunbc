@@ -316,8 +316,13 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
             );
             *any_failed = true;
         }
-        ClaimOutcome::RuntimeError { message } => {
-            println!("FAIL {} (runtime error: {})", function, message);
+        ClaimOutcome::RuntimeError { cause, message } => {
+            println!(
+                "FAIL {} (runtime error [{}]: {})",
+                function,
+                cause.token(),
+                message
+            );
             *any_failed = true;
         }
         ClaimOutcome::HostToolUnresolved { name, probed } => {

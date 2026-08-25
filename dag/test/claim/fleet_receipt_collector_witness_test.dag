@@ -1,5 +1,7 @@
 module test.claim.fleet_receipt_collector_witness
 
+import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Join 5 (operator verdict): the collector's parse is the BACKWARD read of the same

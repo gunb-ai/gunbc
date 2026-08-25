@@ -1,5 +1,7 @@
 module test.claim.hetzner_cost_quote_witness
 
+import extdeps.cloud.hetzner { cax41_catalog }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn hetzner_cax41_hourly_micros() -> std.nat.Nat {

@@ -1,5 +1,7 @@
 module v2.test.claim.gha_workflow_yaml_fold_structural
 
+import gunbc.gha_yaml_fold_pilot { gha_fold_pilot_job }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

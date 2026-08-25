@@ -1,5 +1,6 @@
 module v2.test.manual.value_null_split_witness
 
+import v2.lens.testgen { cross_repr_native_value_null }
 import v2.std.collection { empty_map, map_insert }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.optional {

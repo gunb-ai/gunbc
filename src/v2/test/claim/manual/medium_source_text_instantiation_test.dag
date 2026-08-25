@@ -1,5 +1,7 @@
 module v2.test.manual.medium_source_text_instantiation
 
+import v2.std.artifact { Artifact, SourceFile }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data medium_source_fixture_text: String = "module medium.source\nfn add(x:Int, y:Int) -> Int { x + y }"
