@@ -34,7 +34,7 @@ import gunbc.scm.repository_envelope {
   RepositoryEncodeOutcome, RepositoryEncoded, RepositoryEncodeRefused,
   RepositoryEncodeRefusal, RepositoryEncodeUncontainedTarget,
   RepositoryCommitRootNotInStore, RepositoryCheckoutNotInCommits,
-  RepositoryDecodeRefusal, RepositoryDecodeClosureDocRefusal,
+  RepositoryDecodeRefusal, RepositoryDecodeClosureDocRefusal, RepositoryMemberReadRefused, RepositoryFormatUnrecognized,
   RepositoryIdentityRuleUnrecognized,
   RepositoryCommitRootReferenceUnresolved, RepositoryCheckoutReferenceUnresolved,
   RepositoryUnexpectedMember, RepositoryMemberContext,
@@ -537,6 +537,8 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
     RepositoryDecodeRefused { cause: cause } =>
       match cause {
         RepositoryDecodeClosureDocRefusal { cause: _ } => "closure_document"
+        RepositoryMemberReadRefused { cause: _ } => "member_read"
+        RepositoryFormatUnrecognized { found: _ } => "format"
         RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
         RepositoryCommitRootReferenceUnresolved { reference: _ } => "commit_root"
         RepositoryCheckoutReferenceUnresolved { reference: _ } => "checked_out"
@@ -596,4 +598,43 @@ test fn scm_env_an_unknown_commit_member_refuses() -> Bool {
       )
     )
   ) == "unexpected_member"
+}
+
+// THE MISATTRIBUTION THIS CLAIM EXISTS FOR, and it went uncovered until the member-read refusal got
+// its own authority. Dropping the envelope's OWN identity_rule member refused as
+// RepositoryDecodeClosureDocRefusal -- reported to an operator as "the closure document is
+// malformed" -- for a document whose closure was never reached, because the shared member reader
+// was homed in the closure-document module and carried that module's vocabulary. Nothing asserted
+// was false in either half; the arrow between them was invented, which is why review reads past it.
+//
+// The claim is written against the tag rather than the arm so it stays red for the right reason: a
+// decoder that refused for some unrelated cause reports that cause's own tag, not this one.
+test fn scm_env_a_missing_envelope_member_is_not_blamed_on_the_closure_document() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(
+      members: scm_env_drop_key(
+        members: scm_env_wire_of(repo: scm_env_two_commit_repository()),
+        key: "identity_rule"
+      )
+    )
+  ) == "member_read"
+}
+
+// THE SAME BORROWING, ONE CONCEPT OVER. The repository envelope's own format tag was refused as
+// ClosureDocFormatUnrecognized, so a repository written by a FUTURE VERSION OF THIS TOOL reported
+// that the closure document was in an unrecognized format. That is the misattribution above with a
+// worse blast radius: unsupported-protocol is the standing that tells an operator to upgrade, and
+// pointing it at the wrong document points the upgrade at the wrong thing.
+test fn scm_env_an_unrecognized_repository_format_is_the_repositorys_own_refusal() -> Bool {
+  scm_env_decode_cause_tag(
+    outcome: scm_env_decode_members(
+      members: concat(
+        scm_env_drop_key(
+          members: scm_env_wire_of(repo: scm_env_two_commit_repository()),
+          key: "format"
+        ),
+        [json_kv(key: "format", value: json_string(s: "gunbc.repository.v2"))]
+      )
+    )
+  ) == "format"
 }
