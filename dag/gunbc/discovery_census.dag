@@ -143,43 +143,58 @@ fn site_label(site: DiscoveredSite) -> SiteLabelParse {
 // narrow this module refuses to produce; and it does not overwrite the first cause with the
 // last, because the first refusal is the one an author can act on without repairing three
 // downstream symptoms of it first.
+//
+// THE STATE IS SHAPED BY THE COST OF THE REAL POPULATION, NOT BY THE SIZE OF A FIXTURE. The
+// discovered roster is five figures — `claim_executor --required-ci` reports the offered
+// population on every run, and that line is the instrument for it — so the two shapes the obvious fold reaches for are both quadratic over it: appending each row with
+// `concat(rows, [row])` copies the accumulator once per site, and testing membership by scanning
+// the rows already collected compares once per pair. DESIGN's bare-minimum-cost rule names both
+// by name and admits no "n is small here" exception, so rows are PREPENDED and reversed once at
+// the end, and membership is a `Map` keyed on the rendered label.
+//
+// THE MAP KEY IS `render_label`, WHICH IS NOT A SECOND COMPARISON BESIDE `label_eq`. That
+// function IS defined as the equality of the rendered package and the rendered target name, so
+// keying on the rendered string is the same relation with the same answers, evaluated once per
+// row instead of once per pair. A key derived any other way — a concatenation assembled here, a
+// hash — would be a second identity for a target, which is the fork `BuildTarget` refuses by
+// having one key.
 type CensusFoldState {
-  rows: List<CensusRow>
+  rows_reversed: List<CensusRow>
+  seen: Map<String, Bool>
   refusal: Optional<CensusRefusal>
 }
 
 fn census_fold_zero() -> CensusFoldState {
-  CensusFoldState { rows: [], refusal: optional_absent() }
+  CensusFoldState { rows_reversed: [], seen: {}, refusal: optional_absent() }
 }
 
 fn census_state_refuse(state: CensusFoldState, cause: CensusRefusal) -> CensusFoldState {
   match state.refusal {
     Present { value: _ } => state
-    Absent => CensusFoldState { rows: state.rows, refusal: optional_present(value: cause) }
+    Absent =>
+      CensusFoldState {
+        rows_reversed: state.rows_reversed,
+        seen: state.seen,
+        refusal: optional_present(value: cause)
+      }
   }
-}
-
-fn census_rows_hold_label(rows: List<CensusRow>, wanted: Label) -> Bool {
-  fold(rows, init: false, f: fn(acc, row) { acc || label_eq(a: row.label, b: wanted) })
 }
 
 // A DUPLICATE IS REFUSED OVER THE WHOLE CENSUS, NOT ONLY OVER THE PLANNED SUBSET. The host loop
 // this derivation stands beside refuses a duplicate only where it would become an executable
 // claim, so two declined sites sharing an identity pass unnoticed there. They cannot pass here:
-// a census row is a target identity, `label_eq` is the one comparison over it, and two rows with
-// one identity would make `//:required` name a dependency the standings list can answer twice.
+// a census row is a target identity, and two rows with one identity would make `//:required`
+// name a dependency the standings list can answer twice.
 fn census_fold_site(state: CensusFoldState, site: DiscoveredSite) -> CensusFoldState {
   match site_label(site: site) {
     SiteLabelParseRefused { cause: c } => census_state_refuse(state: state, cause: c)
-    SiteLabelParsed { label: l } =>
-      if census_rows_hold_label(rows: state.rows, wanted: l) {
-        census_state_refuse(
-          state: state,
-          cause: DuplicateSiteIdentity { identity: render_label(l: l) }
-        )
+    SiteLabelParsed { label: l } => {
+      let identity = render_label(l: l)
+      if map_contains_key(state.seen, identity) {
+        census_state_refuse(state: state, cause: DuplicateSiteIdentity { identity: identity })
       } else {
         CensusFoldState {
-          rows: concat(state.rows, [
+          rows_reversed: concat([
             CensusRow {
               label: l,
               disposition: required_floor_site_disposition(
@@ -187,10 +202,12 @@ fn census_fold_site(state: CensusFoldState, site: DiscoveredSite) -> CensusFoldS
                 reads_live_tree: site.reads_live_tree
               )
             }
-          ]),
+          ], state.rows_reversed),
+          seen: map_insert(state.seen, identity, true),
           refusal: state.refusal
         }
       }
+    }
   }
 }
 
@@ -200,7 +217,7 @@ fn discovery_census(sites: List<DiscoveredSite>) -> SiteCensus {
   })
   match state.refusal {
     Present { value: c } => CensusRefused { cause: c }
-    Absent => CensusAccepted { rows: state.rows }
+    Absent => CensusAccepted { rows: reverse(state.rows_reversed) }
   }
 }
 
@@ -213,7 +230,9 @@ fn census_planned_rows(rows: List<CensusRow>) -> List<CensusRow> {
 }
 
 fn census_planned_labels(rows: List<CensusRow>) -> List<Label> {
-  fold(census_planned_rows(rows: rows), init: [], f: fn(acc, row) { concat(acc, [row.label]) })
+  reverse(fold(census_planned_rows(rows: rows), init: [], f: fn(acc, row) {
+    concat([row.label], acc)
+  }))
 }
 
 // THE AGGREGATE IS UNDERIVABLE FROM A REFUSED CENSUS, IN ITS OWN ARM AND CARRYING THE CAUSE.

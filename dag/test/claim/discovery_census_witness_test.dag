@@ -79,9 +79,9 @@ fn census_rows_of(sites: List<DiscoveredSite>) -> List<CensusRow> {
 }
 
 fn rendered_planned_labels(sites: List<DiscoveredSite>) -> List<String> {
-  fold(census_planned_labels(rows: census_rows_of(sites: sites)), init: [], f: fn(acc, l) {
-    concat(acc, [render_label(l: l)])
-  })
+  reverse(fold(census_planned_labels(rows: census_rows_of(sites: sites)), init: [], f: fn(acc, l) {
+    concat([render_label(l: l)], acc)
+  }))
 }
 
 fn list_holds(xs: List<String>, wanted: String) -> Bool {
@@ -264,7 +264,7 @@ test fn w_counts_partition_the_offered_population() -> Bool {
 // exactly why this is asserted separately from the aggregate below.
 test fn w_declined_sites_are_rows_not_omissions() -> Bool {
   let rows = census_rows_of(sites: mixed_sites())
-  let rendered = fold(rows, init: [], f: fn(acc, row) { concat(acc, [render_label(l: row.label)]) })
+  let rendered = fold(rows, init: [], f: fn(acc, row) { concat([render_label(l: row.label)], acc) })
   ((rows |> count) == 5)
     && list_holds(xs: rendered, wanted: "//test/claim/long/slow_witness:w_slow")
     && list_holds(xs: rendered, wanted: "//v2/test/fixture/walk_plan_stage/common:w_member")
@@ -317,7 +317,7 @@ test fn w_required_aggregate_dependencies_are_exactly_the_planned_subset() -> Bo
   match required_aggregate_from_census(census: discovery_census(sites: mixed_sites())) {
     RequiredAggregateUnderivable { cause: _ } => false
     RequiredAggregateDerived { aggregate: a } => {
-      let rendered = fold(a.dependencies, init: [], f: fn(acc, l) { concat(acc, [render_label(l: l)]) })
+      let rendered = fold(a.dependencies, init: [], f: fn(acc, l) { concat([render_label(l: l)], acc) })
       is_required_aggregate(t: a)
         && (target_identity(t: a) == "//:required")
         && ((a.dependencies |> count) == 2)
@@ -375,13 +375,13 @@ test fn w_derived_aggregate_is_satisfiable_against_standings() -> Bool {
     RequiredAggregateUnderivable { cause: _ } => false
     RequiredAggregateDerived { aggregate: a } => {
       let standings = fold(a.dependencies, init: [], f: fn(acc, l) {
-        concat(acc, [
+        concat([
           TargetStanding {
             target: l,
             build: TargetCompleted { success: true },
             test: TestRunByFloor { disposition: Passed {} }
           }
-        ])
+        ], acc)
       })
       match required_aggregate_standing(aggregate: a, standings: standings) {
         AggregateSatisfied { dependency_count: n } => n == 2
