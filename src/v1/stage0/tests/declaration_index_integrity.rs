@@ -100,6 +100,68 @@ fn import_member_present_stays_clean() {
     assert_eq!(findings_over(&dir), Vec::new());
 }
 
+// ARM 1's DECLARED HOLE, HELD OPEN ON PURPOSE AND HELD COUNTABLE.
+//
+// `v1.03_resolve` `get_exported_names` appends every `kernel_type_set` key to every
+// module's export surface, so `import m { Int }` is admitted whatever `m` declares. The
+// index must admit it too — refusing source the seed compiler accepts is not this change's
+// to do, and editing `get_exported_names` is `NewLanguageBehavior`, which the v1 freeze
+// refuses. What the index MAY do is refuse to hide it.
+//
+// So this pair asserts the hole's SHAPE rather than its absence: the planted claim produces
+// NO finding (that is the seed's rule, faithfully mirrored) and DOES produce a count of
+// exactly one. The count is the whole point. A bare `continue` would satisfy the first
+// assertion and zero the second, which is the absorbing-fallback shape DESIGN §5 names —
+// the deficit's frequency zeroed by construction, so it can never rank for fixing. This
+// test goes RED if anyone re-silences it, which is a red no corpus measurement could
+// produce, since the corpus is exactly where the class is invisible.
+#[test]
+fn kernel_named_import_member_is_admitted_but_counted() {
+    let dir = scratch_root("kernel_named");
+    author(&dir, "authority.dag", AUTHORITY);
+    author(
+        &dir,
+        "claimant.dag",
+        "module probe.claimant\n\nimport probe.authority { Int }\n\n\
+         data claimant_present: Bool = true\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    assert_eq!(
+        index_findings(&sweep.index)
+            .into_iter()
+            .map(|f| (f.kind, f.message))
+            .collect::<Vec<_>>(),
+        Vec::new(),
+        "the seed compiler admits a kernel-named member from any module; the index must not \
+         refuse source the compiler accepts"
+    );
+    assert_eq!(
+        index_population(&sweep.index).import_members_kernel_named,
+        1,
+        "admitted is not the same as unobserved: the escape must be counted, or its \
+         frequency is zero by construction and the class never ranks for repair"
+    );
+}
+
+// THE POSITIVE CONTROL FOR THE COUNT ITSELF. A real member must not inflate it, or the
+// counter would be measuring imports rather than the escape.
+#[test]
+fn a_declared_member_does_not_count_as_kernel_named() {
+    let dir = scratch_root("kernel_named_control");
+    author(&dir, "authority.dag", AUTHORITY);
+    author(
+        &dir,
+        "claimant.dag",
+        "module probe.claimant\n\nimport probe.authority { real_declaration }\n\n\
+         data claimant_present: Bool = true\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+    assert_eq!(
+        index_population(&sweep.index).import_members_kernel_named,
+        0
+    );
+}
+
 // THE DISCRIMINATING PAIR BEHIND THE EXHIBITED COST.
 //
 // Both modules make the identical false claim. The difference is whether any compile

@@ -495,6 +495,9 @@ pub struct DeclarationIndexPopulation {
     /// Citations naming a namespace no swept module declares — hand-Rust and other
     /// universes. Counted rather than dropped, so a green names what it did NOT cover.
     pub citations_outside_index: usize,
+    /// Import members admitted ONLY because they name a kernel type, over a target that
+    /// declares no such name. Counted rather than skipped — see `import_member_findings`.
+    pub import_members_kernel_named: usize,
     pub lens_modules: usize,
 }
 
@@ -557,6 +560,7 @@ pub fn index_population(index: &DeclarationIndex) -> DeclarationIndexPopulation 
             .flat_map(|r| r.cited.iter())
             .filter(|c| citation_is_outside_index(index, &c.module_path))
             .count(),
+        import_members_kernel_named: import_member_kernel_named_count(index),
         lens_modules: index
             .modules
             .keys()
@@ -606,6 +610,60 @@ fn citation_is_outside_index(index: &DeclarationIndex, module_path: &str) -> boo
     !index.namespace_roots.contains(root)
 }
 
+/// Whether an import member is admitted ONLY by the kernel-type escape below.
+///
+/// THIS IS A REAL HOLE IN THE WALL AND IT IS THE ONE PLACE THIS FILE DOES NOT CLOSE.
+/// `v1.03_resolve` `get_exported_names` appends `map_keys(kernel_type_set)` to every
+/// module's export surface, so EVERY module in the corpus exports every kernel type name.
+/// The claim `import m { Int }` is therefore admitted whatever `m` is, and the index has to
+/// admit it too or it would refuse source the compiler accepts.
+///
+/// MEASURED, not inferred, against the installed compiler on a throwaway source root: a
+/// module whose entire body is one `fn` returning `Int` was imported as
+/// `import extdeps.probe_missing_anchor { Int, String, Bool }` and compiled to 6 files with
+/// 0 diagnostics. The zero is readable because the nonzero was run beside it — the same
+/// source root with `{ probe_absent_member_RED }` refused with a located `MissingExport` at
+/// the member token. So the wall is live and this specific class walks through it.
+///
+/// THE LIVE SPECIMEN IS NOT SYNTHETIC. `std.types` declares no `Int`, no `String` and no
+/// `Float` anywhere — it names them as KEYS of `kernel_type_set`, which is a different fact
+/// — and hundreds of modules author `import std.types { Int, String }`. Every one of those
+/// claims is false about `std.types` and always has been, and the reason nobody noticed is
+/// precisely that the escape makes the claim unfalsifiable.
+///
+/// WHY IT IS COUNTED RATHER THAN REFUSED HERE. Refusing it is a change to what the SEED
+/// COMPILER ACCEPTS — `get_exported_names` is the authority and editing it is
+/// `NewLanguageBehavior`, which `gunbc.v1_maintenance_standing` refuses and which a refusal
+/// dominates every admission of. So this change may not close it. What it may do, and what
+/// DESIGN §5 requires of any arm that widens, is make the frequency OBSERVABLE: a bare
+/// `continue` zeroes the deficit's frequency by construction, so the class can never rank
+/// for fixing (§6 prices by displaced cost, and a masked cost displaces nothing). Counted,
+/// it is a number that can be watched, prioritized, and burned down.
+///
+/// NEXT-RUNG TRIGGER: `get_exported_names` grounds its export surface in DEFINITIONS rather
+/// than appending the kernel set to every module, at which point this predicate deletes and
+/// the members it admits become ordinary `ImportMemberAbsent` findings.
+fn import_member_is_kernel_named(target: &ModuleDeclarationRecord, name: &str) -> bool {
+    !import_surface_has(target, name) && crate::std_types::kernel_type_set().contains_key(name)
+}
+
+fn import_member_kernel_named_count(index: &DeclarationIndex) -> usize {
+    let mut n = 0;
+    for record in index.modules.values() {
+        for claim in &record.imports {
+            let Some(target) = index.modules.get(&claim.target) else {
+                continue;
+            };
+            for (name, _) in &claim.members {
+                if import_member_is_kernel_named(target, name) {
+                    n += 1;
+                }
+            }
+        }
+    }
+    n
+}
+
 /// (1) Import-member claim integrity.
 ///
 /// A target ABSENT from the index is not reported here, and the reason is a denominator one
@@ -613,6 +671,10 @@ fn citation_is_outside_index(index: &DeclarationIndex, module_path: &str) -> boo
 /// from them is a module this index never observed, and reporting "member absent" over it
 /// would assert a fact about a module whose text was never read. That is a different
 /// question — module existence — and it is the compiler's `UnresolvedImport`.
+///
+/// The kernel-type escape is the one admission this function makes that is NOT a fact about
+/// the target module; it is counted as `import_members_kernel_named` and its receipt is on
+/// `import_member_is_kernel_named`.
 pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegrityFinding> {
     let mut out = Vec::new();
     for record in index.modules.values() {
@@ -624,7 +686,7 @@ pub fn import_member_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegr
                 if import_surface_has(target, name) {
                     continue;
                 }
-                if crate::std_types::kernel_type_set().contains_key(name) {
+                if import_member_is_kernel_named(target, name) {
                     continue;
                 }
                 out.push(DeclarationIntegrityFinding {

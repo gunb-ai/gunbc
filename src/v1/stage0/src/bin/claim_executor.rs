@@ -10336,7 +10336,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 // identically is the failure DESIGN §5 names, not a tidy report.
                 eprintln!(
                     "required-ci: declarations modules={} declared={} import_members={} \
-                     citations={} debt={} in_fixtures={} outside_index={} lens_modules={}",
+                     citations={} debt={} in_fixtures={} outside_index={} kernel_named={} lens_modules={}",
                     population.modules,
                     population.declarations,
                     population.import_members,
@@ -10344,6 +10344,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                     population.citations_pre_existing_debt,
                     population.citations_in_fixtures,
                     population.citations_outside_index,
+                    population.import_members_kernel_named,
                     population.lens_modules,
                 );
                 for finding in &findings {
