@@ -1487,6 +1487,7 @@ fn belt_pub_receipt(head: CommitSha, node_id: String) -> String {
               updated_at: "2026-08-01T00:00:00Z",
               merged_at: none,
               draft: false,
+              merge_commit_sha: none,
             },
           ],
         },

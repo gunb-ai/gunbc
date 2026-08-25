@@ -7922,6 +7922,22 @@ fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> Bool {
   map_contains_key(rt_ref_map_functions(), function_name)
 }
 
+// The Absent arm returns function_name UNCHANGED, and that is the identity case,
+// not a fallback for an unknown name. rt_bridge_function_names is derived by
+// filter(f => f.name != f.bridge_name) over rt_function_registry, so it holds
+// ONLY the rows that rename; a miss means this bridge's v1_rt symbol is spelled
+// exactly like its .dag name, which is true of most of the registry.
+// The totality of the Absent arm DEPENDS on that derivation: if
+// rt_bridge_function_names ever becomes hand-authored rather than derived from
+// rt_function_registry, a miss stops meaning "spelled the same" and this arm
+// becomes a fabrication, so that change invalidates this argument.
+// An unknown name cannot reach either use of the result, which a reader of this
+// function alone cannot see: emit_typed_call consumes runtime_name only inside
+// `if is_rt`, and is_rt requires map_contains_key(rt_functions(), func); and
+// emit_rust_generic_method_call computes bridge_name only in the else of a guard
+// that already refuses when rt_functions() misses. Registry-vs-derivation
+// agreement is held by test.claim.rt_bridge_registry_witness_test
+// rt_bridge_name_agrees_with_registry_on_every_row.
 fn rust_runtime_bridge_name(function_name: String) -> String {
   match map_get(rt_bridge_function_names(), function_name) {
     Present { value: runtime_name } => runtime_name
