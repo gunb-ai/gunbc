@@ -1497,3 +1497,49 @@ rather than as a remaining backlog.
   touch files DESIGN names as load-bearing.
 - **Gen 3 stays frozen.** It is an offline differential oracle; nothing here
   merges it, and per the 2026-08-25 ruling main is not merged into it again.
+
+---
+
+## 11. Standing invariants, the seam, and the dispatch protocol
+
+Section 7b divides the work. This section records the rules that hold *across* that division — each one derived from a specific way this program already went wrong, not from general prudence. They are stated here rather than in a lane's brief because a rule that lives in one lane's brief is enforceable by one lane.
+
+### 11.1 The seam: semantic authority vs proof authority
+
+The two roles were previously named *implementation* and *observation*, which mis-describes both. The distinction is not who writes code and who measures; it is **which question a party is entitled to answer**.
+
+- **Semantic authority** — what the program *means*: which bytes the target emits for a fixed semantic input, what a resolution returns, what a key denotes. Changing this changes the answer.
+- **Proof authority** — whether a claimed answer *holds*: bootstrap, fixed point, behavioural equivalence, regen provenance. Changing this changes the confidence, never the answer.
+
+The seam matters because the two have opposite failure modes. A semantic change that is wrong is *loud downstream*; a proof that is wrong is *silent*, and it is silent in the direction of appearing green. So a party may hold both roles for different objects, and may never hold both for the *same* object: a proof authored by the party whose answer it validates has no independent referent, which is §5's specification-without-execution wearing a second hat.
+
+Concretely: `#9182` is a semantic object (it changes emitted bytes) held here; its bootstrap and fixed-point proof stay with `deep-ant-102`, who is the required reviewer for regen provenance and is *not* free to also decide what the emission should be. `#9205` is the mirror case — proof authority restoring an instrument to buildable state, explicitly declining to claim its empty map is semantically correct. The moment the question becomes *what should `authored_import_names` contain*, the object crosses the seam.
+
+### 11.2 Four standing invariants
+
+**(1) One producer per production semantic contract.** For each contract, exactly one producer supplies every production consumer, and the producer changes once. This is stronger than per-consumer atomicity, which is what #9088 already falsified: two simultaneously-live consumers can each be internally coherent and disagree with each other, and nothing in either one is detectably wrong.
+
+**(2) No per-consumer straddle across the cutover.** No consumer may be correct under both the old and the new producer during the transition. A consumer that works either way is not a compatibility win — it is the absence of a discriminating input, so the cutover has no observable moment and its failure has no detector.
+
+**(3) No oracle repair by normalization.** When a comparison refuses, the repair is never to normalize both sides until it agrees. That is the rustfmt double-normalization defect the required run already paid for: an identity that holds only if the normalizer is idempotent, whose sole reachable green was the hand-edit the gate exists to refuse. Where two consumers normalize one artifact differently, the artifact is stored in the normalizer's fixed point — the contradiction made unrepresentable rather than detected.
+
+**(4) No evidence laundering, and no collapsed absence.** A measurement is cited by naming the producer that re-derives it. A row reporting *the check passed* may not share a carrier with *the check did not run* — six distinct inhabitants are in play across this program's measurements (`ran and clean`, `ran and found`, `refused upstream`, `declined by home policy`, `no route at the hermetic boundary`, `not discovered`) and every pair of them has been conflated by something in this repository within the last week. deep-ant's own stale-base catch is invariant (4) applied by hand: a diagnostic measured on a 23-commit-stale base and one measured on main render identically, and only provenance separates them.
+
+Invariant (4) has a live consequence worth recording rather than leaving to be rediscovered. DESIGN.md's 2026-08-25 emit-stage rung-drop row names `gcloud.Auth.ReadADC` as its specimen; the declaration is **gone from `origin/main`** — the only surviving mentions are a retrospective comment in `gunbc.auth.credentials`, stale fixtures under `dag/test/fixture/`, and the row itself. This does **not** falsify the row, which anticipated exactly this and states its own restoration trigger as *a required phase that emits over a closure*, explicitly **not** the specimen's repair. The point is the reverse and it is the stronger one: the specimen was repaired along the read-then-decode line the row itself ruled, and **no mechanism updated the row or noticed**. A rung-drop declaration whose specimens rot silently is a measurement with no producer, which is what invariant (4) exists to forbid. The row's *class* claim stands; its *present-tense specimen* does not.
+
+### 11.3 The dispatch protocol
+
+Every dispatch across a lane boundary carries five lines, and a dispatch without them is refused rather than interpreted:
+
+```
+AUTHORITY:    semantic | proof — which question this party may answer
+CONTRACT:     the one production semantic contract at stake, stated as a sentence
+EXACT HEAD:   branch @ sha, and its base
+COUNTERPART:  who holds the other half of the seam, and what they owe
+RETIRES WHEN: the condition under which this dispatch is complete
+```
+
+**At most one active dispatch per (AUTHORITY, CONTRACT) pair.** Two live dispatches against one contract is invariant (1) violated at the coordination layer instead of the code layer, and it produces the same result: two coherent parties, one incoherent contract.
+
+The protocol is not ceremony, and it is not derived from taste. Every field is present because its absence has already cost something in this program: a dispatch went out with a title and no brief and was correctly blocked; a target spelling stated in three places drifted between them and blocked a peer lane; a measurement was taken on a stale head and nearly reported as a live defect. `EXACT HEAD` in particular is what makes the third one detectable by the recipient rather than by luck.
+
