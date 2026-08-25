@@ -944,6 +944,21 @@ pub fn cited_symbol_findings(index: &DeclarationIndex) -> Vec<DeclarationIntegri
 /// no pre-existing debt, so `index_findings` judges every citation it finds, and only
 /// `corpus_findings` — whose subject IS this repository — passes the roster that suppresses
 /// this repository's enrolled rows. One roster, reachable from one place.
+///
+/// THE RULE THE EMPTY DEFAULT ENCODES, stated because it is doing more work than
+/// "parameterize it" suggests and a later reader will otherwise flip it back for convenience:
+/// **a policy roster passed as a parameter defaults to the IDENTITY ELEMENT OF THE JUDGMENT,
+/// never to the production value.** Empty means judge everything, which is the strictest
+/// answer, so a caller who forgets to pass a roster gets MORE refusals. Default it to the
+/// production roster instead and the forgetful caller gets silent suppression — precisely the
+/// defect this parameter exists to close, reintroduced through the default. That is what makes
+/// this a construction move rather than a tidier signature: the fail-closed direction is a
+/// property of the type's default, not of anyone's discipline.
+///
+/// The seam this creates — that `corpus_findings` really does pass the production roster — is
+/// itself a fact needing evidence, and it has some:
+/// `corpus_findings_is_wired_to_the_production_suppression_roster` declares a module the
+/// roster names and requires the same tree to be refused unenrolled and suppressed enrolled.
 pub fn cited_symbol_findings_against(
     index: &DeclarationIndex,
     roster: &[(&str, &str, &str)],

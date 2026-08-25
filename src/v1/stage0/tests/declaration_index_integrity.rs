@@ -186,10 +186,14 @@ fn kernel_named_counter_splits_declared_from_undeclared() {
     author(
         &dir,
         "declares.dag",
-        "module probe.declares\n\ntype Unit = OnlyInhabitant\n",
+        "module probe.declares\n\ntype Unit = OnlyInhabitant | OtherInhabitant\n",
     );
     // Declares no `Unit` — the `std.types` `Int` case.
-    author(&dir, "silent.dag", AUTHORITY);
+    author(
+        &dir,
+        "silent.dag",
+        "module probe.silent\n\ndata real_declaration: Bool = true\n",
+    );
     author(
         &dir,
         "claimant.dag",
@@ -515,5 +519,63 @@ fn the_production_roster_does_not_reach_an_arbitrary_tree() {
     assert_eq!(
         found[0].kind,
         DeclarationIntegrityKind::CitedDeclarationAbsent
+    );
+}
+
+// THE SEAM THE REPAIR ITSELF CREATED.
+//
+// Both rosters now enter from exactly one place, `corpus_findings`. That is the right shape,
+// and it makes the WIRING a fact that needs its own evidence: unreachable-from-`index_findings`
+// is proven by construction, but reachable-from-`corpus_findings` is otherwise just an
+// assertion about a call site. Without this test the suppression arm would be perfectly
+// evidenced at the fixture boundary and silently disableable at the only seam that matters —
+// pass `&[]` there instead of the production roster and nothing fails.
+//
+// The discriminating pair is authorable because a fixture may DECLARE a module the production
+// roster names. `std.bytes` `builtin_function_registry` is a real row of
+// `PRE_EXISTING_CITATION_DEBT`, so a fixture that declares `std.bytes` WITHOUT that
+// declaration, and cites it, must be refused by `index_findings` (empty roster: judge
+// everything) and suppressed by `corpus_findings` (production roster: enrolled). The two
+// answers over ONE tree are what prove the wiring rather than the fold.
+#[test]
+fn corpus_findings_is_wired_to_the_production_suppression_roster() {
+    let dir = scratch_root("seam_suppression");
+    author(
+        &dir,
+        "bytes.dag",
+        "module std.bytes\n\ndata something_else: Bool = true\n",
+    );
+    author(
+        &dir,
+        "citer.dag",
+        "module probe.citer\n\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\n\n\
+         data probe_citation: DeclarationRef = DeclarationRef {\n\
+         \u{20}\u{20}module_path: \"std.bytes\",\n\
+         \u{20}\u{20}decl_name: \"builtin_function_registry\",\n\
+         \u{20}\u{20}field: WholeDeclaration,\n}\n",
+    );
+    let sweep = run_dag_parse_sweep(&dir, &["probe_root"]).expect("fixture must parse");
+
+    let unenrolled: Vec<_> = index_findings(&sweep.index)
+        .into_iter()
+        .filter(|f| f.kind == DeclarationIntegrityKind::CitedDeclarationAbsent)
+        .collect();
+    assert_eq!(
+        unenrolled.len(),
+        1,
+        "with no roster the citation must be judged and refused, got {unenrolled:?}"
+    );
+
+    let enrolled: Vec<_> = corpus_findings(&sweep.index)
+        .into_iter()
+        .filter(|f| f.kind == DeclarationIntegrityKind::CitedDeclarationAbsent)
+        .collect();
+    assert_eq!(
+        enrolled,
+        Vec::new(),
+        "corpus_findings must pass the PRODUCTION roster to the citation arm, which enrolls \
+         this exact identity; passing an empty roster here would leave the suppression arm \
+         perfectly tested at the fixture boundary and silently disabled at the one seam that \
+         matters"
     );
 }
