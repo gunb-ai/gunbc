@@ -2638,6 +2638,28 @@ ambiguous reference 'samekind_name': 2 candidates: probe.samekind_name,
 So the policy works, `unique_on_chain_policy_note` is accurate, and the resolver
 is not a fail-open.
 
+**Independently reproduced by `cool-swift-307` on their own build** (flag set
+printed first, `--entry` present, so not the installed binary), both arms, both
+controls holding: arm A `resolved 4 sources … 0 indexed modules in the name
+census only` with the ambiguity refusal; arm B, one function deleted and nothing
+else changed, `resolved 3 sources … 1 indexed modules in the name census only`
+with no diagnostic of any kind. **The census count in the output is the
+discriminator, not an inference** — one module sitting in the census rather than
+the index is the entire difference between a refusal naming both candidates and
+silence. Their control also demonstrates the class-2 short-circuit by execution
+rather than by source read: `probe_unique`, declared in a SIBLING module,
+resolves clean in both arms.
+
+**And their reading of arm B is stronger than the one this section first gave.**
+The losing declaration is not merely unreported — it is not in the closure at
+all, so the emitted program binds to `probe.sub` and the other declaration never
+participates. The failure is not a missing diagnostic over a correct binding; it
+is **a binding chosen by which module happened to get pulled**. Closure
+membership is therefore load-bearing for SEMANTICS, not only for compile scope,
+which is what makes the composition framing (the pull leaves it in the census,
+the census does not surface it) the right one and the discarded
+two-seams-disagree framing wrong.
+
 **Nor is the census defective, and this clause is the second correction to arm 2
 — the first blamed the census fill.** `v1.compile` `census_only_sources_note`
 states the contract: *"Qualified references to modules outside the compile
