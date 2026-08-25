@@ -669,8 +669,68 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         role: capability_neutral,
         step_name: "Upload the long-home storage agreement",
       },
+      WitnessFloorBoundStep {
+        step: witness_floor_all_binary_targets_step(),
+        role: capability_neutral,
+        step_name: "Every v1-compiler binary target compiles",
+      },
     ],
   )
+}
+
+// EVERY BINARY TARGET COMPILES, AND IT IS A SECOND STANDING RATHER THAN A WIDER BUILD STEP.
+// Two populations were being answered by one roster and only one of them was ever authored:
+//   RuntimeArtifactPopulation -- the executables this job RUNS: claim_executor and gunbc.
+//   BinaryCompilePopulation   -- every bin target v1-compiler DECLARES.
+// witness_floor_required_bins is the first and is correct as the first; the rule above it
+// ("naming a binary that no step runs buys nothing and costs a compile") is a rule about
+// ARTIFACT PRODUCTION and stays intact. What was missing is that nothing answered the second,
+// so a bin outside the runtime pair could stop compiling and no required phase would notice.
+//
+// MEASURED SPECIMEN THAT PRICED THIS STEP: #8952 added `authored_import_names` to TypeEnv and
+// did not update `infer_semantics_witness`, whose six synthetic TypeEnv constructions then
+// failed E0063. Main stood red at `cargo check -p v1-compiler` and nothing could see it -- the
+// Rust suite left CI 2026-07-11, clippy 2026-07-08, the compile-clean gate went with the floor
+// cut, and this job builds two of sixteen declared targets. A .dag caller would have refused
+// loudly at resolve; a Rust mirror has no such wall once nothing invokes rustc on it, so the
+// exposure is SILENT STALENESS rather than a refused closure.
+//
+// NO NEW ARGV WORD, AND THAT IS DELIBERATE. gunbc.repo_self_build is the single authority for
+// how this repository builds itself and its note instructs reviewers to refuse a new argv word
+// the modeled surface already owns. An empty bin set already renders the no-selector package
+// build, which repo_self_build_empty_bins_note records as cargo's own meaning for "build every
+// target in the package" -- so the population is DERIVED from the manifest and a new [[bin]]
+// joins this standing with no edit here.
+//
+// BUILD RATHER THAN CHECK, DECIDED BY MEASUREMENT AND NOT BY PREFERENCE. From a cold target dir
+// with the two-bin build already paid, the marginal cost of building every target was 12s
+// against 52s for `cargo check --release --bins`, and the build additionally LINKS. Cheaper and
+// strictly stronger, so there is no tradeoff to split: check would have bought less for more.
+// Re-derive with a fresh CARGO_TARGET_DIR, the two-bin build, then this command.
+//
+// PLACEMENT IS THE LOAD-BEARING PART AND IT IS LAST ON PURPOSE. Ahead of the fold this step
+// would be a preparation mask: an auxiliary target failing to compile would stop the job before
+// the floor ran, and the planned/executed/terminal ledger -- every semantic measurement this
+// job exists to publish -- would vanish behind an unrelated compile error. It therefore runs
+// AFTER the fold and after the roster uploads, guarded only by `!cancelled()` so a red floor
+// still reaches it. Either standing may red the workflow; neither may stop the other from
+// publishing its evidence.
+//
+// WHAT IT ESTABLISHES: every declared v1-compiler binary target compiles and links under the
+// release profile. WHAT IT DOES NOT: that any of them RUNS correctly, and nothing about test
+// targets, which this command does not build.
+fn witness_floor_all_binary_targets_step() -> Step {
+  RunStep {
+    name: Present { value: "Every v1-compiler binary target compiles" },
+    id: Present { value: "build_all_binary_targets" },
+    run: concat(repo_self_build_command(bins: []), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: "!cancelled()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
 }
 
 fn witness_floor_steps() -> List<Step> {
