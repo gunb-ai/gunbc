@@ -258,6 +258,36 @@ test fn a_measured_report_names_the_compiler_that_produced_it() -> Bool {
     && string_contains(s: emission_report_text(m: clean_specimen), pattern: "working_tree\tclean")
 }
 
+// THE EXTENT CLAIM, and it is the one that stops a count being read as a total. v1's emit body is a
+// sequence of early returns, so a population taken over a refused emit may be a prefix of unknown
+// length. A measured entry and a refused one must therefore not report their counts the same way.
+data refused_specimen: EmissionMeasurement = EmissionEmitRefused {
+  subject: specimen_subject,
+  exit_code: 1,
+  emit_diagnostics: [],
+  emitted_files: FilesNotWritten
+}
+
+test fn a_refused_emit_population_is_never_reported_as_complete() -> Bool {
+  string_contains(s: emission_report_text(m: refused_specimen), pattern: "emit_population_extent\tcompleteness-unestablished")
+    && !string_contains(s: emission_report_text(m: refused_specimen), pattern: "emit_population_extent\tcomplete (")
+}
+
+// The counterpart, so the extent is a real discriminator rather than a constant: a compile that
+// wrote a tree ran the emit body to its end, and its population is complete.
+test fn a_completed_emit_population_is_reported_as_complete() -> Bool {
+  string_contains(s: emission_report_text(m: clean_specimen), pattern: "emit_population_extent\tcomplete (")
+}
+
+// AND THE COUNT NEVER TRAVELS WITHOUT IT. Both are rendered by one expression, so a report that
+// states a population size always states the standing of the set it counted.
+test fn no_report_states_an_emit_population_without_its_extent() -> Bool {
+  string_contains(s: emission_report_text(m: refused_specimen), pattern: "emit_population\t0")
+    && string_contains(s: emission_report_text(m: refused_specimen), pattern: "emit_population_extent\t")
+    && string_contains(s: emission_report_text(m: clean_specimen), pattern: "emit_population\t0")
+    && string_contains(s: emission_report_text(m: clean_specimen), pattern: "emit_population_extent\t")
+}
+
 test fn an_unestablished_subject_carries_no_provenance_and_no_population() -> Bool {
   !string_contains(s: emission_report_text(m: unreached_specimen), pattern: "compiler\t")
     && !string_contains(s: emission_report_text(m: unreached_specimen), pattern: "emit_population")

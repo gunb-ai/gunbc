@@ -45,6 +45,47 @@ type GunbcDiagnostic {
   message: String
 }
 
+// WHETHER THE POPULATION IS THE WHOLE POPULATION, which is a different question from how many
+// members it has and is not answerable by looking at them.
+//
+// `v1.05_emit_rust` `emit_rust` is a SEQUENCE OF EARLY RETURNS: measured on the live file, two arms
+// return `EmitResult { files: [], diagnostics }` before the rest of the body runs, so while the
+// first fires the checks after it NEVER EXECUTE. A count taken over emit is therefore potentially a
+// PREFIX of the truth rather than the truth -- not an undercount anyone can bound, but a count that
+// stops silently at whichever earlier check fired. The receipt: two workflow-parameter diagnostics
+// were masking eight anonymous-record ones; clearing the two made the eight appear, and they had
+// been standing the whole time. The tell was WALL TIME, not the counts -- emit ran LONGER once
+// cleared, because it got further -- which is exactly DESIGN's rule that if a count of zero and an
+// unreached check produce the same output, the number is not an observation.
+//
+// SO THE EXTENT PARTICIPATES IN THE CARRIER, and the derivation is exact rather than a guess. Both
+// early returns yield NO FILES, and the CLI prints its `compiled:` line only on the path where a
+// tree was written. So a compile that reported emitted files ran the emit body to its end and its
+// population is COMPLETE; a compile that reported none cannot be established as complete, and says
+// so. The second arm is deliberately named for IGNORANCE rather than for truncation: a refusal
+// whose cause lay outside emit also lands there, and claiming such a population IS truncated would
+// be answering a question this observation cannot answer. Over-stating ignorance is safe; the
+// opposite is the defect.
+type EmitPopulationExtent
+  = EmitPopulationComplete
+  | EmitPopulationCompletenessUnestablished
+
+fn emit_population_extent_text(extent: EmitPopulationExtent) -> String {
+  match extent {
+    EmitPopulationComplete => "complete (emit ran to the end of its body)"
+    EmitPopulationCompletenessUnestablished =>
+      "completeness-unestablished (emit returned before writing a tree, and its body early-returns, so this population may be a prefix of unknown length)"
+  }
+}
+
+// ONE DERIVATION, so the extent cannot drift from the observation it is a function of.
+fn emit_population_extent_of(files: EmittedFileCount) -> EmitPopulationExtent {
+  match files {
+    FilesEmitted { count: _ } => EmitPopulationComplete
+    FilesNotWritten => EmitPopulationCompletenessUnestablished
+  }
+}
+
 // A REFUSED COMPILE WRITES NO TREE, so "how many files were emitted" has no answer on that path
 // and is not zero. The two states are named rather than collapsed onto 0, which would read as a
 // compile that ran and produced nothing.
