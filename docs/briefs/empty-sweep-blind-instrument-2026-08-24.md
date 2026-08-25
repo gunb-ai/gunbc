@@ -152,3 +152,43 @@ a class it never touched (DESIGN §4b).
 In this instance the planted reds bought two things. They stopped a 47-module repair PR that would
 have been unfalsifiable and that collided with a corpus-wide cut deleting the same headers. And when
 the write-up over-generalised anyway, they caught that too.
+
+## Appendix — the sweep, as text rather than as a committed process
+
+The instrument this brief is about was originally committed as `sweep22.sh` at the repository root. It
+is reproduced here instead, and the move is not tidiness: main carries **zero** `.sh` files anywhere
+outside `.githooks/`, so a repo-root script would have been the first, re-opening a class the tree
+closed deliberately (`gunbc#9132` bankrupted the last of them, and DESIGN.md's dead-citation cleanup
+turns on that emptiness being a fact). A hand-authored investigative script with no modeled authority
+and no dissolution trigger is the §6 tell for *manual application committed as source*; a fenced block
+is prose, which is what this always was.
+
+```sh
+set -u
+echo "MARKER_HEAD=$(git rev-parse --short HEAD)"
+echo "MARKER_SRC_DIGEST=$(md5sum < src/v1/05_emit_rust.dag)"
+cargo build --release -p v1-compiler --bin gunbc 2>&1 | tail -1
+BIN=./target/release/gunbc
+echo "MARKER_BIN_DIGEST=$(md5sum < $BIN)"
+rm -rf /tmp/cand
+set +e
+$BIN compile --source-root dag --source-root src/v2 \
+    --entry src/v2/compiler/03_ingest.dag --output-dir /tmp/cand --target rust \
+    > /tmp/emit.log 2>&1
+echo "MARKER_EMIT_RC=$?"
+set -e
+tail -2 /tmp/emit.log
+echo "MARKER_FILES=$(find /tmp/cand -name '*.rs' | wc -l)"
+```
+
+**Two things to fix before anyone re-runs it,** because copying it as-is reproduces the failure mode the
+brief is about. `set -u` without `set -e` means a failing step before the compile continues silently;
+and `set +e` around the emit is what allows a non-zero `MARKER_EMIT_RC` to be printed and then walked
+past. An instrument whose own failure arm continues is exactly the shape that makes an empty result and
+a broken result render identically.
+
+**What is worth keeping is the `MARKER_` discipline itself.** Printing the head, the source digest and
+the *binary* digest beside the result is what lets a later reader tell whether two runs are comparable
+at all — the same obligation that now applies to every self-host measurement in this repository, where
+an unproven compiler identity voids the result outright. This sweep had that instinct before the rule
+was written down.
