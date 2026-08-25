@@ -17,7 +17,7 @@ import gunbc.executor_privileged_operation {
   executor_privileged_operations_sudoers_body,
   runner_slot_privileged_operations,
 }
-import gunbc.runner_host_deploy { RunnerHostDeploy, srv3_runner_host_deploy }
+import gunbc.runner_host_deploy { RunnerHostDeploy, srv1_runner_host_deploy, srv3_runner_host_deploy, srv4_runner_host_deploy }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
 
 // THE MANAGED STATE DIRECTORY, DECLARED ONCE. It is currently spelled THREE times in
@@ -126,4 +126,15 @@ fn bootstrap_principal_is_not_the_grantee(
   deploy: RunnerHostDeploy,
 ) -> Bool {
   bootstrap.login != deploy.job_user
+}
+
+// THE OTHER EXECUTOR HOSTS. Same derivation, different deploy row -- the population follows each
+// host's own slot roster and job user, so these are three call sites of one function rather than
+// three hand-maintained grant lists.
+fn srv1_runner_host_sudoers() -> String {
+  runner_host_sudoers_content(deploy: srv1_runner_host_deploy)
+}
+
+fn srv4_runner_host_sudoers() -> String {
+  runner_host_sudoers_content(deploy: srv4_runner_host_deploy)
 }
