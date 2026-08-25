@@ -1,5 +1,7 @@
 module v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence_test
 
+import v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence_module_refs { witness_policy_leak_cargo_build_lens_unit_module }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
