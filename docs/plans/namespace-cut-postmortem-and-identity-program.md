@@ -1671,6 +1671,50 @@ The remedy is the same one this whole section keeps arriving at: name the
 producer, key it exactly, and let the reading come from the thing that owns the
 fact rather than from a prior about which reader is trustworthy.
 
+### 11.2b The dormant repair — three instances in one day
+
+A pattern surfaced three times on 2026-08-25, by three lanes, on three
+unrelated subjects. It is recorded as its own class because each lane found it
+while looking for something else, and because the first two look like ordinary
+incompleteness until the third shows what they have in common.
+
+| repair | state | callers on the fast path |
+|---|---|---|
+| `rust_nominal_identity_carrier_def` — emits `pub struct Name(pub String)` | written, complete | 0 — `rust_nominal_identity_carrier_type_eligible` returns `false`, 5 call sites waiting |
+| `sole_constructor` — parsed, consumed by inference | authored on 79 declarations | 0 in emission — `05_emit.dag` and `05_emit_rust.dag` read it zero times |
+| `char_at_ascii_aware` — takes a precomputed `is_ascii` flag | written, self-documenting, names its own defect (`STRING-INDEX-0`) | 0 — the bridge table maps `char_at` → the plain wrapper |
+
+**The shape: the capability exists, is correct, and nothing reaches it.** Each
+was priced as a build and each is a routing question. That inverts the estimate
+in a way that matters — the `char_at` lane arrived carrying "98 references
+across 44 files are quadratic, are they in per-character loops?", and the
+answer is that the population is irrelevant, because every one of them lowers
+through a single bridge-table row.
+
+**And the third instance is not the same as the other two, which is what makes
+the class worth writing down rather than just the observation.** Its doc
+comment names the carrier that supplies its precomputed flag: `RcStr`. **`RcStr`
+occurs exactly twice in the whole of `src/v1/stage0/src/` — the comment, and
+the copy of that comment inside the generator string that emits it.** The
+carrier does not exist. So this is not an unrouted repair; it is a repair whose
+**input has no producer**, and the wrapper that computes `s.is_ascii()` per call
+is not laziness but the only callable form. The other two have every input
+present and want a routing edge; this one wants a carrier that was never built.
+
+The operative rule, and it applies before any lane sizes a population:
+**ask whether the mechanism already exists and is merely unrouted — and if it
+is, ask whether the thing that would route to it exists either.** A dormant
+repair looks like missing work and is usually a missing edge; a dormant repair
+whose parameter has no producer looks like a missing edge and is a missing
+model fact. The three cost estimates differ by an order of magnitude and the
+diffs are indistinguishable from the outside.
+
+This is §5's specification-without-execution with the polarity reversed. There,
+a thing is claimed done and never runs. Here, a thing is genuinely done,
+genuinely correct, and never runs — so it accrues no evidence of its own
+absence, and the defect it repairs keeps its full frequency while the repair
+sits in the tree being cited as coverage.
+
 ### 11.3 The dispatch protocol
 
 Every dispatch across a lane boundary carries five lines, and a dispatch without them is refused rather than interpreted:
