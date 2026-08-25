@@ -53,6 +53,16 @@ import tools.emission_entry_instrument {
 // owner and its dissolution condition. The carrier is std.roster_frontier's FrontierRow rather than
 // a fourth frontier shape minted here.
 //
+// WHAT THIS REFUSES, STATED BEFORE WHAT IT HOLDS, because a reader who meets the hole first will
+// price the whole carrier as the weaker thing. A subject carrying NO blocker that acquires ANY
+// blocker REFUSES, by name, with its cause — across every clean subject in the universe, which is
+// exactly the population a regression damages first. An admission row whose subject has become
+// clean REFUSES. A measurement that established nothing REFUSES rather than passing as clean. An
+// admission naming a subject the universe does not contain REFUSES. A universe of no subjects
+// REFUSES. Those are walls, and they hold today. The hole declared below is that an ALREADY-blocked
+// subject can acquire another blocker and be held — an INCOMPLETE wall, which is the opposite end of
+// the scale from a change detector, not a neighbour of it.
+//
 // THE RATCHET DIRECTION IS TWO-SIDED, and the second side is what makes it a ratchet rather than a
 // snapshot. An entry OFF the frontier that stops being clean REFUSES: that is the regression the
 // contract exists to prevent, and there is no count-shaped or variant-shaped escape from it -- a
@@ -62,8 +72,8 @@ import tools.emission_entry_instrument {
 // the remaining work, and DESIGN records the exact decay (an exemption roster beside its population
 // drifts silently, and only an exact identity join catches it).
 //
-// AND THE THIRD STANDING IS THE POINT OF THE WHOLE CARRIER. A measurement that did not establish a
-// population is NOT CLEAN and NOT SUSPECT; it is UNESTABLISHED, and it stops the line. DESIGN's
+// AND THE THIRD OUTCOME IS THE POINT OF THE WHOLE CARRIER. A measurement that did not establish a
+// population is NOT CLEAN and NOT BLOCKED; it is NOT-EVALUATED, and it stops the line. DESIGN's
 // execution-provenance-loss failure mode is precisely a count of zero and an unreached stage
 // rendering identically, and gunbc#9188 landed one function over the same defect one level down:
 // `false` IS the passing value, so an instrument that could not read its subject reported the CLEAN
@@ -73,8 +83,82 @@ import tools.emission_entry_instrument {
 // cleanliness of one entry -- did the compiler produce a population, and was that population free of
 // blocking diagnostics. Whether the emitted crate then COMPILES is a different claim over a
 // different population (rustc coded diagnostics), and folding it in would make one verdict answer
-// for two authorities. EmissionCargoUnreached is therefore NOT an unestablished emit standing: the
+// for two authorities. EmissionCargoUnreached is therefore NOT a not-evaluated emit outcome: the
 // emitter ran, its emit population is real, and only the cargo half is absent.
+
+// ---------------------------------------------------------------------------------------------
+// TWO DECLARED HOLES. Both are real, both are bounded, and both carry the trigger that closes them.
+// They are stated here rather than discovered later because a carrier that does not name its own
+// gaps is the rung inflation DESIGN §4b(1) calls worse than sitting low: a class whose carrier
+// already claims the rung never ranks for climbing.
+//
+// HOLE 1 -- A BLOCKED SUBJECT GAINING ANOTHER BLOCKER IS HELD, NOT REFUSED.
+//
+// This ratchet remembers WHICH SUBJECTS are clean, not WHICH BLOCKERS each one carries. So the
+// transitions divide unevenly:
+//
+//   Blocked{A,B} -> Blocked{A}   ALLOWED  (debt paid down)
+//   Blocked{A}   -> Clean        ALLOWED
+//   Clean        -> Blocked{A}   REFUSED  <- a real wall, and it holds today
+//   Blocked{A}   -> Blocked{A,B} HELD     <- this hole
+//
+// A subject already carrying one blocker can acquire a second and sit outside the clean frontier
+// in both the baseline and the current tree: it was blocked before, it is blocked now, the frontier
+// does not move, nothing refuses. Debt therefore grows silently inside already-blocked subjects,
+// which is most of them.
+//
+// WHAT THIS IS NOT: it is not a change detector. `Clean -> Blocked` refuses for every clean subject
+// in the corpus, which is a genuine wall over exactly the population a regression would damage
+// first. It is an INCOMPLETE wall, and the difference is worth stating because underselling what
+// lands is its own kind of dishonesty.
+//
+// AND SUBJECT-GRAIN ADMISSION IS THE SAME FACT SEEN FROM THE OTHER SIDE: an admission row is a
+// blanket over its subject's blockers, so admitting a subject admits every blocker it will ever
+// carry. One trigger closes both.
+//
+// NEXT-RUNG TRIGGER: semantic blocker identity from the emitter -- subject identity + deciding
+// stage + refusing authority + typed cause + referenced declaration. Then the relation becomes
+// `added_blockers(subject) = current − baseline − admitted, REQUIRE EMPTY`, and admission moves
+// from subject grain to cause grain. THE TRIGGER IS NOT NEGOTIABLE DOWNWARD: spans, message text
+// and hashes are PROVENANCE, never keys. A ratchet keyed on message text reds when someone edits a
+// diagnostic string and greens when the defect moves, which is a change detector wearing the
+// ratchet's name -- and automating that key collapses the assertion to measure() == measure(),
+// the review tell DESIGN §5 names.
+//
+// The hole is pinned by an executing claim rather than by this paragraph:
+// `blocked_subject_gaining_a_blocker_is_held_not_refused` in the witness. It is GREEN while the
+// hole is open and goes RED the moment the wall lands, which is what forces its own deletion.
+//
+// HOLE 2 -- THE UNIVERSE CAN NARROW SILENTLY, AND THAT IS THE PRECONDITION FOR ENROLMENT.
+//
+// THE MECHANISM, because the fact alone does not let a reader judge the risk. The roster is
+// discovered from the PARSED DECLARATION INDEX. A module is a subject because its declaration was
+// parsed and indexed. So if a module stops parsing -- an ingest regression, a grammar change, an
+// annotation in a position §4c does not admit -- its declaration is not indexed, the module is not
+// a subject, and the fold is never asked about it. It does not become blocked. It VANISHES from the
+// denominator, and a denominator that shrinks makes every remaining ratio look better.
+//
+// SO A PARSE REGRESSION READS AS IMPROVEMENT. That is the empty-observation narrow, and DESIGN is
+// explicit that it is strictly worse than the widen §5 already forbids: a widen is merely
+// expensive, a narrow is silently uncovered. Identity grain does not save it either -- a subject
+// that vanishes has no identity left to compare against.
+//
+// WHY IT IS TOLERABLE TODAY AND NOT TOMORROW: nothing acts on this carrier. No workflow invokes it
+// and no merge decision rides on it, so a narrowing universe can produce a wrong READING by a human
+// who has this note in front of them, and cannot produce a wrong ADMISSION. The moment anything
+// GATES on it, the same hole becomes a gate reporting improvement when a module stops parsing --
+// fabricated plausible output with merge authority behind it.
+//
+// SO THIS IS NOT A TODO, IT IS A PRECONDITION: **the dual denominator must land before this carrier
+// is enrolled anywhere.** Whoever proposes enrolment closes it first. The construction is a second
+// subject kind -- a module inventory supplying ModuleSurface subjects beside the declaration index
+// -- so a module that fails to parse becomes a BLOCKED ModuleSurface rather than an absence, and a
+// declaration roster that shrinks must be a named transition (deletion, move, or refusal) rather
+// than silent improvement.
+//
+// Pinned by `a_subject_that_vanishes_from_the_declaration_index_is_not_a_verdict` in the witness,
+// on the same terms as hole 1: green states the gap, and the dual denominator turns it red.
+// ---------------------------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------------------------
 // THE UNIVERSE, AND ITS PROVENANCE.
@@ -99,6 +183,28 @@ import tools.emission_entry_instrument {
 type RosterDiscoveryPolicy
   = DeclarationIndexUnderRoots { roots: List<String> }
 
+// WHICH DENOMINATORS PRODUCED THIS ROSTER. This is a FIELD rather than a sentence in the note above,
+// and the difference is the whole point: no `Accepted` program can read a paragraph, so a prose
+// precondition is enforced only by the next author reading it and correctly believing it applies to
+// them. That is exactly the failure this carrier exists to remove, committed by the carrier itself.
+//
+// So the rule "nothing may gate on a single-denominator universe" is carried by
+// `emit_ratchet_gating_admission` below, which REFUSES on this field. Enrolling a single-denominator
+// carrier is then a typed refusal naming the missing denominator, not a missed paragraph — and when
+// the module inventory lands, the field changes and enrolment becomes possible with no note for
+// anyone to remember.
+type RosterDenominators
+  = DeclarationIndexOnly
+  | DeclarationIndexAndModuleInventory
+
+fn roster_denominators_text(denominators: RosterDenominators) -> String {
+  match denominators {
+    DeclarationIndexOnly => "declaration index only (a module that stops parsing vanishes rather than blocking)"
+    DeclarationIndexAndModuleInventory =>
+      "declaration index + module inventory (a module that stops parsing is a blocked subject)"
+  }
+}
+
 fn roster_discovery_policy_text(policy: RosterDiscoveryPolicy) -> String {
   match policy {
     DeclarationIndexUnderRoots { roots: rs } =>
@@ -112,20 +218,26 @@ fn roster_discovery_policy_text(policy: RosterDiscoveryPolicy) -> String {
 type RosterIdentity
   = RosterIdentified {
       policy: RosterDiscoveryPolicy
+      denominators: RosterDenominators
       subject_count: Int
       digest: Fnv1a64Structural
     }
-  | RosterEmpty { policy: RosterDiscoveryPolicy }
+  | RosterEmpty { policy: RosterDiscoveryPolicy, denominators: RosterDenominators }
 
 // THE DIGEST COVERS THE POLICY AS WELL AS THE SUBJECTS, so two runs that discovered the same paths
 // under different roots are not one identity — and so the hashed text is non-empty by construction
 // rather than by the caller having supplied a subject with a name.
-fn roster_identity(policy: RosterDiscoveryPolicy, roster: List<String>) -> RosterIdentity {
+fn roster_identity(
+  policy: RosterDiscoveryPolicy,
+  denominators: RosterDenominators,
+  roster: List<String>
+) -> RosterIdentity {
   if count(roster) == 0 {
-    RosterEmpty { policy: policy }
+    RosterEmpty { policy: policy, denominators: denominators }
   } else {
     RosterIdentified {
       policy: policy,
+      denominators: denominators,
       subject_count: count(roster),
       digest: content_hash_atom(
         value: concat(
@@ -139,12 +251,14 @@ fn roster_identity(policy: RosterDiscoveryPolicy, roster: List<String>) -> Roste
 
 fn roster_identity_rows(identity: RosterIdentity) -> List<String> {
   match identity {
-    RosterEmpty { policy: p } => [
+    RosterEmpty { policy: p, denominators: dn } => [
       concat("roster_policy\t", roster_discovery_policy_text(policy: p)),
+      concat("roster_denominators\t", roster_denominators_text(denominators: dn)),
       "roster\t(empty — discovery returned no subject, which is a failure to discover and not a universe)"
     ]
-    RosterIdentified { policy: p, subject_count: n, digest: d } => [
+    RosterIdentified { policy: p, denominators: dn, subject_count: n, digest: d } => [
       concat("roster_policy\t", roster_discovery_policy_text(policy: p)),
+      concat("roster_denominators\t", roster_denominators_text(denominators: dn)),
       concat("roster_subjects\t", to_string(n)),
       concat("roster_digest\t", d.digest as String)
     ]
@@ -168,15 +282,15 @@ data emit_subject_path_keyed_identity_limitation: String = "The frontier is keye
 // THE PER-SUBJECT STANDING, derived from a measurement rather than stored beside one.
 // ---------------------------------------------------------------------------------------------
 
-// A refusal and a blocking population are both NOT-CLEAN, and they are not the same not-clean: one
+// A refusal and a blocking population are both BLOCKED, and they are not the same blocked: one
 // carries the diagnostics that explain it, the other is a compiler that stopped for a reason this
 // observation could not decode. Collapsing them sends a reader looking for diagnostics that were
 // never printed.
-type EmitSuspectCause
+type EmitBlockerCause
   = BlockingDiagnostics { blocking: Int }
   | RefusedWithoutBlockingPopulation { exit_code: Int }
 
-fn emit_suspect_cause_text(cause: EmitSuspectCause) -> String {
+fn emit_blocker_cause_text(cause: EmitBlockerCause) -> String {
   match cause {
     BlockingDiagnostics { blocking: n } => concat(to_string(n), " blocking diagnostic(s)")
     RefusedWithoutBlockingPopulation { exit_code: c } =>
@@ -187,30 +301,45 @@ fn emit_suspect_cause_text(cause: EmitSuspectCause) -> String {
   }
 }
 
-// WHY UNESTABLISHED HAS TWO ARMS RATHER THAN ONE. "no population was produced" and "a population
-// was produced whose extent is unknown and which is empty so far" are different facts with
-// different remedies -- the first is fixed by making the instrument run, the second by making emit
-// report the tree it wrote -- and a reader who cannot tell them apart cannot act on either.
-type EmitSubjectStanding
-  = EmitSubjectClean
-  | EmitSubjectSuspect { cause: EmitSuspectCause }
-  | EmitSubjectPopulationUnproduced { stage: EmissionStage, cause: String }
-  | EmitSubjectExtentUnestablished
+// WHY NOT-EVALUATED CARRIES TWO CAUSES RATHER THAN ONE. "no population was produced" and "a
+// population was produced whose extent is unknown and which is empty so far" are different facts
+// with different remedies -- the first is fixed by making the instrument run, the second by making
+// emit report the tree it wrote -- and a reader who cannot tell them apart cannot act on either.
+// They are deliberately NOT collapsed into a single NotEvaluated: that would be the state-space
+// conflation this whole carrier is guarding against, committed one level inside the guard.
+type EmitNotEvaluatedCause
+  = PopulationUnproduced { stage: EmissionStage, cause: String }
+  | ExtentUnestablished
 
-fn emit_subject_standing_text(standing: EmitSubjectStanding) -> String {
-  match standing {
-    EmitSubjectClean => "clean (emit ran to the end of its body and printed no blocking diagnostic)"
-    EmitSubjectSuspect { cause: c } => concat("suspect — ", emit_suspect_cause_text(cause: c))
-    EmitSubjectPopulationUnproduced { stage: s, cause: c } =>
+fn emit_not_evaluated_cause_text(cause: EmitNotEvaluatedCause) -> String {
+  match cause {
+    PopulationUnproduced { stage: s, cause: c } =>
       concat(
-        concat("unestablished — no emit population was produced; the instrument stopped at ", emission_stage_name(stage: s)),
+        concat("no emit population was produced; the instrument stopped at ", emission_stage_name(stage: s)),
         concat(": ", c)
       )
-    EmitSubjectExtentUnestablished =>
+    ExtentUnestablished =>
       concat(
-        "unestablished — the population carries no blocking diagnostic AND no established extent: ",
+        "the population carries no blocking diagnostic AND no established extent: ",
         emit_population_extent_text(extent: EmitPopulationCompletenessUnestablished)
       )
+  }
+}
+
+// THREE OUTCOMES. NotEvaluated is not a quiet zero and is never comparable to Clean: an instrument
+// that could not read its subject has said nothing about it, and "said nothing" is not "found
+// nothing".
+type EmitSubjectOutcome
+  = EmitSubjectClean
+  | EmitSubjectBlocked { cause: EmitBlockerCause }
+  | EmitSubjectNotEvaluated { cause: EmitNotEvaluatedCause }
+
+fn emit_subject_outcome_text(outcome: EmitSubjectOutcome) -> String {
+  match outcome {
+    EmitSubjectClean => "clean (emit ran to the end of its body and printed no blocking diagnostic)"
+    EmitSubjectBlocked { cause: c } => concat("blocked — ", emit_blocker_cause_text(cause: c))
+    EmitSubjectNotEvaluated { cause: c } =>
+      concat("not-evaluated — ", emit_not_evaluated_cause_text(cause: c))
   }
 }
 
@@ -218,14 +347,15 @@ fn emit_subject_standing_text(standing: EmitSubjectStanding) -> String {
 // honoured at another. A blocking diagnostic found in a prefix is still a blocking diagnostic, so
 // the extent decides only the ZERO case: zero-so-far over a population of unknown length is not a
 // clean entry, it is an entry nobody has measured to the end.
-fn emit_standing_of_population(ds: List<GunbcDiagnostic>, files: EmittedFileCount) -> EmitSubjectStanding {
+fn emit_outcome_of_population(ds: List<GunbcDiagnostic>, files: EmittedFileCount) -> EmitSubjectOutcome {
   let blocking = emit_blocking_count(ds: ds)
   if blocking > 0 {
-    EmitSubjectSuspect { cause: BlockingDiagnostics { blocking: blocking } }
+    EmitSubjectBlocked { cause: BlockingDiagnostics { blocking: blocking } }
   } else {
     match emit_population_extent_of(files: files) {
       EmitPopulationComplete => EmitSubjectClean
-      EmitPopulationCompletenessUnestablished => EmitSubjectExtentUnestablished
+      EmitPopulationCompletenessUnestablished =>
+        EmitSubjectNotEvaluated { cause: ExtentUnestablished }
     }
   }
 }
@@ -233,25 +363,25 @@ fn emit_standing_of_population(ds: List<GunbcDiagnostic>, files: EmittedFileCoun
 // A REFUSING EMITTER IS A MEASUREMENT, and the population it printed is the answer -- so a refusal
 // carrying blocking diagnostics reports THEM, and only a refusal that printed none falls back to
 // the exit code. Reporting the exit code in both cases would discard what the compiler did say.
-fn emit_standing_of_refusal(exit_code: Int, ds: List<GunbcDiagnostic>) -> EmitSubjectStanding {
+fn emit_outcome_of_refusal(exit_code: Int, ds: List<GunbcDiagnostic>) -> EmitSubjectOutcome {
   let blocking = emit_blocking_count(ds: ds)
   if blocking > 0 {
-    EmitSubjectSuspect { cause: BlockingDiagnostics { blocking: blocking } }
+    EmitSubjectBlocked { cause: BlockingDiagnostics { blocking: blocking } }
   } else {
-    EmitSubjectSuspect { cause: RefusedWithoutBlockingPopulation { exit_code: exit_code } }
+    EmitSubjectBlocked { cause: RefusedWithoutBlockingPopulation { exit_code: exit_code } }
   }
 }
 
-fn emit_subject_standing(m: EmissionMeasurement) -> EmitSubjectStanding {
+fn emit_subject_outcome(m: EmissionMeasurement) -> EmitSubjectOutcome {
   match m {
     EmissionSubjectUnestablished { entry: _, stage: s, cause: c } =>
-      EmitSubjectPopulationUnproduced { stage: s, cause: c }
+      EmitSubjectNotEvaluated { cause: PopulationUnproduced { stage: s, cause: c } }
     EmissionUnreached { subject: _, stage: s, cause: c } =>
-      EmitSubjectPopulationUnproduced { stage: s, cause: c }
+      EmitSubjectNotEvaluated { cause: PopulationUnproduced { stage: s, cause: c } }
     EmissionEmitRefused { subject: _, exit_code: code, emit_diagnostics: ds, emitted_files: _ } =>
-      emit_standing_of_refusal(exit_code: code, ds: ds)
+      emit_outcome_of_refusal(exit_code: code, ds: ds)
     EmissionCargoUnreached { subject: _, stage: _, cause: _, emit_diagnostics: ds, emitted_files: files } =>
-      emit_standing_of_population(ds: ds, files: files)
+      emit_outcome_of_population(ds: ds, files: files)
     EmissionMeasured {
       subject: _,
       emitted_files: files,
@@ -259,7 +389,7 @@ fn emit_subject_standing(m: EmissionMeasurement) -> EmitSubjectStanding {
       cargo_clean: _,
       cargo_diagnostics: _,
       cargo_lines_scanned: _
-    } => emit_standing_of_population(ds: ds, files: files)
+    } => emit_outcome_of_population(ds: ds, files: files)
   }
 }
 
@@ -292,6 +422,26 @@ fn emission_measurement_entry(m: EmissionMeasurement) -> String {
 // condition: the lane accountable for retiring it. std.roster_frontier's FrontierRow already models
 // subject, reason and dissolution; the owner is the fact it does not carry, so it is added here as
 // a decomposition of the admission rather than as a second frontier shape.
+//
+// THE KEY IS THE SUBJECT, AND THAT IS AN INTERIM. The terminal form keys an admission on a NAMED
+// BLOCKER over a DERIVED population -- admit this cause, wherever it occurs -- so that admitting a
+// subject stops admitting every blocker it will ever carry (hole 1 above). Cause-grain admission
+// needs the cause to HAVE an identity, and the cause vocabulary that exists today is two variants;
+// admitting on a two-valued key admits essentially everything, which is a gate with its teeth
+// removed wearing the refinement's name. So the key waits on the same blocker-identity trigger as
+// `added_blockers`, and they land together.
+//
+// WHAT DOES NOT WAIT IS THE STALENESS RULE, because it needs no blocker identity -- only the
+// ability to notice that an admission's population emptied. AN ADMISSION MUST GO STALE AND REFUSE
+// when the debt it admits is gone. At subject grain that is exactly two refusals, both live below:
+// the subject now emits clean (RatchetFrontierStale), or the subject is no longer in the discovered
+// roster at all (ADMISSION-ORPHAN). An admission that outlives its subject is an escape hatch with
+// a dissolution date nobody checks, which is the §5 refusal this carrier would otherwise become.
+//
+// AND ONE KEYING IS FORBIDDEN OUTRIGHT RATHER THAN DEFERRED: authority grain -- "anything already
+// blocked under authority X is allowed" -- was priced and demoted. It survives as a dashboard
+// PROJECTION ("17 blocked subjects share authority X") and never as an admission key, because a
+// blanket authority admission is the escape hatch DESIGN §5 forbids.
 // ---------------------------------------------------------------------------------------------
 type EmitDebtAdmission {
   row: FrontierRow
@@ -322,10 +472,10 @@ fn emit_debt_admission_entry(admission: EmitDebtAdmission) -> String {
 // debt and still carrying it.
 type EmitRatchetVerdict
   = RatchetCleanHeld { entry: String }
-  | RatchetDebtHeld { entry: String, cause: EmitSuspectCause }
-  | RatchetRegressed { entry: String, cause: EmitSuspectCause }
+  | RatchetDebtHeld { entry: String, cause: EmitBlockerCause }
+  | RatchetRegressed { entry: String, cause: EmitBlockerCause }
   | RatchetFrontierStale { entry: String }
-  | RatchetStandingUnestablished { entry: String, on_frontier: Bool, standing: EmitSubjectStanding }
+  | RatchetNotEvaluated { entry: String, on_frontier: Bool, cause: EmitNotEvaluatedCause }
   | RatchetSubjectUnmeasured { entry: String, on_frontier: Bool }
 
 fn emit_ratchet_verdict_entry(v: EmitRatchetVerdict) -> String {
@@ -334,7 +484,7 @@ fn emit_ratchet_verdict_entry(v: EmitRatchetVerdict) -> String {
     RatchetDebtHeld { entry: e, cause: _ } => e
     RatchetRegressed { entry: e, cause: _ } => e
     RatchetFrontierStale { entry: e } => e
-    RatchetStandingUnestablished { entry: e, on_frontier: _, standing: _ } => e
+    RatchetNotEvaluated { entry: e, on_frontier: _, cause: _ } => e
     RatchetSubjectUnmeasured { entry: e, on_frontier: _ } => e
   }
 }
@@ -345,7 +495,7 @@ fn emit_ratchet_verdict_holds(v: EmitRatchetVerdict) -> Bool {
     RatchetDebtHeld { entry: _, cause: _ } => true
     RatchetRegressed { entry: _, cause: _ } => false
     RatchetFrontierStale { entry: _ } => false
-    RatchetStandingUnestablished { entry: _, on_frontier: _, standing: _ } => false
+    RatchetNotEvaluated { entry: _, on_frontier: _, cause: _ } => false
     RatchetSubjectUnmeasured { entry: _, on_frontier: _ } => false
   }
 }
@@ -354,12 +504,12 @@ fn emit_ratchet_verdict_row(v: EmitRatchetVerdict) -> String {
   match v {
     RatchetCleanHeld { entry: e } => concat("clean-held\t", e)
     RatchetDebtHeld { entry: e, cause: c } =>
-      concat(concat("debt-held\t", e), concat("\t", emit_suspect_cause_text(cause: c)))
+      concat(concat("debt-held\t", e), concat("\t", emit_blocker_cause_text(cause: c)))
     RatchetRegressed { entry: e, cause: c } =>
       concat(
         concat("REGRESSED\t", e),
         concat(
-          concat("\t", emit_suspect_cause_text(cause: c)),
+          concat("\t", emit_blocker_cause_text(cause: c)),
           "\tthis entry carries no admission row, so it is expected to emit clean"
         )
       )
@@ -368,10 +518,10 @@ fn emit_ratchet_verdict_row(v: EmitRatchetVerdict) -> String {
         concat("FRONTIER-STALE\t", e),
         "\tthe entry emits clean and its admission row is now a false statement about the tree — delete the row"
       )
-    RatchetStandingUnestablished { entry: e, on_frontier: f, standing: s } =>
+    RatchetNotEvaluated { entry: e, on_frontier: f, cause: c } =>
       concat(
-        concat(concat("UNESTABLISHED\t", e), concat("\ton_frontier\t", to_string(f))),
-        concat("\t", emit_subject_standing_text(standing: s))
+        concat(concat("NOT-EVALUATED\t", e), concat("\ton_frontier\t", to_string(f))),
+        concat("\t", emit_not_evaluated_cause_text(cause: c))
       )
     RatchetSubjectUnmeasured { entry: e, on_frontier: f } =>
       concat(
@@ -385,28 +535,18 @@ fn list_contains_string(xs: List<String>, target: String) -> Bool {
   fold(xs, init: false, f: (found, x) => found || (x == target))
 }
 
-fn emit_ratchet_verdict_of_standing(entry: String, on_frontier: Bool, standing: EmitSubjectStanding) -> EmitRatchetVerdict {
-  match standing {
+fn emit_ratchet_verdict_of_outcome(entry: String, on_frontier: Bool, outcome: EmitSubjectOutcome) -> EmitRatchetVerdict {
+  match outcome {
     EmitSubjectClean =>
       if on_frontier { RatchetFrontierStale { entry: entry } } else { RatchetCleanHeld { entry: entry } }
-    EmitSubjectSuspect { cause: c } =>
+    EmitSubjectBlocked { cause: c } =>
       if on_frontier {
         RatchetDebtHeld { entry: entry, cause: c }
       } else {
         RatchetRegressed { entry: entry, cause: c }
       }
-    EmitSubjectPopulationUnproduced { stage: s, cause: c } =>
-      RatchetStandingUnestablished {
-        entry: entry,
-        on_frontier: on_frontier,
-        standing: EmitSubjectPopulationUnproduced { stage: s, cause: c }
-      }
-    EmitSubjectExtentUnestablished =>
-      RatchetStandingUnestablished {
-        entry: entry,
-        on_frontier: on_frontier,
-        standing: EmitSubjectExtentUnestablished
-      }
+    EmitSubjectNotEvaluated { cause: c } =>
+      RatchetNotEvaluated { entry: entry, on_frontier: on_frontier, cause: c }
   }
 }
 
@@ -422,13 +562,13 @@ fn emit_ratchet_verdict_of_standing(entry: String, on_frontier: Bool, standing: 
 // ---------------------------------------------------------------------------------------------
 type EmitSubjectReading {
   entry: String
-  standing: EmitSubjectStanding
+  outcome: EmitSubjectOutcome
 }
 
 fn emit_subject_reading(m: EmissionMeasurement) -> EmitSubjectReading {
   EmitSubjectReading {
     entry: emission_measurement_entry(m: m),
-    standing: emit_subject_standing(m: m)
+    outcome: emit_subject_outcome(m: m)
   }
 }
 
@@ -455,10 +595,10 @@ fn emit_ratchet_verdict_for(entry: String, on_frontier: Bool, readings: List<Emi
   match lookup_subject_reading(readings: readings, entry: entry) {
     SubjectReadingAbsent => RatchetSubjectUnmeasured { entry: entry, on_frontier: on_frontier }
     SubjectReadingFound { reading: reading } =>
-      emit_ratchet_verdict_of_standing(
+      emit_ratchet_verdict_of_outcome(
         entry: entry,
         on_frontier: on_frontier,
-        standing: reading.standing
+        outcome: reading.outcome
       )
   }
 }
@@ -476,13 +616,14 @@ type EmitSubjectCleanRatchet {
 
 fn fold_emit_subject_clean_ratchet_over_readings(
   policy: RosterDiscoveryPolicy,
+  denominators: RosterDenominators,
   roster: List<String>,
   admissions: List<EmitDebtAdmission>,
   readings: List<EmitSubjectReading>
 ) -> EmitSubjectCleanRatchet {
   let keys = map(admissions, a => emit_debt_admission_entry(admission: a))
   EmitSubjectCleanRatchet {
-    roster: roster_identity(policy: policy, roster: roster),
+    roster: roster_identity(policy: policy, denominators: denominators, roster: roster),
     verdicts: map(
       roster,
       entry =>
@@ -513,12 +654,14 @@ fn fold_emit_subject_clean_ratchet_over_readings(
 
 fn fold_emit_subject_clean_ratchet(
   policy: RosterDiscoveryPolicy,
+  denominators: RosterDenominators,
   roster: List<String>,
   admissions: List<EmitDebtAdmission>,
   measurements: List<EmissionMeasurement>
 ) -> EmitSubjectCleanRatchet {
   fold_emit_subject_clean_ratchet_over_readings(
     policy: policy,
+    denominators: denominators,
     roster: roster,
     admissions: admissions,
     readings: map(measurements, m => emit_subject_reading(m: m))
@@ -537,7 +680,7 @@ fn ratchet_failing_rows(r: EmitSubjectCleanRatchet) -> List<String> {
   concat(
     concat(
       match r.roster {
-        RosterEmpty { policy: p } => [
+        RosterEmpty { policy: p, denominators: _ } => [
           concat(
             "ROSTER-EMPTY\t",
             concat(
@@ -546,7 +689,7 @@ fn ratchet_failing_rows(r: EmitSubjectCleanRatchet) -> List<String> {
             )
           )
         ]
-        RosterIdentified { policy: _, subject_count: _, digest: _ } => []
+        RosterIdentified { policy: _, denominators: _, subject_count: _, digest: _ } => []
       },
       map(ratchet_failing_verdicts(r: r), v => emit_ratchet_verdict_row(v: v))
     ),
@@ -587,6 +730,45 @@ fn emit_ratchet_standing_text(standing: EmitRatchetStanding) -> String {
 // COUNTS APPEAR HERE AND NOWHERE ELSE, and they are display: every count on this report is a
 // function of rows the report also prints in full, so a reader can reconstruct it and no consumer
 // has to trust it. Nothing above admits or refuses on one.
+// ---------------------------------------------------------------------------------------------
+// THE ENROLMENT WALL.
+//
+// Any consumer that would let a merge decision ride on this carrier routes through here first, and
+// today it always refuses, because hole 2 is open: a universe discovered from the declaration index
+// alone drops a module that stops parsing instead of blocking it, so a gate reading it would report
+// IMPROVEMENT when ingest regresses. That is fabricated plausible output with merge authority
+// behind it.
+//
+// THIS IS A CONSTRUCTION, NOT A NOTE, AND THE DIFFERENCE IS THE POINT. The same rule written as
+// prose is enforced only by the next author reading a paragraph and correctly believing it applies
+// to them; written here it is a typed refusal naming the missing denominator. When the module
+// inventory lands, the field changes, this permits, and there is no sentence anyone has to remember
+// to delete.
+//
+// BOTH ARMS ARE REACHABLE TODAY — the permitting arm is authorable by handing the fold the dual
+// denominator, which is why this is a wall rather than a decoration that could only ever refuse.
+type EmitRatchetGatingAdmission
+  = GatingPermitted
+  | GatingRefusedDenominator { missing: String }
+
+fn emit_ratchet_gating_admission(r: EmitSubjectCleanRatchet) -> EmitRatchetGatingAdmission {
+  match r.roster {
+    RosterEmpty { policy: _, denominators: dn } => emit_ratchet_gating_admission_of(denominators: dn)
+    RosterIdentified { policy: _, denominators: dn, subject_count: _, digest: _ } =>
+      emit_ratchet_gating_admission_of(denominators: dn)
+  }
+}
+
+fn emit_ratchet_gating_admission_of(denominators: RosterDenominators) -> EmitRatchetGatingAdmission {
+  match denominators {
+    DeclarationIndexAndModuleInventory => GatingPermitted
+    DeclarationIndexOnly =>
+      GatingRefusedDenominator {
+        missing: "module inventory — a universe discovered from the declaration index alone loses a module that stops parsing instead of blocking it, so a gate over it reports improvement when ingest regresses"
+      }
+  }
+}
+
 fn emit_ratchet_report_rows(r: EmitSubjectCleanRatchet) -> List<String> {
   concat(
     concat(

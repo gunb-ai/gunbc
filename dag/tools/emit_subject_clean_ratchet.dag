@@ -16,6 +16,8 @@ import gunbc.emit_subject_clean_frontier {
   EmitRatchetHeld,
   EmitRatchetRefused,
   RosterDiscoveryPolicy,
+  RosterDenominators,
+  DeclarationIndexOnly,
   DeclarationIndexUnderRoots,
   emit_subject_clean_admissions,
   emit_ratchet_report_text,
@@ -40,6 +42,14 @@ import gunbc.emit_subject_clean_frontier {
 data emit_subject_clean_roster_policy: RosterDiscoveryPolicy = DeclarationIndexUnderRoots {
   roots: witness_layer_roots
 }
+
+// ONE DENOMINATOR TODAY, AND THE CARRIER REFUSES TO BE GATED ON IT. A module that stops parsing is
+// not indexed, so it is not a subject, so the fold is never asked about it -- it vanishes from the
+// denominator rather than blocking, and a shrinking denominator makes everything left look better.
+// The second denominator is a module inventory, and until it lands
+// gunbc.emit_subject_clean_frontier emit_ratchet_gating_admission refuses any enrolment naming
+// exactly what is missing.
+data emit_subject_clean_roster_denominators: RosterDenominators = DeclarationIndexOnly
 
 // THE ROSTER IS DISCOVERED, NEVER AUTHORED. compile_clean_shard_entry_paths reads the parsed
 // declaration index under the declared source roots, so the universe is not derived from imports,
@@ -85,6 +95,7 @@ fn measure_selected(selection: List<String>) -> List<EmissionMeasurement> {
 fn run_emit_subject_clean_ratchet(entries: String, roster: List<String>) -> EmitSubjectCleanRatchet {
   fold_emit_subject_clean_ratchet(
     policy: emit_subject_clean_roster_policy,
+    denominators: emit_subject_clean_roster_denominators,
     roster: roster,
     admissions: emit_subject_clean_admissions,
     measurements: measure_selected(selection: selected_entries(entries: entries, roster: roster))

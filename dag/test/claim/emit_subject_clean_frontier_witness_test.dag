@@ -45,8 +45,8 @@ fn fixture_admission_for(entry: String) -> EmitDebtAdmission {
   )
 }
 
-fn fixture_reading(entry: String, standing: EmitSubjectStanding) -> EmitSubjectReading {
-  EmitSubjectReading { entry: entry, standing: standing }
+fn fixture_reading(entry: String, outcome: EmitSubjectOutcome) -> EmitSubjectReading {
+  EmitSubjectReading { entry: entry, outcome: outcome }
 }
 
 fn fixture_fold_of(
@@ -56,6 +56,7 @@ fn fixture_fold_of(
 ) -> EmitSubjectCleanRatchet {
   fold_emit_subject_clean_ratchet_over_readings(
     policy: fixture_policy(),
+    denominators: DeclarationIndexOnly,
     roster: roster,
     admissions: admissions,
     readings: readings
@@ -96,7 +97,7 @@ fn fixture_failing_rows(
 }
 
 fn fixture_both_clean() -> List<EmitSubjectReading> {
-  [fixture_reading(entry: fixture_alpha, standing: EmitSubjectClean), fixture_reading(entry: fixture_beta, standing: EmitSubjectClean)]
+  [fixture_reading(entry: fixture_alpha, outcome: EmitSubjectClean), fixture_reading(entry: fixture_beta, outcome: EmitSubjectClean)]
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -104,7 +105,7 @@ fn fixture_both_clean() -> List<EmitSubjectReading> {
 // ---------------------------------------------------------------------------------------------
 
 test fn a_complete_population_with_no_blocking_diagnostic_is_clean() -> Bool {
-  emit_standing_of_population(ds: [fixture_advisory_diagnostic], files: FilesEmitted { count: 12 })
+  emit_outcome_of_population(ds: [fixture_advisory_diagnostic], files: FilesEmitted { count: 12 })
     == EmitSubjectClean
 }
 
@@ -113,26 +114,26 @@ test fn a_complete_population_with_no_blocking_diagnostic_is_clean() -> Bool {
 // before writing one is a prefix of unknown length, and reading it as CLEAN is the defect this whole
 // carrier exists to prevent — the empty observation rendered as the passing verdict.
 test fn a_zero_population_of_unestablished_extent_is_not_clean() -> Bool {
-  emit_standing_of_population(ds: [fixture_advisory_diagnostic], files: FilesNotWritten)
-    == EmitSubjectExtentUnestablished
+  emit_outcome_of_population(ds: [fixture_advisory_diagnostic], files: FilesNotWritten)
+    == EmitSubjectNotEvaluated { cause: ExtentUnestablished }
 }
 
 // A blocking diagnostic found in a prefix is still a blocking diagnostic, so the extent must NOT
 // promote a suspect population to unestablished.
 test fn a_blocking_diagnostic_is_suspect_whatever_the_extent() -> Bool {
-  emit_standing_of_population(ds: [fixture_blocking_diagnostic], files: FilesNotWritten)
-    == EmitSubjectSuspect { cause: BlockingDiagnostics { blocking: 1 } }
-    && emit_standing_of_population(ds: [fixture_blocking_diagnostic], files: FilesEmitted { count: 3 })
-      == EmitSubjectSuspect { cause: BlockingDiagnostics { blocking: 1 } }
+  emit_outcome_of_population(ds: [fixture_blocking_diagnostic], files: FilesNotWritten)
+    == EmitSubjectBlocked { cause: BlockingDiagnostics { blocking: 1 } }
+    && emit_outcome_of_population(ds: [fixture_blocking_diagnostic], files: FilesEmitted { count: 3 })
+      == EmitSubjectBlocked { cause: BlockingDiagnostics { blocking: 1 } }
 }
 
 // A refusal that PRINTED diagnostics reports them; only one that printed none falls back to the
 // exit code. Reporting the exit code in both cases would discard what the compiler did say.
 test fn a_refusal_reports_its_diagnostics_and_falls_back_only_without_them() -> Bool {
-  emit_standing_of_refusal(exit_code: 1, ds: [fixture_blocking_diagnostic])
-    == EmitSubjectSuspect { cause: BlockingDiagnostics { blocking: 1 } }
-    && emit_standing_of_refusal(exit_code: 101, ds: [fixture_advisory_diagnostic])
-      == EmitSubjectSuspect { cause: RefusedWithoutBlockingPopulation { exit_code: 101 } }
+  emit_outcome_of_refusal(exit_code: 1, ds: [fixture_blocking_diagnostic])
+    == EmitSubjectBlocked { cause: BlockingDiagnostics { blocking: 1 } }
+    && emit_outcome_of_refusal(exit_code: 101, ds: [fixture_advisory_diagnostic])
+      == EmitSubjectBlocked { cause: RefusedWithoutBlockingPopulation { exit_code: 101 } }
 }
 
 // RED, ACROSS THE MEASUREMENT SEAM RATHER THAN INSIDE THE DERIVATION: a measurement that never
@@ -147,9 +148,11 @@ test fn a_measurement_that_never_reached_the_emitter_produces_no_population() ->
     }
   ) == EmitSubjectReading {
     entry: fixture_alpha,
-    standing: EmitSubjectPopulationUnproduced {
-      stage: StageBinaries,
-      cause: "the release binaries are not buildable"
+    outcome: EmitSubjectNotEvaluated {
+      cause: PopulationUnproduced {
+        stage: StageBinaries,
+        cause: "the release binaries are not buildable"
+      }
     }
   }
 }
@@ -168,8 +171,8 @@ test fn a_roster_measured_clean_with_no_admissions_holds() -> Bool {
 // the contract exists to prevent, and it refuses at identity grain — the row names the entry.
 test fn an_entry_off_the_frontier_that_stops_being_clean_refuses_by_name() -> Bool {
   let readings = [
-    fixture_reading(entry: fixture_alpha, standing: EmitSubjectSuspect { cause: BlockingDiagnostics { blocking: 4 } }),
-    fixture_reading(entry: fixture_beta, standing: EmitSubjectClean)
+    fixture_reading(entry: fixture_alpha, outcome: EmitSubjectBlocked { cause: BlockingDiagnostics { blocking: 4 } }),
+    fixture_reading(entry: fixture_beta, outcome: EmitSubjectClean)
   ]
   !fixture_standing_holds(roster: fixture_roster, admissions: [], readings: readings)
     && fixture_failing_rows(roster: fixture_roster, admissions: [], readings: readings)
@@ -180,8 +183,8 @@ test fn an_entry_off_the_frontier_that_stops_being_clean_refuses_by_name() -> Bo
 // and the hold here, which is what makes admission the mechanism rather than the count.
 test fn the_same_suspect_entry_holds_once_it_carries_an_admission_row() -> Bool {
   let readings = [
-    fixture_reading(entry: fixture_alpha, standing: EmitSubjectSuspect { cause: BlockingDiagnostics { blocking: 4 } }),
-    fixture_reading(entry: fixture_beta, standing: EmitSubjectClean)
+    fixture_reading(entry: fixture_alpha, outcome: EmitSubjectBlocked { cause: BlockingDiagnostics { blocking: 4 } }),
+    fixture_reading(entry: fixture_beta, outcome: EmitSubjectClean)
   ]
   fixture_standing_holds(roster: fixture_roster, admissions: [fixture_admission_for(entry: fixture_alpha)], readings: readings)
     && fixture_verdict_rows(roster: fixture_roster, admissions: [fixture_admission_for(entry: fixture_alpha)], readings: readings)
@@ -200,13 +203,13 @@ test fn an_admission_row_whose_debt_was_paid_refuses_until_it_is_deleted() -> Bo
       == ["FRONTIER-STALE\tdag/fixture/alpha.dag\tthe entry emits clean and its admission row is now a false statement about the tree — delete the row"]
 }
 
-// RED: an unestablished standing is neither of the two ratchet directions and takes neither's arm.
+// RED: a not-evaluated outcome is neither of the two ratchet directions and takes neither's arm.
 // It refuses whether or not the entry carries an admission row, because an admission is a statement
 // about a MEASURED debt and nothing here was measured.
-test fn an_unestablished_standing_refuses_on_and_off_the_frontier() -> Bool {
+test fn a_not_evaluated_outcome_refuses_on_and_off_the_frontier() -> Bool {
   let readings = [
-    fixture_reading(entry: fixture_alpha, standing: EmitSubjectExtentUnestablished),
-    fixture_reading(entry: fixture_beta, standing: EmitSubjectExtentUnestablished)
+    fixture_reading(entry: fixture_alpha, outcome: EmitSubjectNotEvaluated { cause: ExtentUnestablished }),
+    fixture_reading(entry: fixture_beta, outcome: EmitSubjectNotEvaluated { cause: ExtentUnestablished })
   ]
   !fixture_standing_holds(roster: fixture_roster, admissions: [], readings: readings)
     && !fixture_standing_holds(roster: fixture_roster, admissions: [fixture_admission_for(entry: fixture_alpha)], readings: readings)
@@ -215,7 +218,7 @@ test fn an_unestablished_standing_refuses_on_and_off_the_frontier() -> Bool {
 // RED: a run that measured some of its roster cannot answer a closed-universe claim, and the
 // unmeasured subjects are named rather than absorbed into the ones that were measured.
 test fn a_partial_run_refuses_and_names_the_subjects_it_did_not_measure() -> Bool {
-  let readings = [fixture_reading(entry: fixture_alpha, standing: EmitSubjectClean)]
+  let readings = [fixture_reading(entry: fixture_alpha, outcome: EmitSubjectClean)]
   !fixture_standing_holds(roster: fixture_roster, admissions: [], readings: readings)
     && fixture_failing_rows(roster: fixture_roster, admissions: [], readings: readings)
       == ["UNMEASURED\tdag/fixture/beta.dag\ton_frontier\tfalse\tthe fold was handed no measurement for this roster subject — a partial run cannot answer a closed-universe claim"]
@@ -281,12 +284,12 @@ test fn the_report_carries_the_discovery_policy_and_the_roster_digest() -> Bool 
 // subjects — and a lost subject is exactly how a count-shaped contract reports progress it did not
 // make.
 test fn a_roster_that_lost_a_subject_carries_a_different_digest() -> Bool {
-  match roster_identity(policy: fixture_policy(), roster: fixture_roster) {
-    RosterEmpty { policy: _ } => false
-    RosterIdentified { policy: _, subject_count: _, digest: whole } =>
-      match roster_identity(policy: fixture_policy(), roster: [fixture_alpha]) {
-        RosterEmpty { policy: _ } => false
-        RosterIdentified { policy: _, subject_count: _, digest: partial } =>
+  match roster_identity(policy: fixture_policy(), denominators: DeclarationIndexOnly, roster: fixture_roster) {
+    RosterEmpty { policy: _, denominators: _ } => false
+    RosterIdentified { policy: _, denominators: _, subject_count: _, digest: whole } =>
+      match roster_identity(policy: fixture_policy(), denominators: DeclarationIndexOnly, roster: [fixture_alpha]) {
+        RosterEmpty { policy: _, denominators: _ } => false
+        RosterIdentified { policy: _, denominators: _, subject_count: _, digest: partial } =>
           !(whole.digest as String == partial.digest as String)
       }
   }
@@ -297,10 +300,118 @@ test fn a_roster_that_lost_a_subject_carries_a_different_digest() -> Bool {
 // parallel to the roster, which is how a verdict and its subject drift apart.
 test fn every_verdict_carries_the_entry_it_is_about() -> Bool {
   let readings = [
-    fixture_reading(entry: fixture_alpha, standing: EmitSubjectExtentUnestablished)
+    fixture_reading(entry: fixture_alpha, outcome: EmitSubjectNotEvaluated { cause: ExtentUnestablished })
   ]
   map(
     fixture_fold_of(roster: fixture_roster, admissions: [], readings: readings).verdicts,
     v => emit_ratchet_verdict_entry(v: v)
   ) == fixture_roster
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE TWO DECLARED HOLES, PINNED BY EXECUTION.
+//
+// Both claims are GREEN WHILE THE HOLE IS OPEN. That inversion is deliberate and it is the only
+// thing that makes a pinned defect safe: each identity is named after the DEFECT rather than after
+// a check, so a reader scanning green rows reads the gap rather than counting coverage. When the
+// wall lands, the claim goes RED and its own name says why — which is what forces its deletion
+// instead of leaving a note nobody re-reads.
+// ---------------------------------------------------------------------------------------------
+
+// HOLE 1. A subject already carrying a blocker can acquire another and the frontier does not move:
+// it was blocked before, it is blocked now, the admission row still covers it, nothing refuses.
+// The two readings below differ in blocker COUNT and produce the SAME held verdict, which is the
+// hole exactly — and the count is display here, never the thing admission turns on, because a
+// count-keyed ratchet is defeated by an upstream refusal that makes the count FALL.
+//
+// DISSOLVES WHEN: the emitter reports semantic blocker identities, `added_blockers` activates, and
+// admission moves to cause grain. At that point this claim goes red and is deleted with the hole.
+test fn blocked_subject_gaining_a_blocker_is_held_not_refused() -> Bool {
+  let one = [
+    fixture_reading(entry: fixture_alpha, outcome: EmitSubjectBlocked { cause: BlockingDiagnostics { blocking: 1 } }),
+    fixture_reading(entry: fixture_beta, outcome: EmitSubjectClean)
+  ]
+  let two = [
+    fixture_reading(entry: fixture_alpha, outcome: EmitSubjectBlocked { cause: BlockingDiagnostics { blocking: 2 } }),
+    fixture_reading(entry: fixture_beta, outcome: EmitSubjectClean)
+  ]
+  fixture_standing_holds(roster: fixture_roster, admissions: [fixture_admission_for(entry: fixture_alpha)], readings: one)
+    && fixture_standing_holds(roster: fixture_roster, admissions: [fixture_admission_for(entry: fixture_alpha)], readings: two)
+}
+
+// AND THE WALL THAT DOES HOLD, stated beside the hole so the pair cannot be read as "the ratchet
+// does nothing". `Clean -> Blocked` refuses for every subject carrying no admission row, which is
+// acceptance mutation 1a and needs no blocker identity — only the ability to tell zero blockers
+// from nonzero, which the three-valued outcome already does.
+test fn clean_subject_gaining_a_blocker_refuses_which_is_the_wall_that_holds() -> Bool {
+  let regressed = [
+    fixture_reading(entry: fixture_alpha, outcome: EmitSubjectBlocked { cause: BlockingDiagnostics { blocking: 1 } }),
+    fixture_reading(entry: fixture_beta, outcome: EmitSubjectClean)
+  ]
+  !fixture_standing_holds(roster: fixture_roster, admissions: [], readings: regressed)
+}
+
+// HOLE 2. A subject discovered only from the parsed declaration index VANISHES when its module
+// stops parsing, so the fold is never asked about it and the run reports one fewer subject rather
+// than one blocked one. Here the roster has lost `beta` — and the standing over the shrunken
+// universe HOLDS, with no row naming what disappeared. A regression reading as improvement.
+//
+// The control is the line beside it: the same readings over the WHOLE roster also hold, so the two
+// runs are indistinguishable by their verdicts, and only the roster identity separates them. That
+// is the whole argument for a second denominator — the digest can say two runs differ, it cannot
+// say a module stopped parsing.
+//
+// DISSOLVES WHEN: a module inventory supplies ModuleSurface subjects, so a module that fails to
+// parse becomes a BLOCKED subject rather than an absent one. That landing is the precondition for
+// enrolling this carrier anywhere.
+test fn a_module_that_stops_parsing_vanishes_from_the_universe_instead_of_blocking() -> Bool {
+  let readings = fixture_both_clean()
+  fixture_standing_holds(roster: [fixture_alpha], admissions: [], readings: readings)
+    && count(fixture_verdict_rows(roster: [fixture_alpha], admissions: [], readings: readings)) == 1
+    && fixture_standing_holds(roster: fixture_roster, admissions: [], readings: readings)
+}
+
+// ACCEPTANCE MUTATION 2, AND IT HOLDS TODAY. An upstream refusal that masks a subject's population
+// must not read as improvement. The masked subject was BLOCKED and its mask makes it look clean to
+// any instrument that counts diagnostics — here it becomes NOT-EVALUATED and the standing refuses,
+// so the mask surfaces as a stopped line rather than as progress.
+//
+// The discriminating pair is the point: the SAME subject reported as genuinely clean HOLDS. So the
+// refusal is a fact about the mask and not about the fixture.
+test fn an_upstream_mask_refuses_rather_than_reading_as_improvement() -> Bool {
+  let masked = [
+    fixture_reading(entry: fixture_alpha, outcome: EmitSubjectNotEvaluated { cause: ExtentUnestablished }),
+    fixture_reading(entry: fixture_beta, outcome: EmitSubjectClean)
+  ]
+  !fixture_standing_holds(roster: fixture_roster, admissions: [fixture_admission_for(entry: fixture_alpha)], readings: masked)
+    && !fixture_standing_holds(roster: fixture_roster, admissions: [], readings: masked)
+    && fixture_standing_holds(roster: fixture_roster, admissions: [], readings: fixture_both_clean())
+}
+
+// THE ENROLMENT WALL, BOTH ARMS. The refusing arm is the live one: a single-denominator carrier
+// cannot be gated on, and the refusal names the missing denominator rather than answering a bare
+// false. The permitting arm is authored here to prove this is a WALL and not a decoration that
+// could only ever refuse — if the permitting arm were unreachable, the refusal would carry no
+// information and would be worse than absent for being counted as coverage.
+test fn a_single_denominator_carrier_refuses_enrolment_and_names_what_is_missing() -> Bool {
+  match emit_ratchet_gating_admission_of(denominators: DeclarationIndexOnly) {
+    GatingPermitted => false
+    GatingRefusedDenominator { missing: m } => string_contains(s: m, pattern: "module inventory")
+  }
+    && match emit_ratchet_gating_admission_of(denominators: DeclarationIndexAndModuleInventory) {
+      GatingPermitted => true
+      GatingRefusedDenominator { missing: _ } => false
+    }
+}
+
+// AND THE WALL READS THE CARRIER, not just a bare argument: a fold that produced a standing carries
+// the denominators it was folded over, so the enrolment question is answered from the artifact
+// rather than from whatever the caller says about it.
+test fn the_enrolment_wall_reads_the_denominators_the_carrier_was_folded_over() -> Bool {
+  match emit_ratchet_gating_admission(
+    r: fixture_fold_of(roster: fixture_roster, admissions: [], readings: fixture_both_clean())
+  ) {
+    GatingPermitted => false
+    GatingRefusedDenominator { missing: _ } => true
+  }
 }
