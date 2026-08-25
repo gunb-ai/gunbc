@@ -2666,6 +2666,32 @@ chooses. Two seams over one question, answering it in opposite directions, is a
 stronger argument for repairing the seam than the fail-closed argument made
 against the pull alone.
 
+**The corpus population the on-chain rule can refuse is 1923, not 10483, and the
+difference is the same short-circuit.** `cool-swift-307` instrumented the
+reference-derived pull corpus-wide (`--source-root dag --source-root src/v2`):
+`inspected=10494 unique_on_chain=9 unique_off_chain=8560 ambig_chain_one=2
+ambig_chain_zero=1923 ambig_chain_multi=0 no_referencing_module=0`, classes
+summing to inspected exactly and identical across two entry values. Their first
+reading made the refusal population 10483 — 99.9% — and concluded that switching
+the rule on would delete the closure rather than shrink it. **The 8560 are exempt
+by construction**: `global_bare_lookup` matches `GlobalBareUniqueBinding` first
+and returns immediately, so a corpus-unique name never reaches the policy call or
+the chain filter, which arm 1's positive control confirms by execution. So the
+reachable population is 1923 of 10494, 18.3%.
+
+**And that number is the sweep's size, not the flip's blast radius.** The
+on-chain rule adjudicates BARE cross-module names; the cut's target spelling is
+full qualification, so after the sweep there is no bare name left for it to
+adjudicate and the population goes to approximately zero on its own. The work
+order that follows is neither "widen the ancestor relation" nor "add the imports
+first" — both build for a spelling being deleted — it is sweep first. Two lanes
+reached the wrong figure by the same route from opposite sides: theirs was a
+judgment total over the classes it examined and blind to the arm deciding whether
+the rule runs at all; arm 2's first filing was blind to the index the resolver
+was reading from. `ambig_chain_multi=0` is a quiet guard rather than a dead one —
+its denominator is the 650 import-less files, and arm 2 proves the state is
+constructible.
+
 **Version skew is why this took four attempts, and it is its own class.** Three
 earlier runs of this fixture refused their own positive control. The cause was
 that `gunbc` on PATH resolved to an installed binary predating `--entry`, while
